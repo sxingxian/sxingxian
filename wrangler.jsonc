@@ -12,21 +12,20 @@
   "routes": [
     { "pattern": "sxingxian.com", "custom_domain": true }
   ],
+  // Only the custom domain above: no workers.dev address and no per-version preview addresses.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Keep variables and secrets set in the Cloudflare dashboard when deploying.
+  "keep_vars": true,
   "observability": { "enabled": true },
 
-  // Non-secret configuration only. Secrets are set with `wrangler secret put`
-  // (see README) and never committed or sent to the browser.
+  // Fixed, non-secret values. Everything specific to your accounts
+  // (ACCESS_TEAM_DOMAIN, ADMIN_EMAILS, DATABASE_URL, ACCESS_AUD, WP_WEBHOOK_SECRET,
+  // optional NAS_/B2_ storage) is set in Cloudflare → sxingxian → Settings →
+  // Variables and secrets, and kept across deploys by "keep_vars". See docs/DEPLOYMENT.md.
   "vars": {
     "SITE_URL": "https://sxingxian.com",
-    "WP_BASE_URL": "https://hey.sxingxian.com",
-    "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_YOUR_TEAM.cloudflareaccess.com",
-    "ADMIN_EMAILS": "REPLACE_WITH_YOUR_EMAIL",
-    "NAS_S3_ENDPOINT": "",
-    "NAS_S3_BUCKET": "",
-    "NAS_S3_REGION": "auto",
-    "B2_S3_ENDPOINT": "",
-    "B2_S3_BUCKET": "",
-    "B2_S3_REGION": "us-west-004"
+    "WP_BASE_URL": "https://hey.sxingxian.com"
   },
 
   "r2_buckets": [

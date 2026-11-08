@@ -8,6 +8,12 @@
 - Media is always served through `/media/:id`. Storage hosts and keys are never exposed.
 - `npm run security:scan` fails the build if any secret name, server-only module, connection string, key pattern or source map shows up in `dist/client`. It fails the same way if a secret file or secret-looking string is tracked by git.
 
+### Deployment secrets
+- **Cloudflare** holds the Worker's runtime secrets (set in the dashboard; `keep_vars` stops Git deploys from clearing them). Cloudflare Workers Builds deploys from Git, so no Cloudflare API token is stored in GitHub.
+- **GitHub** holds only `NEON_API_KEY` (project-scoped) and the non-secret `NEON_PROJECT_ID`. The Deploy Neon workflow fetches the connection string from the Neon API at run time, masks it (and its password) in the logs, and runs under the `production` environment, which can require your approval.
+- Workflows use least-privilege `permissions`, actions pinned to commit SHAs, `persist-credentials: false`, and automatic database deploys only for CI-passing pushes to this repository's `main` (never pull requests or forks).
+- The Worker serves only `sxingxian.com`: `workers_dev` and `preview_urls` are off, so there is no unprotected `*.workers.dev` copy of the admin.
+
 ### Admin authentication and authorisation
 - Cloudflare Access protects `/admin*` and `/api/admin*` at the edge.
 - `src/middleware.ts` **also verifies the Access JWT on every request**:

@@ -1,5 +1,6 @@
 # Copy to .dev.vars for local development. NEVER commit .dev.vars.
-# In production set each of these with:  npx wrangler secret put <NAME>
+# In production these are set in Cloudflare → sxingxian → Settings → Variables and secrets
+# (see docs/DEPLOYMENT.md), or with:  npx wrangler secret put <NAME>
 
 # Neon connection string — paste the pooled string from the Neon console
 # (use a separate Neon dev branch for local work)

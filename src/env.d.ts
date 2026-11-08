@@ -14,8 +14,8 @@ interface SxEnv {
   // vars (non-secret)
   SITE_URL: string;
   WP_BASE_URL: string;
-  ACCESS_TEAM_DOMAIN: string;
-  ADMIN_EMAILS: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  ADMIN_EMAILS?: string;
   NAS_S3_ENDPOINT?: string;
   NAS_S3_BUCKET?: string;
   NAS_S3_REGION?: string;

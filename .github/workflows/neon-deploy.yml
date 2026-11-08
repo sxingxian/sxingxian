@@ -1,0 +1,163 @@
+name: Deploy Neon
+
+# Applies new database migrations (migrations/*.sql) to the production Neon database, without a computer.
+# From a phone: GitHub app → this repository → Actions → Deploy Neon → Run workflow.
+#
+# Needs, under Settings → Secrets and variables → Actions:
+#   secret   NEON_API_KEY      (Neon console → Account settings → API keys; a project-scoped key is enough)
+#   variable NEON_PROJECT_ID   (Neon console → Project settings → General)
+# No connection string is needed: the workflow asks the Neon API for the production branch's pooled
+# connection string with the API key, masks it in the log, and uses it only for this run.
+# Optional variables: NEON_DATABASE_NAME (default neondb), NEON_ROLE_NAME (default neondb_owner).
+# Optional secret: DATABASE_URL in the "production" environment is used instead of asking the API.
+# Optional: variable AUTO_DEPLOY_NEON = true runs this automatically after CI passes on main.
+#
+# Before it changes anything it takes an instant backup branch of production (kept 7 days).
+# It refuses to deploy a commit whose CI run did not pass, so untested migrations never reach the database.
+# The Cloudflare Worker is connected to Git and redeploys on push by itself (see docs/DEPLOYMENT.md).
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only list the migrations that would run (changes nothing)
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: neon-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Manual runs always; automatic runs only when switched on and CI passed on a push to this repository's main
+    # (never a pull request's run, and never a fork's).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.AUTO_DEPLOY_NEON == 'true' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 15
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      NEON_DATABASE_NAME: ${{ vars.NEON_DATABASE_NAME || 'neondb' }}
+      NEON_ROLE_NAME: ${{ vars.NEON_ROLE_NAME || 'neondb_owner' }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check settings
+        run: |
+          missing=""
+          [ -n "$NEON_API_KEY" ] || missing="$missing NEON_API_KEY(secret)"
+          [ -n "$NEON_PROJECT_ID" ] || missing="$missing NEON_PROJECT_ID(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Add these under Settings → Secrets and variables → Actions:$missing"
+            exit 1
+          fi
+
+      - name: Make sure CI passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # GitHub can take a little while to list a run that has just finished, so ask a few times.
+          for attempt in 1 2 3 4 5 6; do
+            result=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed&per_page=1" --jq '.workflow_runs[0].conclusion // "none"' || echo "error")
+            [ "$result" = "success" ] && break
+            { [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; } && break
+            sleep 15
+          done
+          if [ "$result" != "success" ]; then
+            echo "::error::CI has not passed for ${SHA::7} (result: $result). Wait for CI to finish, or fix it, then run this again."
+            exit 1
+          fi
+          echo "::notice::CI passed for ${SHA::7}"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Get the production connection string
+        env:
+          DATABASE_URL_OVERRIDE: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL_OVERRIDE" ]; then
+            uri="$DATABASE_URL_OVERRIDE"
+            echo "Using the DATABASE_URL secret from the production environment."
+          else
+            uri=$(curl -fsS --retry 3 \
+              -H "Authorization: Bearer $NEON_API_KEY" -H "Accept: application/json" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?database_name=$NEON_DATABASE_NAME&role_name=$NEON_ROLE_NAME&pooled=true" \
+              | jq -r '.uri // empty') || true
+            if [ -z "$uri" ]; then
+              echo "::error::The Neon API did not return a connection string. Check NEON_API_KEY, NEON_PROJECT_ID, and that database '$NEON_DATABASE_NAME' and role '$NEON_ROLE_NAME' exist (set NEON_DATABASE_NAME / NEON_ROLE_NAME variables if yours differ)."
+              exit 1
+            fi
+            echo "Got the pooled connection string for the default branch from the Neon API."
+          fi
+          # Hide it (and its password on its own) from every later log line.
+          echo "::add-mask::$uri"
+          for part in password decoded; do
+            pass=$(node -e 'try{const p=new URL(process.argv[1]).password;process.stdout.write(process.argv[2]==="decoded"?decodeURIComponent(p):p)}catch{}' "$uri" "$part")
+            if [ -n "$pass" ]; then echo "::add-mask::$pass"; fi
+          done
+          echo "DATABASE_URL=$uri" >> "$GITHUB_ENV"
+
+      - name: Migrations that would run
+        id: status
+        run: |
+          out=$(node scripts/migrate.mjs --status)
+          echo "$out"
+          if echo "$out" | grep -q " 0 pending"; then echo "pending=false" >> "$GITHUB_OUTPUT"; else echo "pending=true" >> "$GITHUB_OUTPUT"; fi
+          { echo '### Migrations'; echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Instant copy-on-write snapshot of production. To roll back, restore from it in the Neon console.
+      - name: Expiry date for the backup branch
+        if: steps.status.outputs.pending == 'true' && env.DRY_RUN != 'true'
+        run: echo "EXPIRES_AT=$(date -u --date '+7 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Back up production
+        if: steps.status.outputs.pending == 'true' && env.DRY_RUN != 'true'
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: backup/pre-migrate-${{ github.run_id }}
+          expires_at: ${{ env.EXPIRES_AT }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Apply migrations
+        if: steps.status.outputs.pending == 'true' && env.DRY_RUN != 'true'
+        run: node scripts/migrate.mjs
+
+      - name: Summary
+        if: always()
+        env:
+          PENDING: ${{ steps.status.outputs.pending }}
+        run: |
+          {
+            echo "### Neon deploy"
+            echo "- Commit: \`${SHA::7}\`"
+            echo "- Dry run: $DRY_RUN"
+            if [ "$PENDING" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+              echo "- Backup branch: \`backup/pre-migrate-${{ github.run_id }}\` (expires in 7 days)"
+            elif [ "$PENDING" = "false" ]; then
+              echo "- Nothing to apply: the database is up to date"
+            fi
+            echo "- Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"

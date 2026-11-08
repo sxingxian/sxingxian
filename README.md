@@ -49,49 +49,25 @@ wordpress-plugin/           One-file plugin for hey.sxingxian.com
 scripts/                    migrate, security tests, client-bundle secret scan
 ```
 
-## Setup
+## Deploying
 
-### 1. Neon
+**Full step-by-step guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).** In short:
 
-1. Create a Neon project and copy the **pooled** connection string.
-2. Run the migrations, either from GitHub Actions (see **GitHub Actions** below; recommended) or from your machine. Export the variable in your shell; don't put it in a file that git tracks.
-   ```bash
-   export DATABASE_URL='…'
-   npm ci
-   npm run db:migrate
-   ```
+| What | Where it goes live |
+|---|---|
+| Code | **Cloudflare Workers Builds** (Worker connected to this repo): every push to `main` builds and deploys `sxingxian` on `sxingxian.com`. |
+| Database | **Actions → Deploy Neon**: checks CI passed, backs up production to a Neon branch, applies `migrations/*.sql`. Manual, or automatic after CI with `AUTO_DEPLOY_NEON=true`. |
+| Secrets | Cloudflare → `sxingxian` → Settings → Variables and secrets (`DATABASE_URL`, `ACCESS_AUD`, `WP_WEBHOOK_SECRET`, `ACCESS_TEAM_DOMAIN`, `ADMIN_EMAILS`). GitHub holds only `NEON_API_KEY` + `NEON_PROJECT_ID`. |
 
-### 2. Cloudflare
+### GitHub Actions
 
-1. Make sure `sxingxian.com` is a zone in your Cloudflare account.
-2. Create the media bucket: `npx wrangler r2 bucket create sxingxian-media`
-3. **Cloudflare Access.** In Zero Trust → Access → Applications, add a *Self-hosted* application:
-   - **Domain:** `sxingxian.com`, paths **`/admin`**, **`/admin/*`** and **`/api/admin/*`**. Do *not* include `/api/hooks/*`: WordPress must be able to reach it.
-   - **Policy:** Allow → Emails → your email address.
-   - **Copy** the application's **AUD tag** and your **team domain** (e.g. `yourteam.cloudflareaccess.com`).
-4. Edit `wrangler.jsonc` → `vars` (these values are not secret):
-   - `ACCESS_TEAM_DOMAIN` = your team domain
-   - `ADMIN_EMAILS` = your email (comma-separate multiple)
-5. Set the secrets. They are stored encrypted in Cloudflare, never in the repo, and never sent to the browser:
-   ```bash
-   npx wrangler secret put DATABASE_URL        # Neon pooled connection string
-   npx wrangler secret put ACCESS_AUD          # AUD tag from step 3
-   npx wrangler secret put WP_WEBHOOK_SECRET   # generate: openssl rand -hex 32
-   ```
-6. Deploy: `npm run deploy`
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **CI** (`ci.yml`) | Every push and PR | `npm audit`, `npm run verify` (type check, build, security lint, security tests, secret scan) and a `wrangler deploy --dry-run` of the Worker |
+| **Neon · test migrations on a branch** (`neon-pr.yml`) | PRs that change `migrations/**` | Copies production to `preview/pr-<n>`, applies the migrations twice (second run must be a no-op), comments the schema diff, deletes the branch on close. Production is never touched. |
+| **Deploy Neon** (`neon-deploy.yml`) | Manual (with *dry run*), or after CI on `main` when `AUTO_DEPLOY_NEON=true` | Refuses commits whose CI failed, gets the connection string from the Neon API, takes a backup branch `backup/pre-migrate-<run>` (7 days), applies pending migrations. |
 
-### 3. WordPress (hey.sxingxian.com)
-
-1. Upload `wordpress-plugin/sxingxian-sync/` to `wp-content/plugins/` and activate it at `https://hey.sxingxian.com/admin`.
-2. Add these lines to `wp-config.php`. Use the **same** secret as `WP_WEBHOOK_SECRET`:
-   ```php
-   define( 'SXINGXIAN_WEBHOOK_URL', 'https://sxingxian.com/api/hooks/wordpress' );
-   define( 'SXINGXIAN_WEBHOOK_SECRET', 'the-64-character-hex-secret' );
-   ```
-3. In sxingxian.com/admin → WordPress, press **Sync now**. Choose whether new WordPress posts appear automatically, and map WordPress categories to journal topics.
-4. If hey.sxingxian.com is behind Cloudflare with Bot Fight Mode or a WAF challenge, allow `/wp-json/*` for requests from your own Worker, or the sync will be blocked.
-
-#### How the sync works
+## How the WordPress sync works
 
 | Path | When | What |
 |---|---|---|
@@ -101,49 +77,6 @@ scripts/                    migrate, security tests, client-bundle secret scan
 | Health check | Every 5 min | `GET /wp-json/` (5 s timeout). **2 failures in a row hide all WordPress posts** (feed, topic filters, RSS); **2 successes** show them again. |
 
 Only the title, excerpt, featured image and link are copied. Cards link to WordPress, which stays the canonical page.
-
-### 4. Optional: NAS and Backblaze B2
-
-Both use the S3 API, so the NAS needs an S3-compatible service (e.g. MinIO or Garage). Expose it through **Cloudflare Tunnel** at an `https://` hostname; no router ports are opened. Then:
-
-```bash
-# wrangler.jsonc vars: NAS_S3_ENDPOINT, NAS_S3_BUCKET (and B2_S3_ENDPOINT, B2_S3_BUCKET)
-npx wrangler secret put NAS_S3_ACCESS_KEY_ID
-npx wrangler secret put NAS_S3_SECRET_ACCESS_KEY
-npx wrangler secret put B2_S3_ACCESS_KEY_ID
-npx wrangler secret put B2_S3_SECRET_ACCESS_KEY
-```
-
-Hosts without credentials appear greyed out in the upload dialog.
-
-**Video is R2-only.** Cloudflare's CDN terms restrict serving video and large files that are hosted outside Cloudflare. Use R2 for short clips and YouTube or Vimeo for long ones.
-
-## GitHub Actions (Neon + Cloudflare)
-
-| Workflow | Trigger | What it does |
-|---|---|---|
-| **CI** (`ci.yml`) | Every push and PR | `npm audit` and `npm run verify` (type check, build, security lint, security tests, secret scan) |
-| **Neon · test migrations on a branch** (`neon-pr.yml`) | PRs that change `migrations/**` | Creates a fresh Neon branch `preview/pr-<n>` copied from production, applies all migrations, re-runs them (they must apply nothing), comments the schema diff on the PR, and deletes the branch when the PR closes. Production is never touched. |
-| **Neon · migrate production** (`neon-migrate.yml`) | Manual (with a *dry run* option), or called by Deploy | Shows pending migrations. If any are pending, it takes an instant **backup branch** `backup/pre-migrate-<run>` (kept 7 days), then applies the migrations. |
-| **Deploy** (`deploy.yml`) | Manual | verify → **migrate Neon** → deploy the Worker. The Worker only deploys if the migration succeeded. |
-
-### One-time setup
-
-1. **Connect Neon.** Either use the Neon GitHub integration (Neon console → Integrations → GitHub), which creates both of these for you, or add them by hand:
-   - Repository **secret** `NEON_API_KEY`: Neon console → Account settings → API keys. Prefer a project-scoped key.
-   - Repository **variable** `NEON_PROJECT_ID`: Neon console → Project settings.
-2. **Create a `production` environment** (Settings → Environments). Add these **environment secrets**:
-   - `DATABASE_URL`: the production **pooled** connection string
-   - `CLOUDFLARE_API_TOKEN`: a token with the *Edit Cloudflare Workers* template
-   - `CLOUDFLARE_ACCOUNT_ID`
-
-   Under *Required reviewers*, add yourself, so every production migration and deploy waits for your approval.
-3. Run **Actions → Neon · migrate production** once, with *dry run* ticked, to confirm the connection. Then run it again to create the tables.
-
-Day to day:
-- **New schema changes:** add a new file `migrations/0002_<name>.sql` (never edit an applied one; the script refuses changed checksums). Open a PR to test it on a Neon branch, merge it, then run **Deploy**.
-- **Check the database locally:** `npm run db:status` shows what's applied and what's pending.
-- **Write expand-then-contract migrations:** add new columns or tables first, and remove old ones in a later release. That way the running Worker never sees a schema it can't handle.
 
 ## Local development
 

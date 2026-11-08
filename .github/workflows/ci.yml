@@ -1,16 +1,23 @@
 name: CI
 
+# Runs on every push and pull request. "Deploy Neon" only deploys commits that passed this workflow.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -24,3 +31,6 @@ jobs:
         run: npm audit --audit-level=moderate
       - name: Type check, build, security lint, security tests, secret scan
         run: npm run verify
+      # Builds the exact bundle Cloudflare would upload and checks wrangler.jsonc, without deploying.
+      - name: Validate the Cloudflare Worker
+        run: npx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker"
