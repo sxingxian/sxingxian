@@ -139,12 +139,22 @@ export async function getPage(slug: Page['slug']): Promise<Page | null> {
   return (rows[0] as Page) ?? null;
 }
 
+let privacyCache: { at: number; has: boolean } | null = null;
+/** Whether a Privacy page with content exists (cached a minute per isolate; for the footer link). */
+export async function hasPrivacyPage(): Promise<boolean> {
+  if (privacyCache && Date.now() - privacyCache.at < 60_000) return privacyCache.has;
+  const rows = await sql()`SELECT jsonb_array_length(COALESCE(body->'content', '[]'::jsonb)) > 0 AS has FROM pages WHERE slug = 'privacy'`;
+  privacyCache = { at: Date.now(), has: rows[0]?.has === true };
+  return privacyCache.has;
+}
+
 export async function putPage(slug: Page['slug'], p: { title: string; body: unknown; noindex: boolean }): Promise<Page> {
   const rows = await sql()`
     INSERT INTO pages (slug, title, body, noindex, updated_at)
     VALUES (${slug}, ${p.title}, ${JSON.stringify(p.body)}::jsonb, ${p.noindex}, now())
     ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, noindex = EXCLUDED.noindex, updated_at = now()
     RETURNING slug, title, body, noindex, updated_at`;
+  if (slug === 'privacy') privacyCache = null;
   return rows[0] as Page;
 }
 

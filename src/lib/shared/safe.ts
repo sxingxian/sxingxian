@@ -42,6 +42,10 @@ export const isSlug = (s: string): boolean => s.length > 0 && s.length <= 80 && 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Only these embed providers/IDs are ever rendered as iframes. */
+// AdSense identifiers (also checked on the server before they reach a page).
+export const ADSENSE_CLIENT_RE = /^ca-pub-\d{10,20}$/;
+export const ADSENSE_SLOT_RE = /^\d{6,20}$/;
+
 export type VideoProvider = 'youtube' | 'vimeo' | 'tiktok';
 export interface ParsedVideo { provider: VideoProvider; id: string; portrait: boolean }
 

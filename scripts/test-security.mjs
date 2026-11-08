@@ -17,7 +17,8 @@ await build({
                export * as ac from './src/lib/server/authcrypto.ts';
                export { sessionCookie, clearSessionCookie, SESSION_COOKIE } from './src/lib/server/users.ts';
                export { safeNext } from './src/admin/auth/fields.tsx';
-               export { loginSchema, userPatchSchema } from './src/lib/shared/schemas.ts';`,
+               export { loginSchema, userPatchSchema, settingsSchemas } from './src/lib/shared/schemas.ts';
+               export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -33,7 +34,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -155,6 +156,24 @@ t('map input parsing: coordinates and map links', () => {
   assert.equal(parseMapInput('Marina Bay Sands'), null);
   assert.equal(parseMapInput('javascript:alert(1)'), null);
   assert.equal(parseMapInput('200, 500'), null);
+});
+
+console.log('AdSense');
+t('ads never run in the admin, API, CV, About, Privacy or feeds', () => {
+  for (const p of ['/admin', '/admin/journal', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt']) assert.equal(adsAllowedOn(p), false, p);
+  for (const p of ['/', '/journal', '/journal/a-post', '/photos', '/aboutme']) assert.equal(adsAllowedOn(p), true, p);
+});
+t('ads need a valid publisher ID and the switch on', () => {
+  assert.equal(adsLive({ enabled: true, client: 'ca-pub-1234567890123456', homeSlot: '', articleSlot: '' }), true);
+  assert.equal(adsLive({ enabled: false, client: 'ca-pub-1234567890123456', homeSlot: '', articleSlot: '' }), false);
+  assert.equal(adsLive({ enabled: true, client: 'ca-pub-1"><script>', homeSlot: '', articleSlot: '' }), false);
+});
+t('ads settings reject script-shaped IDs', () => {
+  const ok = { enabled: true, client: 'ca-pub-1234567890123456', homeSlot: '1234567890', articleSlot: '' };
+  assert.equal(settingsSchemas.ads.safeParse(ok).success, true);
+  assert.equal(settingsSchemas.ads.safeParse({ ...ok, client: 'ca-pub-12"onload=x' }).success, false);
+  assert.equal(settingsSchemas.ads.safeParse({ ...ok, homeSlot: '123" data-x' }).success, false);
+  assert.equal(settingsSchemas.ads.safeParse({ ...ok, client: '' }).success, false, 'cannot enable without an ID');
 });
 
 console.log('WordPress text cleaning');

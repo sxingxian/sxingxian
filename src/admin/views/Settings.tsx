@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import { Switch, useToast } from '../components/ui';
-import { isSafeHref } from '../../lib/shared/safe';
-import { SECTION_LABELS, type Entry, type FeaturedSetting, type FooterSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
+import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
+import { SECTION_LABELS, type Entry, type FeaturedSetting, type FooterSetting, type SectionsSetting, type SiteSetting, type AdsSetting } from '../../lib/shared/types';
 
-type Tab = 'home' | 'footer' | 'site';
+type Tab = 'home' | 'footer' | 'site' | 'ads';
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('home');
@@ -17,10 +17,12 @@ export default function Settings() {
           <button type="button" role="tab" aria-selected={tab === 'home'} onClick={() => setTab('home')}>Sections &amp; featured post</button>
           <button type="button" role="tab" aria-selected={tab === 'footer'} onClick={() => setTab('footer')}>Footer</button>
           <button type="button" role="tab" aria-selected={tab === 'site'} onClick={() => setTab('site')}>Site</button>
+          <button type="button" role="tab" aria-selected={tab === 'ads'} onClick={() => setTab('ads')}>Ads</button>
         </div>
         {tab === 'home' && <HomeSettings />}
         {tab === 'footer' && <FooterSettings />}
         {tab === 'site' && <SiteSettings />}
+        {tab === 'ads' && <AdsSettings />}
       </div>
     </>
   );
@@ -201,5 +203,59 @@ function SiteSettings() {
       <label className="field">Topics (comma separated)<input className="input" value={topics} onChange={(e) => setTopics(e.target.value)} /></label>
       <div><button type="button" className="btn primary" onClick={save}>Save</button></div>
     </section>
+  );
+}
+
+function AdsSettings() {
+  const [a, setA] = useState<AdsSetting | null>(null);
+  const [err, setErr] = useState('');
+  const toast = useToast();
+  useEffect(() => {
+    api.get<{ value: AdsSetting }>('/api/admin/settings/ads').then((r) => setA(r.value)).catch((e) => setErr(errorText(e)));
+  }, []);
+  if (!a) return <p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p>;
+
+  const clientOk = a.client === '' || ADSENSE_CLIENT_RE.test(a.client.trim());
+  const slotOk = (v: string) => v === '' || ADSENSE_SLOT_RE.test(v.trim());
+  const save = async (next: AdsSetting) => {
+    try {
+      const r = await api.put<{ value: AdsSetting }>('/api/admin/settings/ads', next);
+      setA(r.value);
+      toast(r.value.enabled ? 'Ads are on' : 'Saved');
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
+
+  return (
+    <div className="grid2">
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="check" style={{ justifyContent: 'space-between' }}>
+          <span>Show ads</span>
+          <Switch checked={a.enabled} label="Show ads" disabled={!ADSENSE_CLIENT_RE.test(a.client)} onChange={(v) => save({ ...a, enabled: v })} />
+        </div>
+        <label className="field">Publisher ID
+          <input className={`input mono${clientOk ? '' : ' bad'}`} value={a.client} placeholder="ca-pub-0000000000000000" spellCheck={false} autoCapitalize="off"
+            onChange={(e) => setA({ ...a, client: e.target.value.trim() })} />
+        </label>
+        <label className="field">Home page unit <span className="hint">Ad slot ID · optional</span>
+          <input className={`input mono${slotOk(a.homeSlot) ? '' : ' bad'}`} value={a.homeSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, homeSlot: e.target.value.trim() })} />
+        </label>
+        <label className="field">End of posts unit <span className="hint">Ad slot ID · optional</span>
+          <input className={`input mono${slotOk(a.articleSlot) ? '' : ' bad'}`} value={a.articleSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, articleSlot: e.target.value.trim() })} />
+        </label>
+        <div><button type="button" className="btn primary" disabled={!clientOk || !slotOk(a.homeSlot) || !slotOk(a.articleSlot)} onClick={() => save(a)}>Save</button></div>
+      </section>
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="lbl">Checklist</div>
+        <dl className="facts">
+          <dt>ads.txt</dt><dd>{ADSENSE_CLIENT_RE.test(a.client) ? <a href="/ads.txt" target="_blank" rel="noopener">Live ↗</a> : 'After you save a publisher ID'}</dd>
+          <dt>Privacy</dt><dd><a href="/admin/pages/privacy">Write the Privacy page</a> (required by AdSense)</dd>
+          <dt>EU / UK</dt><dd>Publish Google’s consent message in AdSense → Privacy &amp; messaging</dd>
+          <dt>Auto ads</dt><dd>Optional, set in AdSense. The units above work without them.</dd>
+          <dt>No ads</dt><dd>Admin, CV, About, Privacy</dd>
+        </dl>
+      </section>
+    </div>
   );
 }

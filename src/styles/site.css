@@ -302,3 +302,10 @@ html[data-theme='dark'] .i-moon { display: none; }
 #main { flex: 1 0 auto; padding-bottom: 80px; }
 /* small thumbnails: no placeholder text */
 .mini .placeholder-cover, .photo-grid .placeholder-cover { font-size: 0; }
+
+/* Google AdSense units: labelled, separated from content, space reserved to limit layout shift */
+.ad { margin: 40px 0 0; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.ad-lbl { font: 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.ad .adsbygoogle { display: block; min-height: 120px; }
+.ad:has(ins[data-ad-status='unfilled']) { display: none; }
+@media print { .ad { display: none !important; } }

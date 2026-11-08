@@ -7,6 +7,8 @@ import '../styles/site.css';
 import { getSettings } from '../lib/server/repo';
 import { navItems } from '../lib/server/site';
 import { isSafeHref } from '../lib/shared/safe';
+import { adsFor } from '../lib/server/ads';
+import { hasPrivacyPage } from '../lib/server/repo';
 
 interface Props {
   title?: string;
@@ -32,6 +34,8 @@ const year = String(new Date().getUTCFullYear());
 const columns = footer.columns.map((c) => ({ ...c, links: c.links.filter((l) => isSafeHref(l.url)) }));
 const hasRssLink = columns.some((c) => c.links.some((l) => l.url === '/rss.xml'));
 const canonical = new URL(path, Astro.site ?? Astro.url).toString();
+const ads = await adsFor(path);
+const showPrivacy = await hasPrivacyPage().catch(() => false);
 ---
 <!doctype html>
 <html lang="en">
@@ -52,6 +56,9 @@ const canonical = new URL(path, Astro.site ?? Astro.url).toString();
     <meta name="theme-color" content="#fcfcfa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
     <!-- Apply a saved theme before first paint (no flash). Default: follow the device. -->
+    {ads && (
+      <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ads.client}`} crossorigin="anonymous" is:inline></script>
+    )}
     <script is:inline>(function(){var d=document.documentElement;d.classList.add('js');try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
   </head>
   <body>
@@ -124,7 +131,7 @@ const canonical = new URL(path, Astro.site ?? Astro.url).toString();
         )}
       </div>
       <div class="wrap foot-bottom">
-        <span>{footer.bottomLine.replaceAll('{year}', year)}{footer.showBuiltOn && ' · Built on Cloudflare'}</span>
+        <span>{footer.bottomLine.replaceAll('{year}', year)}{footer.showBuiltOn && ' · Built on Cloudflare'}{showPrivacy && <> · <a href="/privacy">Privacy</a></>}</span>
         <div class="theme-seg" role="radiogroup" aria-label="Theme">
           <button type="button" role="radio" aria-checked="true" data-theme-set="system">Auto</button>
           <button type="button" role="radio" aria-checked="false" data-theme-set="light">Light</button>

@@ -148,6 +148,17 @@ You're asked for the password at a hidden prompt (press Enter to generate a temp
 
 The command-line fixes need only the Neon connection string, so you can always get back in.
 
+## 7b. Google AdSense (optional)
+
+1. Write the **Privacy** page first: Admin → Pages → **Privacy** comes with a draft. Fill in the [placeholders], check it, and save. It then appears in the footer. AdSense requires one.
+2. Apply at adsense.google.com with `sxingxian.com`. Approval can take days to weeks and needs enough original posts.
+3. Admin → Settings → **Ads**: paste the publisher ID (`ca-pub-…`) and save. `https://sxingxian.com/ads.txt` goes live straight away, which Google checks during review. Leave **Show ads** off until you're approved.
+4. In AdSense:
+   - **Ads → By ad unit → Display ads**: create two units (for example "Home" and "End of posts") and paste their slot IDs into Settings → Ads.
+   - **Privacy & messaging → European regulations**: create and publish the consent message. Google requires it for visitors from the EEA, the UK and Switzerland.
+   - Auto ads are optional. If you turn them on there, Google may place extra ads on any page that allows ads.
+5. Turn on **Show ads**. Pages that show ads switch to Google's supported security policy automatically. The admin, CV, About and Privacy never show ads.
+
 ## 8. After the first deploy
 
 - [ ] `https://sxingxian.com` loads; `https://sxingxian.com/rss.xml` is valid.

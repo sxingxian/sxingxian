@@ -2,6 +2,7 @@
 import Site from '../layouts/Site.astro';
 import PostRow from '../components/PostRow.astro';
 import Thumb from '../components/Thumb.astro';
+import AdSlot from '../components/AdSlot.astro';
 import { getFeatured, getFeed } from '../lib/server/site';
 import { getSettings, listPublicEntries } from '../lib/server/repo';
 import { formatDate } from '../lib/server/text';
@@ -56,6 +57,7 @@ const latestFilm = films[0];
         feed.map((item) => <PostRow item={item} />)
       )}
       <div class="pager"><span></span><a href={topic ? `/journal?topic=${encodeURIComponent(topic)}` : '/journal'}>All posts →</a></div>
+      <AdSlot slot="home" />
     </div>
 
     <aside class="side" aria-label="More from sxingxian">

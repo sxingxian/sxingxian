@@ -2,7 +2,7 @@
 // The admin uses the same schemas for instant feedback, but the server is the
 // authority — client-side checks are a convenience, not a control.
 import { z } from 'zod';
-import { isSafeHref, SLUG_RE, UUID_RE } from './safe';
+import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref, SLUG_RE, UUID_RE } from './safe';
 
 const MAX_DOC_BYTES = 1_000_000;
 
@@ -41,6 +41,12 @@ export const pageInputSchema = z.object({
 const safeUrl = z.string().max(2048).refine(isSafeHref, 'Use https://…, a page on this site (/cv) or mailto:');
 
 export const settingsSchemas = {
+  ads: z.object({
+    enabled: z.boolean(),
+    client: z.string().trim().refine((v) => v === '' || ADSENSE_CLIENT_RE.test(v), 'Publisher ID looks like ca-pub-1234567890123456'),
+    homeSlot: z.string().trim().refine((v) => v === '' || ADSENSE_SLOT_RE.test(v), 'Ad slot IDs are numbers only'),
+    articleSlot: z.string().trim().refine((v) => v === '' || ADSENSE_SLOT_RE.test(v), 'Ad slot IDs are numbers only'),
+  }).refine((v) => !v.enabled || v.client !== '', { message: 'Add your publisher ID before turning ads on', path: ['client'] }),
   site: z.object({
     title: z.string().trim().min(1).max(60),
     tagline: z.string().max(60),

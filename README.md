@@ -35,6 +35,7 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 - **CV page** (`/cv`): built from column blocks, printable to PDF from the browser (print stylesheet included).
 - **Editable footer:** about text, up to 3 link columns, bottom line with `{year}`. Links are allow-listed.
 - **WordPress sync** (see below), with automatic hiding when WordPress is down.
+- **Google AdSense** (optional, Settings → Ads): a publisher ID, plus optional units on the home page and at the end of posts. `/ads.txt` is generated. Ads never appear in the admin or on CV, About and Privacy. An editable **Privacy** page (draft template included) is linked in the footer once written.
 - **RSS** at `/rss.xml`. There is no newsletter or email collection.
 
 ## Project layout

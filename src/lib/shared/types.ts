@@ -33,7 +33,7 @@ export interface Entry {
 }
 
 export interface Page {
-  slug: 'cv' | 'about';
+  slug: 'cv' | 'about' | 'privacy';
   title: string;
   body: DocNode;
   noindex: boolean;
@@ -109,12 +109,21 @@ export interface SiteSetting {
   topics: string[];
 }
 
+/** Google AdSense. Ads only run when enabled with a valid publisher ID, never in the admin or on CV, About and Privacy. */
+export interface AdsSetting {
+  enabled: boolean;
+  client: string; // ca-pub-…
+  homeSlot: string; // display ad unit on the home page ('' = none)
+  articleSlot: string; // display ad unit at the end of posts and entries ('' = none)
+}
+
 export interface SettingsMap {
   site: SiteSetting;
   sections: SectionsSetting;
   featured: FeaturedSetting;
   footer: FooterSetting;
   wordpress: WordPressSetting;
+  ads: AdsSetting;
 }
 export type SettingKey = keyof SettingsMap;
 
@@ -144,6 +153,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     showBuiltOn: true,
   },
   wordpress: { autoShow: false, includeInRss: true, hideWhenDown: true, categoryMap: {} },
+  ads: { enabled: false, client: '', homeSlot: '', articleSlot: '' },
 };
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {

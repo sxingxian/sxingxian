@@ -88,7 +88,7 @@ export default function App() {
     const id = parts[1] && parts[1] !== 'new' ? parts[1] : null;
     const k = url.searchParams.get('kind') as EntryKind | null;
     view = <EntryEditor key={id ?? `new-${k}`} id={id} kind={k && KINDS.has(k) ? k : 'post'} go={go} />;
-  } else if (section === 'pages' && (parts[1] === 'cv' || parts[1] === 'about')) {
+  } else if (section === 'pages' && (parts[1] === 'cv' || parts[1] === 'about' || parts[1] === 'privacy')) {
     view = <PageEditor key={parts[1]} slug={parts[1]} />;
   } else if (section === 'media') {
     view = <MediaLibrary />;
@@ -124,6 +124,7 @@ export default function App() {
             <span className="group">Pages</span>
             <a href="/admin/pages/cv" aria-current={section === 'pages' && parts[1] === 'cv' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); go('/admin/pages/cv'); }}>CV</a>
             <a href="/admin/pages/about" aria-current={section === 'pages' && parts[1] === 'about' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); go('/admin/pages/about'); }}>About</a>
+            <a href="/admin/pages/privacy" aria-current={section === 'pages' && parts[1] === 'privacy' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); go('/admin/pages/privacy'); }}>Privacy</a>
             <span className="group">Site</span>
             {link('/admin/media', 'Media', 'media')}
             {link('/admin/wordpress', 'WordPress', 'wordpress')}
@@ -154,7 +155,7 @@ export default function App() {
             <div className="sheet-panel" role="dialog" aria-modal="true" aria-label="More">
               <span className="grip" aria-hidden="true" />
               <div className="sheet-list">
-                {[['/admin/photos', 'Photos', 'photos'], ['/admin/film', 'Film', 'film'], ['/admin/pages/cv', 'CV', 'cv'], ['/admin/pages/about', 'About', 'about'],
+                {[['/admin/photos', 'Photos', 'photos'], ['/admin/film', 'Film', 'film'], ['/admin/pages/cv', 'CV', 'cv'], ['/admin/pages/about', 'About', 'about'], ['/admin/pages/privacy', 'Privacy', 'privacy'],
                   ['/admin/wordpress', 'WordPress', 'wordpress'], ['/admin/account', 'Account', 'account'], ...(me?.user.role === 'owner' ? [['/admin/users', 'Users', 'users']] : [])]
                   .map(([to, label, key]) => (
                     <a key={to} href={to} aria-current={section === key || (section === 'pages' && parts[1] === key) ? 'page' : undefined}

@@ -6,6 +6,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { env } from 'cloudflare:workers';
 import { sessionFromRequest } from './lib/server/users';
 import { maintenanceOnRequest } from './lib/server/maintenance';
+import { adsFor } from './lib/server/ads';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -35,6 +36,29 @@ function originOf(url: string | undefined): string {
   } catch {
     return '';
   }
+}
+
+// Pages with Google AdSense use Google's supported strict CSP (support.google.com/adsense/answer/16283098):
+// a fresh nonce plus 'strict-dynamic' for scripts. Ad code loads from domains Google changes over time, so
+// images, frames and connections allow any https: origin on those pages only. 'unsafe-inline', https: and
+// http: in script-src are fallbacks for old browsers; modern ones ignore them when a nonce and
+// 'strict-dynamic' are present. The admin and pages without ads keep the tight policy below.
+function buildAdsCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' 'unsafe-eval' https: http:`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' https:",
+    "connect-src 'self' https:",
+    "media-src 'self' blob: https:",
+    'frame-src https:',
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    'upgrade-insecure-requests',
+  ].join('; ');
 }
 
 function buildCsp(nonce: string): string {
@@ -128,7 +152,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
 
-  headers.set('Content-Security-Policy', buildCsp(nonce));
+  const ads = !admin && request.method === 'GET' ? await adsFor(path) : null;
+  headers.set('Content-Security-Policy', ads ? buildAdsCsp(nonce) : buildCsp(nonce));
+  // Ad clicks open the advertiser in a new tab; keep that working on ad pages.
+  if (ads) headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   headers.delete('content-length');
   const tagged = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 

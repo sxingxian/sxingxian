@@ -28,6 +28,16 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
 - **Audit trail:** sign-ins, failures, lockouts and account changes go to `auth_events` (kept 180 days), shown on the Account page.
 - **No bypass:** there is no development sign-in bypass. Local development signs in against a Neon dev branch.
 
+### Google AdSense
+- Off by default. When on, only public pages that may show ads get Google's supported strict CSP for AdSense (support.google.com/adsense/answer/16283098):
+  - scripts still need the per-request nonce, with `'strict-dynamic'`, and `base-uri 'none'`;
+  - images, frames and connections are opened to `https:`, because Google doesn't publish a fixed domain list;
+  - `'unsafe-eval'` is included because Google lists it as required for its ad code;
+  - `Cross-Origin-Opener-Policy: same-origin-allow-popups` keeps ad clicks working.
+- The admin, `/api`, CV, About and Privacy always keep the tight policy and never load ad code.
+- The publisher ID and slot IDs are validated as `ca-pub-` plus digits, and digits only, when saved and again when rendered, so settings can't inject markup.
+- Consent for EEA/UK/Switzerland visitors is Google's certified consent message, configured in AdSense → Privacy & messaging. `Permissions-Policy` still blocks `browsing-topics`.
+
 ### Inline scripts
 - Public pages carry two small inline scripts (theme before first paint; theme switch and phone menu). Like every `<script>`, they get the per-request CSP nonce, so `script-src` stays nonce-only with no `'unsafe-inline'`.
 - They read and write a single non-sensitive `localStorage` key (`sx-theme`), never cookies or user data.
