@@ -99,7 +99,8 @@ function renderNode(node: DocNode, depth: number): string {
       const size = a.size === 'wide' || a.size === 'full' ? a.size : 'normal';
       const alt = typeof a.alt === 'string' ? a.alt.slice(0, 300) : '';
       const caption = typeof a.caption === 'string' ? a.caption.slice(0, 500) : '';
-      return `<figure class="fig fig-${size}"><img src="/media/${id}" alt="${esc(alt)}" loading="lazy" decoding="async">${
+      // The image sits in a button so the lightbox works by keyboard as well as by tap.
+      return `<figure class="fig fig-${size}"><button type="button" class="lb" data-lightbox data-caption="${esc(caption || alt)}" aria-label="${esc(alt ? `View photo: ${alt}` : 'View photo')}"><img src="/media/${id}" alt="${esc(alt)}" loading="lazy" decoding="async" draggable="false"></button>${
         caption ? `<figcaption>${esc(caption)}</figcaption>` : ''
       }</figure>`;
     }

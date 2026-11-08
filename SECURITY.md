@@ -28,6 +28,19 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
 - **Audit trail:** sign-ins, failures, lockouts and account changes go to `auth_events` (kept 180 days), shown on the Account page.
 - **No bypass:** there is no development sign-in bypass. Local development signs in against a Neon dev branch.
 
+### Photo protection
+- **Watermark:**
+  - drawn in the admin's browser (canvas) and uploaded as a separate copy (`wm/<id>.webp|jpg`, magic bytes checked, 20 MB cap);
+  - the upload must carry the fingerprint of the current watermark settings, so stale copies are rejected (409);
+  - while the watermark is on, `/media/:id` serves only that copy, capped at 2560 px. The original is readable only through the admin-only `/api/admin/media/:id/original`;
+  - a photo with no copy yet is served as is and listed as pending in Settings → Photos.
+- **Block saving:**
+  - `/media/:id` refuses `Sec-Fetch-Dest: document`/`iframe` (an image URL opened in its own tab) and `Sec-Fetch-Site: cross-site` (hotlinking). It sends `Vary` on both headers;
+  - link-preview bots and feed readers send no Sec-Fetch headers, so they still work;
+  - on public pages, context menu and drag are blocked on images, along with the iOS long-press menu (`-webkit-touch-callout`).
+- **Honest limit:** none of this stops screenshots or someone reading the network tab. The visible watermark and the size cap are the real protection.
+- Media responses now cache for 1 hour (not a year), so switching the watermark reaches visitors quickly.
+
 ### Google AdSense
 - Off by default. When on, only public pages that may show ads get Google's supported strict CSP for AdSense (support.google.com/adsense/answer/16283098):
   - scripts still need the per-request nonce, with `'strict-dynamic'`, and `base-uri 'none'`;

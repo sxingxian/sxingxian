@@ -52,6 +52,9 @@ export interface MediaItem {
   alt: string;
   filename: string;
   created_at: string;
+  wm_key?: string | null;
+  wm_mime?: string | null;
+  wm_sig?: string | null;
 }
 
 export interface ExternalPost {
@@ -117,6 +120,18 @@ export interface AdsSetting {
   articleSlot: string; // display ad unit at the end of posts and entries ('' = none)
 }
 
+export type WatermarkPosition = 'br' | 'bl' | 'center' | 'tiled';
+
+/** Photo protection: a watermark baked into public copies, and save deterrents on the public site. */
+export interface ProtectionSetting {
+  watermark: boolean;
+  text: string;
+  position: WatermarkPosition;
+  size: 's' | 'm' | 'l';
+  opacity: number; // 0.1 – 0.7
+  blockSave: boolean; // right-click, drag, long-press save; direct-open and hotlink refusal
+}
+
 export interface SettingsMap {
   site: SiteSetting;
   sections: SectionsSetting;
@@ -124,6 +139,7 @@ export interface SettingsMap {
   footer: FooterSetting;
   wordpress: WordPressSetting;
   ads: AdsSetting;
+  protection: ProtectionSetting;
 }
 export type SettingKey = keyof SettingsMap;
 
@@ -154,6 +170,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   },
   wordpress: { autoShow: false, includeInRss: true, hideWhenDown: true, categoryMap: {} },
   ads: { enabled: false, client: '', homeSlot: '', articleSlot: '' },
+  protection: { watermark: false, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true },
 };
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {

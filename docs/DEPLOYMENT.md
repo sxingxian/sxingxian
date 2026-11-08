@@ -148,6 +148,14 @@ You're asked for the password at a hidden prompt (press Enter to generate a temp
 
 The command-line fixes need only the Neon connection string, so you can always get back in.
 
+## 7a. Photo protection
+
+After a deploy that adds `migrations/0004_media_watermark.sql`, run **Deploy Neon** once.
+
+Then go to Admin → Settings → **Photos**:
+- **Watermark photos:** set the text, position, size and opacity (the preview updates live), then press **Apply to N photos** for photos already uploaded. Keep the tab open until it finishes. New uploads are watermarked automatically.
+- **Block saving:** on by default.
+
 ## 7b. Google AdSense (optional)
 
 1. Write the **Privacy** page first: Admin → Pages → **Privacy** comes with a draft. Fill in the [placeholders], check it, and save. It then appears in the footer. AdSense requires one.

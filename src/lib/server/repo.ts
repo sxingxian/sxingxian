@@ -178,6 +178,19 @@ export async function insertMedia(m: Omit<MediaItem, 'id' | 'created_at'>): Prom
   return rows[0] as MediaItem;
 }
 
+export async function setWatermarkCopy(id: string, key: string, mime: string, sig: string): Promise<void> {
+  await sql()`UPDATE media SET wm_key = ${key}, wm_mime = ${mime}, wm_sig = ${sig} WHERE id = ${id}`;
+}
+
+/** Photos whose watermarked copy is missing or made with other settings. */
+export async function watermarkStatus(sig: string): Promise<{ total: number; pending: { id: string; mime: string }[] }> {
+  const rows = await sql()`
+    SELECT id, mime, (wm_key IS NOT NULL AND wm_sig = ${sig}) AS done FROM media
+    WHERE provider IN ('r2','nas','b2') AND mime IN ('image/jpeg','image/png','image/webp','image/avif')
+    ORDER BY created_at DESC`;
+  return { total: rows.length, pending: rows.filter((r) => !r.done).map((r) => ({ id: r.id as string, mime: r.mime as string })) };
+}
+
 export async function deleteMediaRow(id: string): Promise<void> {
   await sql()`DELETE FROM media WHERE id = ${id}`;
 }

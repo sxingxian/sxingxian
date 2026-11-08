@@ -11,6 +11,7 @@ export const DELETE: APIRoute = async ({ params }) => {
   if (!item) return error(404, 'Not found');
   if (item.object_key && (item.provider === 'r2' || item.provider === 'nas' || item.provider === 'b2')) {
     await deleteObject(item.provider, item.object_key);
+    if (item.wm_key) await deleteObject(item.provider, item.wm_key).catch(() => {});
   }
   await deleteMediaRow(id);
   return json({ ok: true });

@@ -3,6 +3,7 @@
 // by re-encoding through a canvas; the original never leaves your device.
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
+import { watermarkAfterUpload } from '../watermark';
 import type { MediaItem, MediaProvider } from '../../lib/shared/types';
 
 type Host = 'r2' | 'nas' | 'b2' | 'youtube';
@@ -70,8 +71,10 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
       } else {
         if (!file) throw new Error('Choose a file first');
         const form = new FormData();
+        let local: Blob = file;
         if (!isVideo && strip && /^image\/(jpeg|png|webp)$/.test(file.type)) {
           const out = await stripMetadata(file);
+          local = out.blob;
           form.append('file', new File([out.blob], file.name, { type: out.blob.type }));
           form.append('width', String(out.width));
           form.append('height', String(out.height));
@@ -81,6 +84,12 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
         form.append('provider', host);
         form.append('alt', alt);
         media = (await api.post<{ media: MediaItem }>('/api/admin/media', form)).media;
+        // Watermark on? Make the public copy now, from the local file.
+        try {
+          await watermarkAfterUpload(media.id, local, media.mime);
+        } catch (e) {
+          setErr(`Uploaded, but the watermark failed: ${errorText(e)}. Use Settings → Photos → Apply.`);
+        }
       }
       onPick(media);
     } catch (e) {

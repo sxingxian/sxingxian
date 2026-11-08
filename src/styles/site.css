@@ -309,3 +309,32 @@ html[data-theme='dark'] .i-moon { display: none; }
 .ad .adsbygoogle { display: block; min-height: 120px; }
 .ad:has(ins[data-ad-status='unfilled']) { display: none; }
 @media print { .ad { display: none !important; } }
+
+/* photos: tap to open the lightbox */
+.lb { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: inherit; }
+.lb img { width: 100%; height: auto; }
+.article .hero .lb img { width: 100%; }
+/* save deterrents (Settings → Photos → Block saving) */
+html[data-protect] img { -webkit-user-drag: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+
+.lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(10, 10, 9, .94); color: #edebe6; display: grid; grid-template-rows: minmax(0, 1fr) auto; animation: lb-in .18s ease-out; }
+.lightbox[hidden] { display: none; }
+.lb-stage { display: grid; place-items: center; padding: 56px 64px 8px; min-height: 0; }
+.lb-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+.lb-foot { display: flex; justify-content: space-between; gap: 16px; padding: 12px 20px 20px; font: 13.5px/1.5 var(--sans); color: #c9c6bf; }
+.lb-count { font: 12px var(--mono); color: #959189; white-space: nowrap; }
+.lb-close, .lb-nav { position: absolute; border: 0; background: rgba(255, 255, 255, .08); color: #edebe6; cursor: pointer; display: grid; place-items: center; border-radius: 999px; font: 300 26px/1 var(--sans); }
+.lb-close { top: 12px; right: 12px; width: 44px; height: 44px; }
+.lb-nav { top: 50%; width: 48px; height: 48px; margin-top: -24px; font-size: 32px; }
+.lb-prev { left: 12px; } .lb-next { right: 12px; }
+.lb-close:hover, .lb-nav:hover { background: rgba(255, 255, 255, .16); }
+.lb-close:focus-visible, .lb-nav:focus-visible { outline: 2px solid #6cc3a8; outline-offset: 2px; }
+@keyframes lb-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lightbox { animation: none; } }
+@media (max-width: 760px) {
+  .lb-stage { padding: 56px 8px 4px; }
+  .lb-nav { top: auto; bottom: 12px; margin-top: 0; width: 44px; height: 44px; }
+  .lb-prev { left: auto; right: 64px; } .lb-next { right: 12px; }
+  .lb-foot { padding: 10px 16px 18px; padding-right: 124px; }
+}
+@media print { .lightbox { display: none !important; } }

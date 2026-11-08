@@ -41,6 +41,14 @@ export const pageInputSchema = z.object({
 const safeUrl = z.string().max(2048).refine(isSafeHref, 'Use https://…, a page on this site (/cv) or mailto:');
 
 export const settingsSchemas = {
+  protection: z.object({
+    watermark: z.boolean(),
+    text: z.string().trim().min(1, 'Add watermark text').max(60),
+    position: z.enum(['br', 'bl', 'center', 'tiled']),
+    size: z.enum(['s', 'm', 'l']),
+    opacity: z.number().min(0.1).max(0.7),
+    blockSave: z.boolean(),
+  }),
   ads: z.object({
     enabled: z.boolean(),
     client: z.string().trim().refine((v) => v === '' || ADSENSE_CLIENT_RE.test(v), 'Publisher ID looks like ca-pub-1234567890123456'),

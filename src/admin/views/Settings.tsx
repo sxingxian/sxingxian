@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { drawWatermark, watermarkStored } from '../watermark';
 import { api, errorText } from '../api';
 import { Switch, useToast } from '../components/ui';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
-import { SECTION_LABELS, type Entry, type FeaturedSetting, type FooterSetting, type SectionsSetting, type SiteSetting, type AdsSetting } from '../../lib/shared/types';
+import { SECTION_LABELS, type Entry, type FeaturedSetting, type FooterSetting, type SectionsSetting, type SiteSetting, type AdsSetting, type ProtectionSetting } from '../../lib/shared/types';
 
-type Tab = 'home' | 'footer' | 'site' | 'ads';
+type Tab = 'home' | 'footer' | 'site' | 'photos' | 'ads';
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('home');
@@ -17,11 +18,13 @@ export default function Settings() {
           <button type="button" role="tab" aria-selected={tab === 'home'} onClick={() => setTab('home')}>Sections &amp; featured post</button>
           <button type="button" role="tab" aria-selected={tab === 'footer'} onClick={() => setTab('footer')}>Footer</button>
           <button type="button" role="tab" aria-selected={tab === 'site'} onClick={() => setTab('site')}>Site</button>
+          <button type="button" role="tab" aria-selected={tab === 'photos'} onClick={() => setTab('photos')}>Photos</button>
           <button type="button" role="tab" aria-selected={tab === 'ads'} onClick={() => setTab('ads')}>Ads</button>
         </div>
         {tab === 'home' && <HomeSettings />}
         {tab === 'footer' && <FooterSettings />}
         {tab === 'site' && <SiteSettings />}
+        {tab === 'photos' && <PhotoSettings />}
         {tab === 'ads' && <AdsSettings />}
       </div>
     </>
@@ -256,6 +259,137 @@ function AdsSettings() {
           <dt>No ads</dt><dd>Admin, CV, About, Privacy</dd>
         </dl>
       </section>
+    </div>
+  );
+}
+
+function WatermarkPreview({ p }: { p: ProtectionSetting }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    const w = c.width;
+    const h = c.height;
+    // A neutral stand-in photo: sky, horizon, ground.
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#c9d3d6'); g.addColorStop(0.55, '#8d9a9c'); g.addColorStop(0.56, '#4d544f'); g.addColorStop(1, '#232623');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    void document.fonts.load('600 40px "Inter Variable"').catch(() => undefined).then(() => {
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      if (p.watermark) drawWatermark(ctx, w, h, p);
+    });
+  }, [p]);
+  return <canvas ref={ref} width={960} height={640} style={{ width: '100%', height: 'auto', borderRadius: 10, display: 'block' }} aria-label="Watermark preview" role="img" />;
+}
+
+function PhotoSettings() {
+  const [p, setP] = useState<ProtectionSetting | null>(null);
+  const [saved, setSaved] = useState<ProtectionSetting | null>(null);
+  const [status, setStatus] = useState<{ sig: string; total: number; pending: { id: string }[] } | null>(null);
+  const [run, setRun] = useState<{ done: number; of: number; failed: number } | null>(null);
+  const [err, setErr] = useState('');
+  const toast = useToast();
+
+  const loadStatus = () => api.get<{ sig: string; total: number; pending: { id: string }[] }>('/api/admin/media/watermark').then(setStatus).catch(() => {});
+  useEffect(() => {
+    api.get<{ value: ProtectionSetting }>('/api/admin/settings/protection').then((r) => { setP(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
+    void loadStatus();
+  }, []);
+  if (!p || !saved) return <p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p>;
+
+  const dirty = JSON.stringify(p) !== JSON.stringify(saved);
+  const save = async (next: ProtectionSetting) => {
+    try {
+      const r = await api.put<{ value: ProtectionSetting }>('/api/admin/settings/protection', next);
+      setP(r.value);
+      setSaved(r.value);
+      toast('Saved');
+      await loadStatus();
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
+
+  const applyAll = async () => {
+    if (!status) return;
+    const ids = status.pending.map((x) => x.id);
+    setRun({ done: 0, of: ids.length, failed: 0 });
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await watermarkStored(ids[i], saved, status.sig);
+      } catch {
+        failed++;
+      }
+      setRun({ done: i + 1, of: ids.length, failed });
+    }
+    toast(failed ? `${ids.length - failed} watermarked, ${failed} failed` : 'All photos watermarked');
+    setRun(null);
+    await loadStatus();
+  };
+
+  const pending = status?.pending.length ?? 0;
+  return (
+    <div className="grid2">
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="check" style={{ justifyContent: 'space-between' }}>
+          <span>Watermark photos</span>
+          <Switch checked={p.watermark} label="Watermark photos" onChange={(v) => save({ ...p, watermark: v })} />
+        </div>
+        <WatermarkPreview p={p} />
+        <label className="field">Text
+          <input className="input" value={p.text} maxLength={60} onChange={(e) => setP({ ...p, text: e.target.value })} />
+        </label>
+        <div className="field">Position
+          <div className="seg-row" role="radiogroup" aria-label="Position">
+            {([['br', 'Bottom right'], ['bl', 'Bottom left'], ['center', 'Centre'], ['tiled', 'Tiled']] as const).map(([v, l]) => (
+              <button key={v} type="button" role="radio" aria-checked={p.position === v} className="btn small" onClick={() => setP({ ...p, position: v })}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="field">Size
+          <div className="seg-row" role="radiogroup" aria-label="Size">
+            {([['s', 'Small'], ['m', 'Medium'], ['l', 'Large']] as const).map(([v, l]) => (
+              <button key={v} type="button" role="radio" aria-checked={p.size === v} className="btn small" onClick={() => setP({ ...p, size: v })}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <label className="field">Opacity · {Math.round(p.opacity * 100)}%
+          <input type="range" min={10} max={70} step={5} value={Math.round(p.opacity * 100)} onChange={(e) => setP({ ...p, opacity: Number(e.target.value) / 100 })} />
+        </label>
+        <div><button type="button" className="btn primary" disabled={!dirty || !p.text.trim()} onClick={() => save(p)}>Save</button></div>
+      </section>
+
+      <div className="stack">
+        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="lbl">Photos</div>
+          {status && (
+            saved.watermark ? (
+              pending === 0
+                ? <span>All {status.total} photos are watermarked.</span>
+                : <span>{pending} of {status.total} photos still show without a watermark.</span>
+            ) : <span className="muted">Watermark is off. Originals are shown.</span>
+          )}
+          {saved.watermark && pending > 0 && !run && <div><button type="button" className="btn accent" onClick={applyAll}>Apply to {pending} photo{pending === 1 ? '' : 's'}</button></div>}
+          {run && (
+            <div className="stack" style={{ gap: 6 }}>
+              <div className="meter"><i style={{ width: `${(run.done / Math.max(1, run.of)) * 100}%`, background: 'var(--accent)' }} /></div>
+              <span className="muted">{run.done} / {run.of}{run.failed ? ` · ${run.failed} failed` : ''}. Keep this tab open.</span>
+            </div>
+          )}
+          <span className="muted">New uploads are watermarked automatically. Public copies are capped at 2560 px; originals stay private.</span>
+        </section>
+        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="check" style={{ justifyContent: 'space-between' }}>
+            <span>Block saving</span>
+            <Switch checked={p.blockSave} label="Block saving" onChange={(v) => save({ ...p, blockSave: v })} />
+          </div>
+          <span className="muted">Right-click, drag and long-press save are blocked. Image links can’t be opened on their own or shown on other sites. Screenshots can’t be stopped; the watermark covers those.</span>
+        </section>
+      </div>
     </div>
   );
 }

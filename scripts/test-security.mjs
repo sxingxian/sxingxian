@@ -18,7 +18,8 @@ await build({
                export { sessionCookie, clearSessionCookie, SESSION_COOKIE } from './src/lib/server/users.ts';
                export { safeNext } from './src/admin/auth/fields.tsx';
                export { loginSchema, userPatchSchema, settingsSchemas } from './src/lib/shared/schemas.ts';
-               export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';`,
+               export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';
+               export { watermarkSig, watermarkable } from './src/lib/shared/watermark.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -34,10 +35,15 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
+async function ta(name, fn) {
+  await fn();
+  passed++;
+  console.log(`  ✓ ${name}`);
+}
 const t = (name, fn) => {
   fn();
   passed++;
@@ -176,6 +182,33 @@ t('ads settings reject script-shaped IDs', () => {
   assert.equal(settingsSchemas.ads.safeParse({ ...ok, client: '' }).success, false, 'cannot enable without an ID');
 });
 
+console.log('Photos');
+await ta('watermark fingerprint changes with the look, not with the on/off switch', async () => {
+  const base = { watermark: true, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true };
+  const a = await watermarkSig(base);
+  assert.match(a, /^[0-9a-f]{16}$/);
+  assert.equal(a, await watermarkSig({ ...base, watermark: false, blockSave: false }));
+  for (const change of [{ text: '© someone' }, { position: 'tiled' }, { size: 'l' }, { opacity: 0.5 }]) assert.notEqual(a, await watermarkSig({ ...base, ...change }), JSON.stringify(change));
+});
+t('animated GIFs and video are never watermarked (would break them)', () => {
+  for (const m of ['image/jpeg', 'image/png', 'image/webp', 'image/avif']) assert.ok(watermarkable(m), m);
+  for (const m of ['image/gif', 'video/mp4', 'image/svg+xml', 'text/html']) assert.ok(!watermarkable(m), m);
+});
+t('photos open in the lightbox through a button; captions are escaped attributes', () => {
+  const html = renderDoc(doc({ type: 'figure', attrs: { mediaId: '123e4567-e89b-12d3-a456-426614174000', alt: 'Rain', caption: '"><img src=x onerror=alert(1)>' } }));
+  assert.ok(html.includes('<button type="button" class="lb" data-lightbox'));
+  assert.ok(html.includes('draggable="false"'));
+  assert.ok(!html.includes('<img src=x'));
+  assert.ok(html.includes('data-caption="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
+});
+t('protection settings are bounded', () => {
+  const ok = { watermark: true, text: '© sxingxian', position: 'tiled', size: 's', opacity: 0.3, blockSave: true };
+  assert.equal(settingsSchemas.protection.safeParse(ok).success, true);
+  assert.equal(settingsSchemas.protection.safeParse({ ...ok, opacity: 1 }).success, false);
+  assert.equal(settingsSchemas.protection.safeParse({ ...ok, position: 'top' }).success, false);
+  assert.equal(settingsSchemas.protection.safeParse({ ...ok, text: 'x'.repeat(61) }).success, false);
+});
+
 console.log('WordPress text cleaning');
 t('strips tags and scripts from excerpts', () => {
   const s = htmlToText('<p>Hello <script>alert(1)</script><b>world</b> &amp; &#8217;friends&#8217; [&hellip;]</p>');
@@ -183,11 +216,7 @@ t('strips tags and scripts from excerpts', () => {
   assert.ok(!esc(s).includes('<'));
 });
 
-const ta = async (name, fn) => {
-  await fn();
-  passed++;
-  console.log(`  ✓ ${name}`);
-};
+
 
 console.log('Admin accounts');
 await ta('TOTP matches the RFC 6238 test vectors (SHA-1, 8 digits)', async () => {
