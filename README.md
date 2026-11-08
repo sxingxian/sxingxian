@@ -17,11 +17,14 @@ A journal-first personal site with a Notion-style CMS. Posts you write here and 
 | Auth | Own accounts in **Neon**: bcrypt passwords (pgcrypto), HttpOnly `__Host-` session cookie, optional authenticator-app 2-step with recovery codes, lockout + per-IP rate limit |
 | Jobs | WordPress health check, sync, daily reconcile and session clean-up, started by site traffic and claimed atomically in Neon. **No cron triggers needed** (the free plan allows 5 per account); one optional `*/5 * * * *` trigger runs the same jobs. |
 
-Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
+Public pages ship **no framework JavaScript**: only two small inline scripts (apply the saved theme before first paint; theme switch and phone menu). Only `/admin` loads the editor bundle.
+
+**Mobile and dark mode:** every page is responsive (phone menu sheet, sideways-scrolling topics, stacked footer; in the admin a bottom tab bar, card lists and a bottom-sheet publish panel). The theme follows the device by default; the sun/moon button, the phone menu, the footer and the admin sidebar switch System / Light / Dark, remembered per device (`localStorage` key `sx-theme`, shared by site and admin).
 
 ## Features
 
 - **Journal home:** a featured post, latest posts (native + WordPress) with topic filters, RSS, and sidebar cards for Work, Photos and Film.
+- **Tagline:** shown next to the site name; leave it empty in Settings to show the current section's name instead (journal, work, photos, cv…).
 - **Featured post:** pin a post in the admin (Settings → Sections & featured post, or the "Feature on home page" switch in the editor), or leave it on *Always show the latest post*.
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**

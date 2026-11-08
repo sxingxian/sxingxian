@@ -19,7 +19,14 @@ const { site, sections, footer } = await getSettings(['site', 'sections', 'foote
 const nav = navItems(sections);
 const path = Astro.url.pathname;
 const isCurrent = (href: string) => (href === '/' ? path === '/' || path.startsWith('/journal') : path.startsWith(href));
-const pageTitle = title ? `${title} · ${site.title}` : `${site.title} — ${site.tagline}`;
+// Tagline next to the name: the one set in Settings, or else the current section's name.
+const sectionName = (() => {
+  if (path === '/' || path.startsWith('/journal')) return 'journal';
+  const hit = nav.find((n) => n.href !== '/' && path.startsWith(n.href));
+  return hit ? hit.label.toLowerCase() : '';
+})();
+const tagline = site.tagline.trim() || sectionName;
+const pageTitle = title ? `${title} · ${site.title}` : tagline ? `${site.title} — ${tagline}` : site.title;
 const desc = description || footer.about;
 const year = String(new Date().getUTCFullYear());
 const columns = footer.columns.map((c) => ({ ...c, links: c.links.filter((l) => isSafeHref(l.url)) }));
@@ -41,22 +48,61 @@ const canonical = new URL(path, Astro.site ?? Astro.url).toString();
     {image && <meta property="og:image" content={image} />}
     <link rel="alternate" type="application/rss+xml" title={`${site.title} — RSS`} href="/rss.xml" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <meta name="theme-color" content="#fcfcfa" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fcfcfa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
+    <!-- Apply a saved theme before first paint (no flash). Default: follow the device. -->
+    <script is:inline>(function(){var d=document.documentElement;d.classList.add('js');try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="wrap">
-        <a class="brand" href="/" aria-label={`${site.title} home`}><b>{site.title}</b><i>{site.tagline}</i></a>
+        <a class="brand" href="/" aria-label={`${site.title} home`}><b>{site.title}</b>{tagline && <i>{tagline}</i>}</a>
         <nav class="nav" aria-label="Primary">
           {nav.map((n) => <a href={n.href} aria-current={isCurrent(n.href) ? 'page' : undefined}>{n.label}</a>)}
         </nav>
-        <a class="btn" href="/rss.xml" aria-label="RSS feed">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 11a8 8 0 0 1 8 8M5 4a15 15 0 0 1 15 15"></path><circle cx="6" cy="18" r="1.5" fill="currentColor"></circle></svg>
-          RSS
-        </a>
+        <div class="head-actions">
+          <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch theme">
+            <svg class="i-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+            <svg class="i-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"></path></svg>
+          </button>
+          <a class="btn rss-btn" href="/rss.xml" aria-label="RSS feed">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 11a8 8 0 0 1 8 8M5 4a15 15 0 0 1 15 15"></path><circle cx="6" cy="18" r="1.5" fill="currentColor"></circle></svg>
+            RSS
+          </a>
+          <button type="button" class="icon-btn menu-btn" data-menu-open aria-controls="site-menu" aria-expanded="false" aria-label="Menu">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h16M4 16h16"></path></svg>
+          </button>
+        </div>
       </div>
     </header>
+
+    <div class="menu-sheet" id="site-menu" role="dialog" aria-modal="true" aria-label="Menu" hidden>
+      <div class="sheet-head">
+        <a class="brand" href="/"><b>{site.title}</b>{tagline && <i>{tagline}</i>}</a>
+        <button type="button" class="icon-btn" data-menu-close aria-label="Close menu">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <nav aria-label="Primary">
+        {nav.map((n) => <a href={n.href} aria-current={isCurrent(n.href) ? 'page' : undefined}>{n.label}</a>)}
+      </nav>
+      <div class="sheet-theme">
+        <span class="lbl" id="menu-theme-l">Theme</span>
+        <div class="theme-seg" role="radiogroup" aria-labelledby="menu-theme-l">
+          <button type="button" role="radio" aria-checked="true" data-theme-set="system">System</button>
+          <button type="button" role="radio" aria-checked="false" data-theme-set="light">Light</button>
+          <button type="button" role="radio" aria-checked="false" data-theme-set="dark">Dark</button>
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <a href="/rss.xml">RSS</a>
+        {columns.flatMap((c) => c.links).filter((l) => l.url.startsWith('https:')).slice(0, 3).map((l) => (
+          <a href={l.url} rel="noopener noreferrer">{l.label}</a>
+        ))}
+      </div>
+    </div>
 
     <main id="main">
       <slot />
@@ -78,9 +124,61 @@ const canonical = new URL(path, Astro.site ?? Astro.url).toString();
         )}
       </div>
       <div class="wrap foot-bottom">
-        <span>{footer.bottomLine.replaceAll('{year}', year)}</span>
-        {footer.showBuiltOn && <span>Built on Cloudflare</span>}
+        <span>{footer.bottomLine.replaceAll('{year}', year)}{footer.showBuiltOn && ' · Built on Cloudflare'}</span>
+        <div class="theme-seg" role="radiogroup" aria-label="Theme">
+          <button type="button" role="radio" aria-checked="true" data-theme-set="system">Auto</button>
+          <button type="button" role="radio" aria-checked="false" data-theme-set="light">Light</button>
+          <button type="button" role="radio" aria-checked="false" data-theme-set="dark">Dark</button>
+        </div>
       </div>
     </footer>
+
+    <!-- Theme switch and phone menu. Small, no dependencies; the site works without it. -->
+    <script is:inline>
+    (function () {
+      var d = document.documentElement, KEY = 'sx-theme';
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      function saved() { try { var t = localStorage.getItem(KEY); return t === 'light' || t === 'dark' ? t : 'system'; } catch (e) { return 'system'; } }
+      function effective(pref) { return pref === 'system' ? (mq.matches ? 'dark' : 'light') : pref; }
+      function apply(pref) {
+        try { if (pref === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, pref); } catch (e) {}
+        if (pref === 'system') d.removeAttribute('data-theme'); else d.setAttribute('data-theme', pref);
+        sync();
+      }
+      function sync() {
+        var pref = saved(), eff = effective(pref);
+        document.querySelectorAll('[data-theme-set]').forEach(function (b) { b.setAttribute('aria-checked', String(b.getAttribute('data-theme-set') === pref)); });
+        document.querySelectorAll('[data-theme-toggle]').forEach(function (b) { b.setAttribute('aria-label', eff === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); });
+      }
+      document.addEventListener('click', function (e) {
+        var t = e.target.closest && e.target.closest('[data-theme-toggle],[data-theme-set],[data-menu-open],[data-menu-close]');
+        if (!t) return;
+        if (t.hasAttribute('data-theme-toggle')) apply(effective(saved()) === 'dark' ? 'light' : 'dark');
+        else if (t.hasAttribute('data-theme-set')) apply(t.getAttribute('data-theme-set'));
+        else if (t.hasAttribute('data-menu-open')) openMenu(true);
+        else if (t.hasAttribute('data-menu-close')) openMenu(false);
+      });
+      if (mq.addEventListener) mq.addEventListener('change', sync);
+      var menu = document.getElementById('site-menu'), opener = document.querySelector('[data-menu-open]');
+      function openMenu(on) {
+        if (!menu) return;
+        menu.hidden = !on;
+        document.body.style.overflow = on ? 'hidden' : '';
+        if (opener) opener.setAttribute('aria-expanded', String(on));
+        if (on) { var c = menu.querySelector('[data-menu-close]'); if (c) c.focus(); } else if (opener) opener.focus();
+      }
+      document.addEventListener('keydown', function (e) {
+        if (!menu || menu.hidden) return;
+        if (e.key === 'Escape') { openMenu(false); return; }
+        if (e.key !== 'Tab') return;
+        var f = menu.querySelectorAll('a[href], button');
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      });
+      window.addEventListener('resize', function () { if (menu && !menu.hidden && window.innerWidth > 760) openMenu(false); });
+      sync();
+    })();
+    </script>
   </body>
 </html>

@@ -14,6 +14,8 @@ import AdminApp from '../../admin/App';
     <meta name="robots" content="noindex, nofollow" />
     <title>Admin · sxingxian</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="color-scheme" content="light dark" />
+    <script is:inline>(function(){try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   </head>
   <body>
     <AdminApp client:only="react" />

@@ -10,7 +10,7 @@ interface UserRow {
 
 function TempPassword({ email, password, onClose }: { email: string; password: string; onClose: () => void }) {
   return (
-    <div className="card stack" style={{ borderColor: '#efe0b5' }}>
+    <div className="card stack" style={{ borderColor: 'var(--warn-line)' }}>
       <div className="lbl">Temporary password for {email}</div>
       <div className="secret" style={{ fontSize: 16 }}>{password}</div>
       <span className="muted">Shown once. Send it privately; they set their own at first sign-in.</span>

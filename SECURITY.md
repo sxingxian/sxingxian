@@ -28,6 +28,10 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
 - **Audit trail:** sign-ins, failures, lockouts and account changes go to `auth_events` (kept 180 days), shown on the Account page.
 - **No bypass:** there is no development sign-in bypass. Local development signs in against a Neon dev branch.
 
+### Inline scripts
+- Public pages carry two small inline scripts (theme before first paint; theme switch and phone menu). Like every `<script>`, they get the per-request CSP nonce, so `script-src` stays nonce-only with no `'unsafe-inline'`.
+- They read and write a single non-sensitive `localStorage` key (`sx-theme`), never cookies or user data.
+
 ### Embeds
 - Video embeds are stored as provider + id only, checked against fixed patterns, and rendered only from fixed hosts in sandboxed iframes:
   - `youtube-nocookie.com` (including Shorts);

@@ -52,15 +52,15 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
                   const isFeatured = featured?.mode === 'manual' && featured.entryId === r.id;
                   return (
                     <tr key={r.id}>
-                      <td>
+                      <td className="c-title">
                         <a className="title" href={`/admin/edit/${r.id}`} onClick={(e) => { e.preventDefault(); go(`/admin/edit/${r.id}`); }}>{r.title}</a>
                         {isFeatured && <span className="pill ok" style={{ marginLeft: 8 }}>featured</span>}
                         <div className="status">{KIND_PATH[r.kind]}/{r.slug}</div>
                       </td>
-                      <td>{r.topic || '—'}</td>
-                      <td><span className={`pill${r.status === 'published' ? ' ok' : ''}`}>{r.status === 'published' ? 'Published' : 'Draft'}</span></td>
-                      <td className="status">{relTime(r.updated_at)}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="c-topic">{r.topic || '—'}</td>
+                      <td className="c-status"><span className={`pill${r.status === 'published' ? ' ok' : ''}`}>{r.status === 'published' ? 'Published' : 'Draft'}</span></td>
+                      <td className="status c-upd">{relTime(r.updated_at)}</td>
+                      <td className="c-pub" style={{ textAlign: 'right' }}>
                         <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
                           <span className="hint">{r.status !== 'published' ? 'Publish first' : r.is_public ? 'Public' : 'Hidden'}</span>
                           <Switch checked={r.is_public && r.status === 'published'} disabled={r.status !== 'published'} label={`Show ${r.title} publicly`} onChange={(v) => toggle(r, v)} />

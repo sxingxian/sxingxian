@@ -37,6 +37,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
+  const [sheet, setSheet] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' }) {
           <span className={`status${err ? ' err' : ''}`}>{err ? 'NOT SAVED' : saving ? 'SAVING…' : dirty ? 'UNSAVED CHANGES' : 'SAVED'}</span>
           {sections && <span className="check" style={{ fontSize: 13 }}>On the site <Switch checked={sections[slug]} label={`Show ${label} page`} onChange={toggleSection} /></span>}
           <a className="btn" href={`/${slug}`} target="_blank" rel="noopener">Preview ↗</a>
+          <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Page…</button>
           <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
         </div>
       </div>
@@ -111,8 +113,13 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' }) {
             <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} onChange={(body) => { setPage((p) => (p ? { ...p, body } : p)); setDirty(true); }} />
           </div>
         </div>
-        <aside className="editor-side" aria-label="Page settings">
-          <div className="lbl">Page</div>
+        {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close page settings" onClick={() => setSheet(false)} />}
+        <aside className={`editor-side${sheet ? ' open' : ''}`} aria-label="Page settings">
+          <span className="grip" aria-hidden="true" />
+          <div className="spread">
+            <div className="lbl">Page</div>
+            <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
+          </div>
           {slug === 'cv' && <span className="hint">“/2 columns” or “/3 columns” for layouts.</span>}
           <label className="check"><input type="checkbox" checked={page.noindex} onChange={(e) => { setPage({ ...page, noindex: e.target.checked }); setDirty(true); }} />Hide from search engines</label>
           {slug === 'cv' && <span className="hint">Public page: leave out phone and address.</span>}

@@ -145,7 +145,7 @@ function TwoStepCard({ data, reload }: { data: Overview; reload: () => void }) {
     <div className="card stack">
       <div className="spread">
         <div><div className="lbl">2-step sign-in</div><p className="muted" style={{ margin: '4px 0 0' }}>Authenticator app code at sign-in.</p></div>
-        <span className="pill" style={data.totp.enabled ? { color: 'var(--accent)', borderColor: '#cfe0da' } : {}}>{data.totp.enabled ? 'On' : 'Off'}</span>
+        <span className="pill" style={data.totp.enabled ? { color: 'var(--accent)', borderColor: 'var(--accent-line)' } : {}}>{data.totp.enabled ? 'On' : 'Off'}</span>
       </div>
       {err && <div className="alert err" role="alert">{err}</div>}
 

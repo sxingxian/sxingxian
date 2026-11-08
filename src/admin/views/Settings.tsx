@@ -197,8 +197,8 @@ function SiteSettings() {
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
       <label className="field">Site name<input className="input" value={s.title} maxLength={60} onChange={(e) => setS({ ...s, title: e.target.value })} /></label>
-      <label className="field">Tagline (shown in italics next to the name)<input className="input" value={s.tagline} maxLength={60} onChange={(e) => setS({ ...s, tagline: e.target.value })} /></label>
-      <label className="field">Journal topics (comma separated, used as filters)<input className="input" value={topics} onChange={(e) => setTopics(e.target.value)} /></label>
+      <label className="field">Tagline <span className="hint">Empty = section name</span><input className="input" value={s.tagline} maxLength={60} onChange={(e) => setS({ ...s, tagline: e.target.value })} /></label>
+      <label className="field">Topics (comma separated)<input className="input" value={topics} onChange={(e) => setTopics(e.target.value)} /></label>
       <div><button type="button" className="btn primary" onClick={save}>Save</button></div>
     </section>
   );

@@ -35,6 +35,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
   const [site, setSite] = useState<SiteSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
+  const [sheet, setSheet] = useState(false);
   const slugTouched = useRef(!!id);
   const toast = useToast();
 
@@ -140,6 +141,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
         <div className="actions">
           <span className={`status${err ? ' err' : ''}`}>{err ? 'NOT SAVED' : saving ? 'SAVING…' : dirty ? 'UNSAVED CHANGES' : 'SAVED'}</span>
           {entryId && draft.status === 'published' && draft.is_public && <a className="btn" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
+          <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Publish…</button>
           <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
         </div>
       </div>
@@ -178,8 +180,13 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             <Editor content={draft.body} onChange={(body) => patch({ body })} pickMedia={pickMedia} />
           </div>
         </div>
-        <aside className="editor-side" aria-label="Publishing">
-          <div className="lbl">Publishing</div>
+        {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close publishing" onClick={() => setSheet(false)} />}
+        <aside className={`editor-side${sheet ? ' open' : ''}`} aria-label="Publishing">
+          <span className="grip" aria-hidden="true" />
+          <div className="spread">
+            <div className="lbl">Publishing</div>
+            <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
+          </div>
           <label className="field">Status
             <select className="select" value={draft.status} onChange={(e) => patch({ status: e.target.value as Draft['status'], ...(e.target.value === 'draft' ? {} : {}) })}>
               <option value="draft">Draft</option>
