@@ -1,0 +1,43 @@
+---
+// Grid listing for work, photo galleries and films. Hidden (404) when its
+// section is switched off in Admin → Settings → Sections.
+import Site from '../layouts/Site.astro';
+import Thumb from './Thumb.astro';
+import NotFound from './NotFound.astro';
+import { getSetting, listPublicEntries } from '../lib/server/repo';
+import { KIND_PATH, type EntryKind, type SectionsSetting } from '../lib/shared/types';
+
+interface Props {
+  kind: EntryKind;
+  section: keyof SectionsSetting;
+  title: string;
+  intro: string;
+}
+const { kind, section, title, intro } = Astro.props;
+const sections = await getSetting('sections');
+const enabled = sections[section];
+if (!enabled) Astro.response.status = 404;
+const items = enabled ? await listPublicEntries(kind, { limit: 100 }) : [];
+---
+{enabled ? (
+  <Site title={title} description={intro}>
+    <section class="wrap">
+      <header class="page-head"><h1>{title}</h1><p>{intro}</p></header>
+      {items.length === 0 ? (
+        <p class="empty">Nothing published here yet.</p>
+      ) : (
+        <div class="tiles">
+          {items.map((e) => (
+            <a class="tile" href={`${KIND_PATH[kind]}/${e.slug}`}>
+              <span class="th"><Thumb image={e.cover_media_id ? { kind: 'media', id: e.cover_media_id } : null} alt="" /></span>
+              <b>{e.title}</b>
+              {e.dek && <span>{e.dek}</span>}
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+  </Site>
+) : (
+  <NotFound />
+)}

@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sxingxian",
+  // Custom entry: Astro's fetch handler + the cron handler for WordPress sync.
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "routes": [
+    { "pattern": "sxingxian.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true },
+
+  // Non-secret configuration only. Secrets are set with `wrangler secret put`
+  // (see README) and never committed or sent to the browser.
+  "vars": {
+    "SITE_URL": "https://sxingxian.com",
+    "WP_BASE_URL": "https://hey.sxingxian.com",
+    "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_YOUR_TEAM.cloudflareaccess.com",
+    "ADMIN_EMAILS": "REPLACE_WITH_YOUR_EMAIL",
+    "NAS_S3_ENDPOINT": "",
+    "NAS_S3_BUCKET": "",
+    "NAS_S3_REGION": "auto",
+    "B2_S3_ENDPOINT": "",
+    "B2_S3_BUCKET": "",
+    "B2_S3_REGION": "us-west-004"
+  },
+
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "sxingxian-media" }
+  ],
+
+  // Rate limit for the public WordPress webhook endpoint.
+  "ratelimits": [
+    { "name": "WEBHOOK_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }
+  ],
+
+  // Every 5 min: WordPress health check (+ incremental pull every 15 min).
+  // 19:00 UTC = 03:00 SGT: nightly reconcile to catch deletions.
+  "triggers": {
+    "crons": ["*/5 * * * *", "0 19 * * *"]
+  }
+}

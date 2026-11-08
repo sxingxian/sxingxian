@@ -1,0 +1,101 @@
+---
+import Site from '../layouts/Site.astro';
+import PostRow from '../components/PostRow.astro';
+import Thumb from '../components/Thumb.astro';
+import { getFeatured, getFeed } from '../lib/server/site';
+import { getSettings, listPublicEntries } from '../lib/server/repo';
+import { formatDate } from '../lib/server/text';
+
+const { site, sections } = await getSettings(['site', 'sections']);
+const rawTopic = Astro.url.searchParams.get('topic') ?? '';
+const topic = site.topics.includes(rawTopic) ? rawTopic : '';
+
+const featured = topic ? null : await getFeatured();
+const [feed, work, galleries, films] = await Promise.all([
+  getFeed({ topic, limit: 10, excludeId: featured?.id }),
+  sections.work ? listPublicEntries('project', { limit: 3 }) : Promise.resolve([]),
+  sections.photos ? listPublicEntries('gallery', { limit: 6 }) : Promise.resolve([]),
+  sections.film ? listPublicEntries('film', { limit: 1 }) : Promise.resolve([]),
+]);
+const latestFilm = films[0];
+---
+<Site>
+  {featured && (
+    <section class="wrap">
+      <article class="featured">
+        <a class="cover" href={`/journal/${featured.slug}`} tabindex="-1" aria-hidden="true">
+          <Thumb image={featured.cover_media_id ? { kind: 'media', id: featured.cover_media_id } : null} eager />
+        </a>
+        <div class="stack">
+          <span class="row-meta">
+            <span class="lbl accent">Featured{featured.topic ? ` · ${featured.topic}` : ''}</span>
+            <span class="meta">{formatDate(featured.published_at)} · {featured.read_minutes} min</span>
+          </span>
+          <h1><a href={`/journal/${featured.slug}`}>{featured.title}</a></h1>
+          {featured.dek && <p>{featured.dek}</p>}
+          <a class="read" href={`/journal/${featured.slug}`}>Read →</a>
+        </div>
+      </article>
+    </section>
+  )}
+
+  <section class="wrap main">
+    <div>
+      <div class="list-head">
+        <h2>{topic ? topic : 'Latest'}</h2>
+        <nav class="topics" aria-label="Filter by topic">
+          <a class="topic" href="/" aria-current={topic === '' ? 'true' : undefined}>All</a>
+          {site.topics.map((t) => (
+            <a class="topic" href={`/?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
+          ))}
+        </nav>
+      </div>
+      {feed.length === 0 ? (
+        <p class="empty">No posts here yet.</p>
+      ) : (
+        feed.map((item) => <PostRow item={item} />)
+      )}
+      <div class="pager"><span></span><a href={topic ? `/journal?topic=${encodeURIComponent(topic)}` : '/journal'}>All posts →</a></div>
+    </div>
+
+    <aside class="side" aria-label="More from sxingxian">
+      <div class="card">
+        <span class="lbl">Follow along</span>
+        <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Every post, here and on the journal, in one feed for your reader.</p>
+        <div class="rss-url"><code>sxingxian.com/rss.xml</code><a href="/rss.xml">Open</a></div>
+      </div>
+
+      {sections.work && work.length > 0 && (
+        <div class="card">
+          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All →</a></div>
+          {work.map((w) => (
+            <a class="mini" href={`/work/${w.slug}`}>
+              <span class="th"><Thumb image={w.cover_media_id ? { kind: 'media', id: w.cover_media_id } : null} /></span>
+              <span><b>{w.title}</b><span>{w.dek}</span></span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {sections.photos && galleries.length > 0 && (
+        <div class="card">
+          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">Galleries →</a></div>
+          <div class="photo-grid">
+            {galleries.map((g) => (
+              <a href={`/photos/${g.slug}`} aria-label={g.title}>
+                <Thumb image={g.cover_media_id ? { kind: 'media', id: g.cover_media_id } : null} alt={g.title} />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sections.film && latestFilm && (
+        <a class="card mini" style="border-top:1px solid var(--line);align-items:center" href={`/film/${latestFilm.slug}`}>
+          <span class="th" style="width:92px;height:58px"><Thumb image={latestFilm.cover_media_id ? { kind: 'media', id: latestFilm.cover_media_id } : null} /></span>
+          <span><span class="lbl">Latest film</span><b>{latestFilm.title}</b></span>
+        </a>
+      )}
+    </aside>
+  </section>
+</Site>

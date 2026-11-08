@@ -1,0 +1,23 @@
+---
+// Detail page wrapper: checks the section toggle and that the entry is public.
+import EntryArticle from './EntryArticle.astro';
+import NotFound from './NotFound.astro';
+import { getPublicEntry, getSetting } from '../lib/server/repo';
+import { isSlug } from '../lib/shared/safe';
+import type { EntryKind, SectionsSetting } from '../lib/shared/types';
+
+interface Props {
+  kind: EntryKind;
+  section: keyof SectionsSetting | null;
+  kicker: string;
+}
+const { kind, section, kicker } = Astro.props;
+const slug = Astro.params.slug ?? '';
+let entry = null;
+if (isSlug(slug)) {
+  const enabled = section ? (await getSetting('sections'))[section] : true;
+  if (enabled) entry = await getPublicEntry(kind, slug);
+}
+if (!entry) Astro.response.status = 404;
+---
+{entry ? <EntryArticle entry={entry} kicker={kicker} /> : <NotFound />}

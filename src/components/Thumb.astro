@@ -1,0 +1,16 @@
+---
+// Renders a cover image from our media route or an external WordPress image.
+import type { FeedItem } from '../lib/server/site';
+interface Props {
+  image: FeedItem['image'];
+  alt?: string;
+  eager?: boolean;
+}
+const { image, alt = '', eager = false } = Astro.props;
+const src = image ? (image.kind === 'media' ? `/media/${image.id}` : image.url) : null;
+---
+{src ? (
+  <img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" />
+) : (
+  <div class="placeholder-cover" aria-hidden="true">sxingxian</div>
+)}

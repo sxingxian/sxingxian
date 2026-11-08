@@ -1,0 +1,21 @@
+---
+import Thumb from './Thumb.astro';
+import type { FeedItem } from '../lib/server/site';
+import { formatDate } from '../lib/server/text';
+interface Props {
+  item: FeedItem;
+}
+const { item } = Astro.props;
+---
+<a class="post-row" href={item.url} rel={item.external ? 'noopener' : undefined}>
+  <span class="thumb"><Thumb image={item.image} /></span>
+  <span class="body">
+    <span class="row-meta">
+      {item.topic && <span class="lbl accent">{item.topic}</span>}
+      <span class="meta">{formatDate(item.date, { day: 'numeric', month: 'short' })} · {item.readMinutes} min</span>
+      <span class="src">{item.external ? '↗ journal' : ''}</span>
+    </span>
+    <span class="t">{item.title}</span>
+    {item.dek && <span class="d">{item.dek}</span>}
+  </span>
+</a>

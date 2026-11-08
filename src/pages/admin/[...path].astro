@@ -1,0 +1,21 @@
+---
+// /admin and every sub-route render the admin single-page app.
+// Access to this route is enforced in src/middleware.ts (Cloudflare Access JWT).
+import '@fontsource-variable/inter';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/jetbrains-mono';
+import AdminApp from '../../admin/App';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Admin · sxingxian</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <AdminApp client:only="react" />
+  </body>
+</html>

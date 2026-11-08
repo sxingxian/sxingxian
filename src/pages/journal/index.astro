@@ -1,0 +1,39 @@
+---
+import Site from '../../layouts/Site.astro';
+import PostRow from '../../components/PostRow.astro';
+import { getFeed } from '../../lib/server/site';
+import { getSetting } from '../../lib/server/repo';
+
+const site = await getSetting('site');
+const raw = Astro.url.searchParams.get('topic') ?? '';
+const topic = site.topics.includes(raw) ? raw : '';
+const feed = await getFeed({ topic, limit: 100 });
+const byYear = new Map<string, typeof feed>();
+for (const item of feed) {
+  const y = String(new Date(item.date).getUTCFullYear());
+  byYear.set(y, [...(byYear.get(y) ?? []), item]);
+}
+---
+<Site title="All posts" description="Every journal post, newest first.">
+  <section class="wrap">
+    <header class="page-head">
+      <h1>{topic || 'All posts'}</h1>
+      <p>Posts written here and on the journal, newest first.</p>
+    </header>
+    <nav class="topics" aria-label="Filter by topic" style="margin-top:16px">
+      <a class="topic" href="/journal" aria-current={topic === '' ? 'true' : undefined}>All</a>
+      {site.topics.map((t) => (
+        <a class="topic" href={`/journal?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
+      ))}
+    </nav>
+    <div style="max-width:820px">
+      {feed.length === 0 && <p class="empty">No posts yet.</p>}
+      {[...byYear.entries()].map(([year, items]) => (
+        <>
+          <h2 class="year">{year}</h2>
+          {items.map((item) => <PostRow item={item} />)}
+        </>
+      ))}
+    </div>
+  </section>
+</Site>

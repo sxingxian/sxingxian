@@ -1,0 +1,58 @@
+{
+  "name": "sxingxian",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs",
+    "deploy": "astro build && wrangler deploy",
+    "deploy:cron": "wrangler deploy --config workers/cron/wrangler.jsonc",
+    "security:scan": "node scripts/scan-client-bundle.mjs",
+    "test:security": "node scripts/test-security.mjs",
+    "verify": "astro check && astro build && npm run lint:security && npm run test:security && npm run security:scan",
+    "lint:security": "eslint ."
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.4.6",
+    "@astrojs/react": "^7.1.4",
+    "@floating-ui/dom": "^1.8.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@neondatabase/serverless": "^1.2.0",
+    "@tiptap/extension-drag-handle": "^3.33.0",
+    "@tiptap/extension-drag-handle-react": "^3.33.0",
+    "@tiptap/extensions": "^3.33.0",
+    "@tiptap/pm": "^3.33.0",
+    "@tiptap/react": "^3.33.0",
+    "@tiptap/starter-kit": "^3.33.0",
+    "@tiptap/suggestion": "^3.33.0",
+    "astro": "^7.4.7",
+    "aws4fetch": "^1.0.20",
+    "jose": "^6.2.15",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@cloudflare/workers-types": "^5.20261108.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "eslint-plugin-no-unsanitized": "^4.1.5",
+    "eslint-plugin-security": "^4.2.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "wrangler": "^4.158.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.5"
+  }
+}

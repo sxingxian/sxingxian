@@ -1,0 +1,21 @@
+# Copy to .dev.vars for local development. NEVER commit .dev.vars.
+# In production set each of these with:  npx wrangler secret put <NAME>
+
+# Neon connection string — paste the pooled string from the Neon console
+# (use a separate Neon dev branch for local work)
+DATABASE_URL=
+
+# Cloudflare Access application audience (AUD) tag for sxingxian.com/admin
+ACCESS_AUD=
+
+# Shared secret for the WordPress webhook (same value in hey.sxingxian.com wp-config.php)
+WP_WEBHOOK_SECRET=
+
+# Optional: S3-compatible credentials for the NAS (via Cloudflare Tunnel) and Backblaze B2
+NAS_S3_ACCESS_KEY_ID=
+NAS_S3_SECRET_ACCESS_KEY=
+B2_S3_ACCESS_KEY_ID=
+B2_S3_SECRET_ACCESS_KEY=
+
+# Local development only: skip Cloudflare Access on localhost. Ignored in production builds.
+DEV_AUTH_BYPASS=true

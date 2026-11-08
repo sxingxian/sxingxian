@@ -1,0 +1,39 @@
+---
+// Shared article layout for posts, work, galleries and films.
+import Site from '../layouts/Site.astro';
+import { renderDoc } from '../lib/server/render';
+import { formatDate } from '../lib/server/text';
+import { embedSrc, parseVideoUrl } from '../lib/shared/safe';
+import type { Entry } from '../lib/shared/types';
+
+interface Props {
+  entry: Entry;
+  kicker: string;
+}
+const { entry, kicker } = Astro.props;
+const html = renderDoc(entry.body); // allow-listed and escaped by the renderer
+const video = entry.kind === 'film' && entry.video_url ? parseVideoUrl(entry.video_url) : null;
+const videoSrc = video ? embedSrc(video.provider, video.id) : null;
+const site = Astro.site ?? Astro.url;
+const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`, site).toString() : undefined;
+---
+<Site title={entry.title} description={entry.dek} image={ogImage}>
+  <article class="article">
+    <div class="kicker">
+      <span class="lbl accent">{kicker}{entry.topic ? ` · ${entry.topic}` : ''}</span>
+      <span class="meta">{formatDate(entry.published_at)} · {entry.read_minutes} min</span>
+    </div>
+    <h1>{entry.title}</h1>
+    {entry.dek && <p class="dek">{entry.dek}</p>}
+    {videoSrc ? (
+      <div class="prose" style="padding-top:28px">
+        <figure class="embed" style="margin:0"><div class="embed-frame">
+          <iframe src={videoSrc} title={entry.title} loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="fullscreen; picture-in-picture; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>
+        </div></figure>
+      </div>
+    ) : entry.cover_media_id ? (
+      <div class="hero"><img src={`/media/${entry.cover_media_id}`} alt="" decoding="async" /></div>
+    ) : null}
+    <div class="prose" set:html={html} />
+  </article>
+</Site>

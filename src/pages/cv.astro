@@ -1,0 +1,25 @@
+---
+import Site from '../layouts/Site.astro';
+import NotFound from '../components/NotFound.astro';
+import { getPage, getSetting } from '../lib/server/repo';
+import { renderDoc } from '../lib/server/render';
+import { formatDate } from '../lib/server/text';
+
+const sections = await getSetting('sections');
+const page = sections.cv ? await getPage('cv') : null;
+if (!page) Astro.response.status = 404;
+const html = page ? renderDoc(page.body) : '';
+---
+{page ? (
+  <Site title={page.title || 'CV'} noindex={page.noindex}>
+    <div class="cv-wrap">
+      <div class="cv-bar">
+        <span class="meta">Updated {formatDate(page.updated_at)}</span>
+        <span class="meta">Use your browser's Print → Save as PDF for a copy</span>
+      </div>
+      <article class="sheet"><div class="prose" set:html={html} /></article>
+    </div>
+  </Site>
+) : (
+  <NotFound />
+)}

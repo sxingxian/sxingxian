@@ -1,0 +1,86 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/newsreader/wght-italic.css';
+import '@fontsource-variable/jetbrains-mono';
+import '../styles/site.css';
+import { getSettings } from '../lib/server/repo';
+import { navItems } from '../lib/server/site';
+import { isSafeHref } from '../lib/shared/safe';
+
+interface Props {
+  title?: string;
+  description?: string;
+  noindex?: boolean;
+  image?: string;
+}
+const { title, description, noindex = false, image } = Astro.props;
+const { site, sections, footer } = await getSettings(['site', 'sections', 'footer']);
+const nav = navItems(sections);
+const path = Astro.url.pathname;
+const isCurrent = (href: string) => (href === '/' ? path === '/' || path.startsWith('/journal') : path.startsWith(href));
+const pageTitle = title ? `${title} · ${site.title}` : `${site.title} — ${site.tagline}`;
+const desc = description || footer.about;
+const year = String(new Date().getUTCFullYear());
+const columns = footer.columns.map((c) => ({ ...c, links: c.links.filter((l) => isSafeHref(l.url)) }));
+const hasRssLink = columns.some((c) => c.links.some((l) => l.url === '/rss.xml'));
+const canonical = new URL(path, Astro.site ?? Astro.url).toString();
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={desc} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={desc} />
+    <meta property="og:type" content="website" />
+    {image && <meta property="og:image" content={image} />}
+    <link rel="alternate" type="application/rss+xml" title={`${site.title} — RSS`} href="/rss.xml" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#fcfcfa" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label={`${site.title} home`}><b>{site.title}</b><i>{site.tagline}</i></a>
+        <nav class="nav" aria-label="Primary">
+          {nav.map((n) => <a href={n.href} aria-current={isCurrent(n.href) ? 'page' : undefined}>{n.label}</a>)}
+        </nav>
+        <a class="btn" href="/rss.xml" aria-label="RSS feed">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 11a8 8 0 0 1 8 8M5 4a15 15 0 0 1 15 15"></path><circle cx="6" cy="18" r="1.5" fill="currentColor"></circle></svg>
+          RSS
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap foot-grid">
+        <div class="foot-about"><b>{site.title}</b><span>{footer.about}</span></div>
+        {columns.map((c) => (
+          <div class="col-links">
+            <span class="lbl">{c.heading}</span>
+            {c.links.map((l) => (
+              <a href={l.url} rel={l.url.startsWith('https:') ? 'noopener noreferrer' : undefined}>{l.label}</a>
+            ))}
+          </div>
+        ))}
+        {footer.showRss && !hasRssLink && (
+          <div class="col-links"><span class="lbl">Follow</span><a href="/rss.xml">RSS feed</a></div>
+        )}
+      </div>
+      <div class="wrap foot-bottom">
+        <span>{footer.bottomLine.replaceAll('{year}', year)}</span>
+        {footer.showBuiltOn && <span>Built on Cloudflare</span>}
+      </div>
+    </footer>
+  </body>
+</html>

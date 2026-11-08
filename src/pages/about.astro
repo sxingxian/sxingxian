@@ -1,0 +1,21 @@
+---
+import Site from '../layouts/Site.astro';
+import NotFound from '../components/NotFound.astro';
+import { getPage, getSetting } from '../lib/server/repo';
+import { renderDoc } from '../lib/server/render';
+
+const sections = await getSetting('sections');
+const page = sections.about ? await getPage('about') : null;
+if (!page) Astro.response.status = 404;
+const html = page ? renderDoc(page.body) : '';
+---
+{page ? (
+  <Site title={page.title || 'About'} noindex={page.noindex}>
+    <article class="article">
+      <h1>{page.title || 'About'}</h1>
+      <div class="prose" set:html={html} />
+    </article>
+  </Site>
+) : (
+  <NotFound />
+)}
