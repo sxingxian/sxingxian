@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
+import { ToggleRow } from '../components/kit';
 import Editor from '../editor/Editor';
 import MediaPicker from '../components/MediaPicker';
-import { Switch, useToast } from '../components/ui';
+import { useToast } from '../components/ui';
 import type { DocNode, MediaItem, Page, SectionsSetting } from '../../lib/shared/types';
 
 const CV_TEMPLATE: DocNode = {
@@ -120,14 +121,13 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
       <div className="topbar">
         <div className="crumbs"><span>Pages</span><span>/</span><b>{label}</b></div>
         <div className="actions">
-          <span className={`status${err ? ' err' : ''}`}>{err ? 'NOT SAVED' : saving ? 'SAVING…' : dirty ? 'UNSAVED CHANGES' : 'SAVED'}</span>
-          {sections && slug !== 'privacy' && <span className="check" style={{ fontSize: 13 }}>On the site <Switch checked={sections[slug]} label={`Show ${label} page`} onChange={toggleSection} /></span>}
+          <span className={`status${err ? ' err' : ''}`}>{err ? 'Not saved' : saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
           <a className="btn" href={`/${slug}`} target="_blank" rel="noopener">Preview ↗</a>
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Page…</button>
           <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
         </div>
       </div>
-      {err && <div className="page" style={{ paddingBottom: 0 }}><p className="err-text" role="alert">{err}</p></div>}
+      {err && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
           <div className={`doc${slug === 'cv' ? ' sheet' : ''}`}>
@@ -140,13 +140,15 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close page settings" onClick={() => setSheet(false)} />}
         <aside className={`editor-side${sheet ? ' open' : ''}`} aria-label="Page settings">
           <span className="grip" aria-hidden="true" />
-          <div className="spread">
-            <div className="lbl">Page</div>
+          <div className="side-head">
+            <h2>Page</h2>
             <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
           </div>
-          {slug === 'cv' && <span className="hint">“/2 columns” or “/3 columns” for layouts.</span>}
-          <label className="check"><input type="checkbox" checked={page.noindex} onChange={(e) => { setPage({ ...page, noindex: e.target.checked }); setDirty(true); }} />Hide from search engines</label>
-          {slug === 'cv' && <span className="hint">Public page: leave out phone and address.</span>}
+          <div className="side-toggles">
+            {sections && slug !== 'privacy' && <ToggleRow label="Show on the site" hint="Adds it to the menu" checked={sections[slug]} onChange={(v) => void toggleSection(v)} />}
+            <ToggleRow label="Hide from search engines" hint={slug === 'cv' ? 'Public page: leave out phone and address.' : undefined} checked={page.noindex} onChange={(v) => { setPage({ ...page, noindex: v }); setDirty(true); }} />
+          </div>
+          {slug === 'cv' && <p className="field-hint">Type “/2 columns” or “/3 columns” in the page for layouts.</p>}
         </aside>
       </div>
       {picker && <MediaPicker onPick={(m) => picker(m)} onClose={() => picker(null)} />}

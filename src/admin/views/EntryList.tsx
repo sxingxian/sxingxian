@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
+import { Page, Panel, Segmented, Empty } from '../components/kit';
 import { KIND_LABELS, KIND_PATH, type Entry, type EntryKind, type FeaturedSetting } from '../../lib/shared/types';
 
 type Row = Omit<Entry, 'body'>;
@@ -9,6 +10,8 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
   const [rows, setRows] = useState<Row[] | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
   const [err, setErr] = useState('');
+  const [filter, setFilter] = useState<'all' | 'published' | 'draft'>('all');
+  const [q, setQ] = useState('');
   const toast = useToast();
 
   useEffect(() => {
@@ -29,26 +32,31 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
   };
 
   const title = kind === 'post' ? 'Journal' : KIND_LABELS[kind] === 'Work' ? 'Work' : kind === 'gallery' ? 'Photos' : 'Film';
+  const needle = q.trim().toLowerCase();
+  const shown = (rows ?? []).filter((r) => (filter === 'all' || r.status === filter) && (!needle || r.title.toLowerCase().includes(needle) || (r.topic ?? '').toLowerCase().includes(needle)));
+  const drafts = (rows ?? []).filter((r) => r.status !== 'published').length;
 
   return (
-    <>
-      <div className="topbar">
-        <div className="crumbs"><b>{title}</b></div>
-        <div className="actions"><button type="button" className="btn primary" onClick={() => go(`/admin/edit/new?kind=${kind}`)}>+ New {KIND_LABELS[kind].toLowerCase()}</button></div>
-      </div>
-      <div className="page">
-        <h1>{title}</h1>
-        {err && <p className="err-text">{err}</p>}
-        <div className="table-box" style={{ marginTop: 18 }}>
-          {rows === null ? (
-            <div className="empty">Loading…</div>
-          ) : rows.length === 0 ? (
-            <div className="empty">Nothing yet.</div>
-          ) : (
+    <Page title={title} width="wide" sub={rows ? `${rows.length} total · ${drafts} ${drafts === 1 ? 'draft' : 'drafts'}` : undefined}
+      actions={<button type="button" className="btn primary" onClick={() => go(`/admin/edit/new?kind=${kind}`)}>+ New {KIND_LABELS[kind].toLowerCase()}</button>}>
+      {err && <div className="alert err" role="alert">{err}</div>}
+      <Panel flush title="Entries"
+        actions={(
+          <>
+            <input className="input search-input" type="search" placeholder="Search" aria-label={`Search ${title.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} />
+            <Segmented label="Status" value={filter} onChange={setFilter} options={[['all', 'All'], ['published', 'Published'], ['draft', 'Drafts']] as const} />
+          </>
+        )}>
+        {rows === null ? (
+          <Empty>Loading…</Empty>
+        ) : shown.length === 0 ? (
+          <Empty>{rows.length === 0 ? 'Nothing yet.' : 'No matches.'}</Empty>
+        ) : (
+          <div className="table-box flat">
             <table>
               <thead><tr><th>Title</th><th>Topic</th><th>Status</th><th>Updated</th><th style={{ textAlign: 'right' }}>Show publicly</th></tr></thead>
               <tbody>
-                {rows.map((r) => {
+                {shown.map((r) => {
                   const isFeatured = featured?.mode === 'manual' && featured.entryId === r.id;
                   return (
                     <tr key={r.id}>
@@ -71,9 +79,9 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
                 })}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
-    </>
+          </div>
+        )}
+      </Panel>
+    </Page>
   );
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
-import type { ExternalPost, WordPressSetting } from '../../lib/shared/types';
+import { Empty, Page, Panel, Row, SaveBar, ToggleRow } from '../components/kit';
+import type { ExternalPost, SiteSetting, WordPressSetting } from '../../lib/shared/types';
 
 interface Source { status: 'up' | 'down'; status_since: string; consecutive_fail: number; last_check_at: string | null; last_check_ms: number | null; last_sync_at: string | null }
 interface LogRow { at: string; event: string; result: string; ok: boolean }
@@ -12,6 +13,8 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
   const [posts, setPosts] = useState<ExternalPost[]>([]);
   const [rules, setRules] = useState<WordPressSetting | null>(null);
   const [map, setMap] = useState<[string, string][]>([]);
+  const [savedMap, setSavedMap] = useState('[]');
+  const [topics, setTopics] = useState<string[]>([]);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const toast = useToast();
@@ -24,7 +27,13 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
 
   useEffect(() => {
     load();
-    api.get<{ value: WordPressSetting }>('/api/admin/settings/wordpress').then((r) => { setRules(r.value); setMap(Object.entries(r.value.categoryMap)); }).catch(() => {});
+    api.get<{ value: WordPressSetting }>('/api/admin/settings/wordpress').then((r) => {
+      setRules(r.value);
+      const entries = Object.entries(r.value.categoryMap);
+      setMap(entries);
+      setSavedMap(JSON.stringify(entries));
+    }).catch(() => {});
+    api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => setTopics(r.value.topics)).catch(() => {});
   }, [load]);
 
   const run = async (action: 'sync' | 'check' | 'reconcile') => {
@@ -44,7 +53,10 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
     try {
       const r = await api.put<{ value: WordPressSetting }>('/api/admin/settings/wordpress', next);
       setRules(r.value);
-      toast('Rules saved');
+      const entries = Object.entries(r.value.categoryMap);
+      setMap(entries);
+      setSavedMap(JSON.stringify(entries));
+      toast('Saved');
     } catch (e) {
       toast(errorText(e));
     }
@@ -62,104 +74,88 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
 
   const visible = posts.filter((p) => p.show_on_main && !p.removed_at).length;
   const down = source?.status === 'down';
+  const mapDirty = JSON.stringify(map) !== savedMap;
 
   return (
-    <>
-      <div className="topbar">
-        <div className="crumbs"><span>Settings</span><span>/</span><b>WordPress journal</b></div>
-        <div className="actions"><a className="btn" href={wpAdminUrl} target="_blank" rel="noopener noreferrer">Open WordPress admin ↗</a></div>
-      </div>
-      <div className="page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <h1>WordPress journal</h1>
-          <p className="sub">Synced from {wpBaseUrl.replace('https://', '')}.</p>
-        </div>
-        {err && <p className="err-text">{err}</p>}
+    <Page title="WordPress" sub={`Synced from ${wpBaseUrl.replace('https://', '')}`}
+      crumbs={<><span>Site</span><span>/</span><b>WordPress</b></>}
+      actions={<a className="btn" href={wpAdminUrl} target="_blank" rel="noopener noreferrer">WordPress admin ↗</a>}>
+      {err && <p className="err-text" role="alert">{err}</p>}
+
+      <Panel title="Status" actions={
+        <>
+          <button type="button" className="btn small" disabled={!!busy} onClick={() => run('check')}>{busy === 'check' ? 'Checking…' : 'Check now'}</button>
+          <button type="button" className="btn small" disabled={!!busy} onClick={() => run('sync')}>{busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>
+          <button type="button" className="btn small" disabled={!!busy} onClick={() => run('reconcile')}>{busy === 'reconcile' ? 'Checking…' : 'Full check'}</button>
+        </>
+      }>
         {source && (
-          <div className={`banner ${down ? 'down' : 'ok'}`} role="status">
-            <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span className="dot" style={{ background: down ? '#b4421e' : '#1e7a4f' }} />
-              <span>
-                <b>{down ? `Down since ${relTime(source.status_since)} · posts hidden` : `Online · ${visible} posts showing`}</b>
-                <br />
-                <span className="status">checked {relTime(source.last_check_at)}{source.last_check_ms ? ` · ${source.last_check_ms} ms` : ''} · synced {relTime(source.last_sync_at)}</span>
-              </span>
-            </span>
-            <span className="actions">
-              <button type="button" className="btn" disabled={!!busy} onClick={() => run('check')}>{busy === 'check' ? 'Checking…' : 'Check now'}</button>
-              <button type="button" className="btn" disabled={!!busy} onClick={() => run('sync')}>{busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>
-              <button type="button" className="btn" disabled={!!busy} onClick={() => run('reconcile')}>{busy === 'reconcile' ? 'Checking…' : 'Full check'}</button>
-            </span>
+          <Row label={down ? 'Down' : 'Online'} hint={down ? `since ${relTime(source.status_since)}` : `${visible} posts showing`}>
+            <span className="state-line"><span className={`dot ${down ? 'bad' : 'good'}`} aria-hidden="true" />{down ? 'WordPress posts are hidden until it’s back.' : 'Posts are showing on the main site.'}</span>
+            <span className="muted">Checked {relTime(source.last_check_at)}{source.last_check_ms ? ` · ${source.last_check_ms} ms` : ''} · synced {relTime(source.last_sync_at)}</span>
+          </Row>
+        )}
+        <Row label="How it syncs">
+          <dl className="facts">
+            <dt>Instant</dt><dd>Webhook on publish, edit, delete</dd>
+            <dt>~15 min</dt><dd>Catch-up pull</dd>
+            <dt>Daily</dt><dd>Full check for removed posts</dd>
+            <dt>Copied</dt><dd>Title, excerpt, image, link</dd>
+          </dl>
+        </Row>
+      </Panel>
+
+      {rules && (
+        <Panel title="Rules">
+          <ToggleRow label="Hide while down" hint="2 failed checks hide, 2 good ones show" checked={rules.hideWhenDown} onChange={(v) => saveRules({ ...rules, hideWhenDown: v })} />
+          <ToggleRow label="Show new posts automatically" hint="Otherwise switch each one on below" checked={rules.autoShow} onChange={(v) => saveRules({ ...rules, autoShow: v })} />
+          <ToggleRow label="Include in RSS" checked={rules.includeInRss} onChange={(v) => saveRules({ ...rules, includeInRss: v })} />
+          <Row label="Category → topic" hint="WordPress category to journal topic">
+            {map.map(([k, v], i) => (
+              <div key={i} className="input-row">
+                <input className="input" aria-label="WordPress category" placeholder="WordPress category" value={k} onChange={(e) => setMap(map.map((m, j) => (j === i ? [e.target.value, m[1]] : m)))} />
+                <select className="select" aria-label="Journal topic" value={v} onChange={(e) => setMap(map.map((m, j) => (j === i ? [m[0], e.target.value] : m)))}>
+                  <option value="">Topic…</option>
+                  {[...new Set([...topics, ...(v ? [v] : [])])].map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button type="button" className="btn small" aria-label="Remove mapping" onClick={() => setMap(map.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+            <div><button type="button" className="btn small" onClick={() => setMap([...map, ['', '']])}>+ Mapping</button></div>
+          </Row>
+          <SaveBar dirty={mapDirty} onSave={() => saveRules({ ...rules, categoryMap: Object.fromEntries(map.filter(([k, v]) => k.trim() && v.trim())) })} />
+        </Panel>
+      )}
+
+      <Panel title="Posts" desc={`${posts.length} synced`} flush>
+        {posts.length === 0 ? <Empty>Nothing synced yet.</Empty> : (
+          <div className="list-rows">
+            {posts.map((p) => (
+              <div key={p.wp_id} className="list-row">
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <a className="title" href={p.url} target="_blank" rel="noopener noreferrer">{p.title} ↗</a>
+                  {p.removed_at && <span className="pill warn" style={{ marginLeft: 8 }}>removed on WP</span>}
+                  <span className="meta" style={{ display: 'block' }}>{p.topic || 'No topic'} · {relTime(p.published_at)}</span>
+                </span>
+                <Switch checked={p.show_on_main} disabled={!!p.removed_at} label={`Show ${p.title} on the main site`} onChange={(v) => toggle(p, v)} />
+              </div>
+            ))}
           </div>
         )}
+      </Panel>
 
-        <div className="grid2">
-          {rules && (
-            <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="lbl">Rules</div>
-              <label className="check"><input type="checkbox" checked={rules.hideWhenDown} onChange={(e) => saveRules({ ...rules, hideWhenDown: e.target.checked })} />Hide posts while WordPress is down</label>
-              <label className="check"><input type="checkbox" checked={rules.autoShow} onChange={(e) => saveRules({ ...rules, autoShow: e.target.checked })} />Show new posts automatically</label>
-              <label className="check"><input type="checkbox" checked={rules.includeInRss} onChange={(e) => saveRules({ ...rules, includeInRss: e.target.checked })} />Include in RSS</label>
-              <div className="lbl" style={{ marginTop: 6 }}>Category → topic</div>
-              {map.map(([k, v], i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: 6, alignItems: 'center' }}>
-                  <input className="input" aria-label="WordPress category" value={k} onChange={(e) => setMap(map.map((m, j) => (j === i ? [e.target.value, m[1]] : m)))} />
-                  <span className="hint">→</span>
-                  <input className="input" aria-label="Topic" value={v} onChange={(e) => setMap(map.map((m, j) => (j === i ? [m[0], e.target.value] : m)))} />
-                  <button type="button" className="btn small" aria-label="Remove mapping" onClick={() => setMap(map.filter((_, j) => j !== i))}>✕</button>
-                </div>
-              ))}
-              <div className="actions">
-                <button type="button" className="btn small" onClick={() => setMap([...map, ['', '']])}>+ Add</button>
-                <button type="button" className="btn small primary" onClick={() => saveRules({ ...rules, categoryMap: Object.fromEntries(map.filter(([k, v]) => k.trim() && v.trim())) })}>Save</button>
+      <Panel title="Activity" flush>
+        {log.length === 0 ? <Empty>No activity yet.</Empty> : (
+          <div className="list-rows">
+            {log.map((l, i) => (
+              <div key={i} className="list-row">
+                <span><span className={`dot ${l.ok ? 'good' : 'bad'}`} aria-hidden="true" style={{ marginRight: 8 }} />{l.event}</span>
+                <span className="meta">{l.result} · {relTime(l.at)}</span>
               </div>
-            </section>
-          )}
-          <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div className="lbl">Sync</div>
-            <dl className="facts">
-              <dt>Instant</dt><dd>Webhook on publish, edit, delete</dd>
-              <dt>~15 min</dt><dd>Catch-up pull</dd>
-              <dt>Daily</dt><dd>Full check for removed posts</dd>
-              <dt>Copied</dt><dd>Title, excerpt, image, link</dd>
-            </dl>
-          </section>
-        </div>
-
-        <section>
-          <div className="lbl" style={{ marginBottom: 8 }}>Posts from WordPress</div>
-          <div className="table-box">
-            {posts.length === 0 ? <div className="empty">Nothing synced yet.</div> : (
-              <table>
-                <thead><tr><th>Title</th><th>Topic</th><th>Published</th><th style={{ textAlign: 'right' }}>Show on main site</th></tr></thead>
-                <tbody>
-                  {posts.map((p) => (
-                    <tr key={p.wp_id}>
-                      <td><a className="title" href={p.url} target="_blank" rel="noopener noreferrer">{p.title} ↗</a>{p.removed_at && <span className="pill warn" style={{ marginLeft: 8 }}>removed on WP</span>}</td>
-                      <td>{p.topic}</td>
-                      <td className="status">{relTime(p.published_at)}</td>
-                      <td style={{ textAlign: 'right' }}><Switch checked={p.show_on_main} disabled={!!p.removed_at} label={`Show ${p.title}`} onChange={(v) => toggle(p, v)} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            ))}
           </div>
-        </section>
-
-        <section>
-          <div className="lbl" style={{ marginBottom: 8 }}>Recent activity</div>
-          <div className="table-box">
-            {log.length === 0 ? <div className="empty">No activity yet.</div> : (
-              <table><tbody>
-                {log.map((l, i) => (
-                  <tr key={i}><td className="status" style={{ width: 150 }}>{relTime(l.at)}</td><td>{l.event}</td><td className="status" style={{ textAlign: 'right', color: l.ok ? 'var(--accent)' : 'var(--danger)' }}>{l.result}</td></tr>
-                ))}
-              </tbody></table>
-            )}
-          </div>
-        </section>
-      </div>
-    </>
+        )}
+      </Panel>
+    </Page>
   );
 }

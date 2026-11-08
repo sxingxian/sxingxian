@@ -4,6 +4,7 @@ import MediaPicker from '../components/MediaPicker';
 import { relTime, useToast } from '../components/ui';
 import { useDialog } from '../components/dialog';
 import Lightbox from '../components/Lightbox';
+import { Page, Panel, Segmented, Empty } from '../components/kit';
 import type { MediaItem } from '../../lib/shared/types';
 
 export default function MediaLibrary() {
@@ -13,6 +14,7 @@ export default function MediaLibrary() {
   const toast = useToast();
   const dialog = useDialog();
   const [view, setView] = useState<number | null>(null);
+  const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all');
 
   const load = () => api.get<{ media: MediaItem[] }>('/api/admin/media').then((r) => setItems(r.media)).catch((e) => setErr(errorText(e)));
   useEffect(() => { void load(); }, []);
@@ -30,35 +32,33 @@ export default function MediaLibrary() {
   };
 
   const photos = (items ?? []).filter((m) => m.mime.startsWith('image/'));
+  const shown = (items ?? []).filter((m) => filter === 'all' || (filter === 'image') === m.mime.startsWith('image/'));
 
   return (
-    <>
-      <div className="topbar">
-        <div className="crumbs"><b>Media</b></div>
-        <div className="actions"><button type="button" className="btn primary" onClick={() => setOpen(true)}>Upload</button></div>
-      </div>
-      <div className="page">
-        <h1>Media</h1>
-        {err && <p className="err-text">{err}</p>}
-        <div className="lib" style={{ marginTop: 18 }}>
-          {items === null && <div className="empty">Loading…</div>}
-          {items?.length === 0 && <div className="empty">No media yet.</div>}
-          {items?.map((m) => (
-            <div key={m.id} className="tile">
-              {m.mime.startsWith('image/') ? (
-                <button type="button" className="lib-open" aria-label={`View ${m.alt || m.filename}`} onClick={() => setView(photos.findIndex((x) => x.id === m.id))}>
-                  <img src={`/media/${m.id}`} alt={m.alt} loading="lazy" />
-                </button>
-              ) : <div className="drop" style={{ aspectRatio: '4/3', display: 'grid', placeItems: 'center' }}>{m.provider === 'youtube' || m.provider === 'vimeo' ? `${m.provider} · ${m.embed_id}` : m.mime}</div>}
-              <div className="cap"><span>{m.provider.toUpperCase()} · {relTime(m.created_at)}</span><button type="button" className="btn small danger" onClick={() => remove(m)} aria-label={`Delete ${m.filename}`}>✕</button></div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <Page title="Media" width="wide" sub={items ? `${items.length} files · ${photos.length} photos` : undefined}
+      actions={<button type="button" className="btn primary" onClick={() => setOpen(true)}>Upload</button>}>
+      {err && <div className="alert err" role="alert">{err}</div>}
+      <Panel title="Library" desc="Click a photo to view it."
+        actions={<Segmented label="Filter" value={filter} onChange={setFilter} options={[['all', 'All'], ['image', 'Photos'], ['video', 'Video']] as const} />}>
+        {items === null ? <Empty>Loading…</Empty> : shown.length === 0 ? <Empty>{items.length === 0 ? 'No media yet. Upload your first file.' : 'Nothing in this filter.'}</Empty> : (
+          <div className="lib">
+            {shown.map((m) => (
+              <div key={m.id} className="tile">
+                {m.mime.startsWith('image/') ? (
+                  <button type="button" className="lib-open" aria-label={`View ${m.alt || m.filename}`} onClick={() => setView(photos.findIndex((x) => x.id === m.id))}>
+                    <img src={`/media/${m.id}`} alt={m.alt} loading="lazy" />
+                  </button>
+                ) : <div className="drop" style={{ aspectRatio: '4/3', display: 'grid', placeItems: 'center' }}>{m.provider === 'youtube' || m.provider === 'vimeo' ? `${m.provider} · ${m.embed_id}` : m.mime}</div>}
+                <div className="cap"><span>{m.provider.toUpperCase()} · {relTime(m.created_at)}</span><button type="button" className="btn small danger" onClick={() => remove(m)} aria-label={`Delete ${m.filename}`}>✕</button></div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
       {view !== null && view >= 0 && photos.length > 0 && (
         <Lightbox items={photos.map((m) => ({ src: `/media/${m.id}`, alt: m.alt, caption: m.alt || m.filename }))} start={view} onClose={() => setView(null)} />
       )}
       {open && <MediaPicker imagesOnly={false} onClose={() => setOpen(false)} onPick={() => { setOpen(false); toast('Uploaded'); void load(); }} />}
-    </>
+    </Page>
   );
 }

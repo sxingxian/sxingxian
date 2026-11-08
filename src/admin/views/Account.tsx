@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type SubmitEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { encode } from 'uqr';
 import { api, errorText } from '../api';
 import { relTime, useToast } from '../components/ui';
+import { Page, Panel, Row, SaveBar } from '../components/kit';
 import { PasswordField, StrengthMeter } from '../auth/fields';
 
 interface Overview {
@@ -30,29 +31,44 @@ export default function Account({ mustChangePassword, onPasswordChanged }: { mus
   useEffect(load, [load]);
 
   return (
-    <>
-      <div className="topbar"><div className="crumbs"><b>Account</b></div></div>
-      <div className="page" style={{ maxWidth: 760 }}>
-        <h1>Account</h1>
-        {mustChangePassword && <div className="alert warn" style={{ marginBottom: 16 }}>Set your own password to continue.</div>}
-        {welcome && !mustChangePassword && <div className="alert ok" style={{ marginBottom: 16 }}>Account ready. Turn on 2-step below, then delete the setup token in Cloudflare.</div>}
-        {err && <div className="alert err">{err}</div>}
-        <div className="stack">
-          <PasswordCard mustChange={mustChangePassword} onDone={() => { onPasswordChanged(); load(); }} />
-          {data && (
-            <>
-              <TwoStepCard data={data} reload={load} />
-              <SessionsCard data={data} reload={load} />
-              <ActivityCard data={data} />
-            </>
-          )}
-        </div>
-      </div>
-    </>
+    <Page title="Account" width="narrow" sub={data ? `${data.profile.email} · ${data.profile.role}` : undefined}>
+      {mustChangePassword && <div className="alert warn">Set your own password to continue.</div>}
+      {welcome && !mustChangePassword && <div className="alert ok">Account ready. Turn on 2-step below, then delete the setup token in Cloudflare.</div>}
+      {err && <div className="alert err" role="alert">{err}</div>}
+      {data && <ProfilePanel data={data} reload={load} />}
+      <PasswordPanel mustChange={mustChangePassword} onDone={() => { onPasswordChanged(); load(); }} />
+      {data && (
+        <>
+          <TwoStepPanel data={data} reload={load} />
+          <DevicesPanel data={data} reload={load} />
+          <ActivityPanel data={data} />
+        </>
+      )}
+    </Page>
   );
 }
 
-function PasswordCard({ mustChange, onDone }: { mustChange: boolean; onDone: () => void }) {
+function ProfilePanel({ data, reload }: { data: Overview; reload: () => void }) {
+  const [name, setName] = useState(data.profile.name);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const save = async () => {
+    setBusy(true);
+    try { await api.patch('/api/admin/account', { name }); toast('Saved'); reload(); } catch (e) { toast(errorText(e)); }
+    setBusy(false);
+  };
+  return (
+    <Panel title="Profile">
+      <Row label="Name" hint="Shown in the admin" htmlFor="acc-name">
+        <input id="acc-name" className="input" value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} />
+      </Row>
+      <Row label="Email" hint="Sign-in address"><span className="mono" style={{ paddingTop: 8 }}>{data.profile.email}</span></Row>
+      <SaveBar dirty={name.trim() !== data.profile.name} busy={busy} onSave={save} />
+    </Panel>
+  );
+}
+
+function PasswordPanel({ mustChange, onDone }: { mustChange: boolean; onDone: () => void }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -60,9 +76,9 @@ function PasswordCard({ mustChange, onDone }: { mustChange: boolean; onDone: () 
   const [err, setErr] = useState('');
   const toast = useToast();
   const mismatch = confirm.length > 0 && confirm !== next;
+  const ready = !!current && [...next].length >= 12 && next === confirm;
 
-  const submit = async (e: SubmitEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const save = async () => {
     setBusy(true);
     setErr('');
     try {
@@ -70,23 +86,29 @@ function PasswordCard({ mustChange, onDone }: { mustChange: boolean; onDone: () 
       setCurrent(''); setNext(''); setConfirm('');
       toast('Password changed. Other devices were signed out.');
       onDone();
-    } catch (e2) {
-      setErr(errorText(e2));
+    } catch (e) {
+      setErr(errorText(e));
     }
     setBusy(false);
   };
 
   return (
-    <form className="card stack" onSubmit={submit}>
-      <div><div className="lbl">Password</div><p className="muted" style={{ margin: '4px 0 0' }}>Signs out other devices.</p></div>
-      {err && <div className="alert err" role="alert">{err}</div>}
-      <PasswordField id="pw-current" label={mustChange ? 'Temporary password' : 'Current password'} value={current} onChange={setCurrent} autoComplete="current-password" />
-      <PasswordField id="pw-next" label="New password" value={next} onChange={setNext} autoComplete="new-password" hint="12+ characters" />
-      <StrengthMeter value={next} />
-      <PasswordField id="pw-confirm" label="Confirm new password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
-      {mismatch && <span className="err-text">The passwords don’t match.</span>}
-      <div><button className="btn primary" disabled={busy || !current || [...next].length < 12 || next !== confirm}>{busy ? 'Saving…' : 'Change password'}</button></div>
-    </form>
+    <Panel title="Password" desc="Changing it signs out your other devices.">
+      <form onSubmit={(e) => { e.preventDefault(); if (ready) void save(); }}>
+        <Row label={mustChange ? 'Temporary password' : 'Current password'} htmlFor="pw-current">
+          <PasswordField bare id="pw-current" label="Current password" value={current} onChange={setCurrent} autoComplete="current-password" />
+        </Row>
+        <Row label="New password" hint="12+ characters" htmlFor="pw-next">
+          <PasswordField bare id="pw-next" label="New password" value={next} onChange={setNext} autoComplete="new-password" />
+          <StrengthMeter value={next} />
+        </Row>
+        <Row label="Confirm" htmlFor="pw-confirm">
+          <PasswordField bare id="pw-confirm" label="Confirm new password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
+          {mismatch && <span className="err-text">The passwords don’t match.</span>}
+        </Row>
+        <SaveBar dirty={!!(current || next || confirm)} busy={busy} onSave={save} label="Change password" disabled={!ready} error={err || undefined} />
+      </form>
+    </Panel>
   );
 }
 
@@ -114,7 +136,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
       <div className="alert warn">Save these now. Each works once if you lose your phone.</div>
       <div className="codes">{codes.map((c) => <span key={c}>{c}</span>)}</div>
       <div className="row">
-        <button type="button" className="btn" onClick={() => navigator.clipboard?.writeText(text)}>Copy</button>
+        <button type="button" className="btn" onClick={() => void navigator.clipboard?.writeText(text)}>Copy</button>
         <button type="button" className="btn" onClick={download}>Download .txt</button>
         <button type="button" className="btn primary" onClick={onDone}>I’ve saved them</button>
       </div>
@@ -122,12 +144,11 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   );
 }
 
-function TwoStepCard({ data, reload }: { data: Overview; reload: () => void }) {
+function TwoStepPanel({ data, reload }: { data: Overview; reload: () => void }) {
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
-  const [confirmOff, setConfirmOff] = useState(false);
-  const [regen, setRegen] = useState(false);
+  const [mode, setMode] = useState<'idle' | 'off' | 'regen'>('idle');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -138,75 +159,78 @@ function TwoStepCard({ data, reload }: { data: Overview; reload: () => void }) {
     try { await fn(); } catch (e) { setErr(errorText(e)); }
     setBusy(false);
   };
-
-  if (codes) return <div className="card stack"><div className="lbl">Two-step sign-in</div><RecoveryCodes codes={codes} onDone={() => { setCodes(null); reload(); }} /></div>;
+  const reset = () => { setMode('idle'); setPassword(''); setCode(''); };
 
   return (
-    <div className="card stack">
-      <div className="spread">
-        <div><div className="lbl">2-step sign-in</div><p className="muted" style={{ margin: '4px 0 0' }}>Authenticator app code at sign-in.</p></div>
-        <span className="pill" style={data.totp.enabled ? { color: 'var(--accent)', borderColor: 'var(--accent-line)' } : {}}>{data.totp.enabled ? 'On' : 'Off'}</span>
-      </div>
-      {err && <div className="alert err" role="alert">{err}</div>}
+    <Panel title="2-step sign-in" desc="A code from an authenticator app at sign-in."
+      actions={<span className={`pill${data.totp.enabled ? ' ok' : ''}`}>{data.totp.enabled ? 'On' : 'Off'}</span>}>
+      {err && <div className="alert err" role="alert" style={{ marginTop: 12 }}>{err}</div>}
 
-      {!data.totp.enabled && !setup && (
-        data.totp.available
-          ? <div><button className="btn accent" disabled={busy} onClick={() => run(async () => setSetup(await api.post('/api/admin/account/totp-start')))}>Set up</button></div>
-          : <div className="alert warn">{data.totp.unavailableReason}</div>
-      )}
-
-      {!data.totp.enabled && setup && (
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(async () => { const r = await api.post<{ recoveryCodes: string[] }>('/api/admin/account/totp-enable', { code }); setSetup(null); setCode(''); setCodes(r.recoveryCodes); toast('Two-step sign-in is on'); }); }}>
-          <div className="row" style={{ alignItems: 'flex-start', gap: 20 }}>
-            <Qr text={setup.uri} />
-            <div className="stack" style={{ flex: '1 1 220px', gap: 10 }}>
-              <span>1. Scan with your authenticator app</span>
-              <span className="muted">or enter this key:</span>
-              <span className="secret">{setup.secret.match(/.{1,4}/g)?.join(' ')}</span>
-              <span>2. Enter the 6-digit code</span>
+      {codes ? (
+        <Row label="Recovery codes"><RecoveryCodes codes={codes} onDone={() => { setCodes(null); reload(); }} /></Row>
+      ) : !data.totp.enabled ? (
+        setup ? (
+          <>
+            <Row label="1. Scan" hint="With your authenticator app">
+              <div className="row" style={{ alignItems: 'flex-start', gap: 16 }}>
+                <Qr text={setup.uri} />
+                <div className="stack" style={{ gap: 6, flex: '1 1 180px' }}>
+                  <span className="muted">Or enter this key</span>
+                  <span className="secret">{setup.secret.match(/.{1,4}/g)?.join(' ')}</span>
+                </div>
+              </div>
+            </Row>
+            <Row label="2. Enter code" htmlFor="totp-code">
+              <input id="totp-code" className="input code-input" style={{ maxWidth: 220 }} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric" autoComplete="one-time-code" placeholder="000000" />
+            </Row>
+            <div className="save-bar">
+              <button type="button" className="btn" onClick={() => { setSetup(null); setCode(''); }}>Cancel</button>
+              <button type="button" className="btn primary" disabled={busy || code.length !== 6}
+                onClick={() => run(async () => { const r = await api.post<{ recoveryCodes: string[] }>('/api/admin/account/totp-enable', { code }); setSetup(null); setCode(''); setCodes(r.recoveryCodes); toast('2-step sign-in is on'); })}>Turn on</button>
             </div>
-          </div>
-          <input className="input code-input" style={{ maxWidth: 220 }} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputMode="numeric" autoComplete="one-time-code" placeholder="000000" aria-label="6-digit code" />
+          </>
+        ) : (
+          <Row label="Status" hint="Recommended for every account">
+            {data.totp.available
+              ? <div><button type="button" className="btn accent" disabled={busy} onClick={() => run(async () => setSetup(await api.post('/api/admin/account/totp-start')))}>Set up</button></div>
+              : <div className="alert warn">{data.totp.unavailableReason}</div>}
+          </Row>
+        )
+      ) : mode === 'idle' ? (
+        <Row label="Recovery codes" hint={`${data.totp.recoveryCodesLeft}/10 left`}>
           <div className="row">
-            <button className="btn primary" disabled={busy || code.length !== 6}>Turn on</button>
-            <button type="button" className="btn" onClick={() => { setSetup(null); setCode(''); }}>Cancel</button>
+            <button type="button" className="btn small" onClick={() => setMode('regen')}>New codes</button>
+            <button type="button" className="btn small danger" onClick={() => setMode('off')}>Turn off 2-step</button>
+          </div>
+        </Row>
+      ) : (
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (mode === 'regen') void run(async () => { const r = await api.post<{ recoveryCodes: string[] }>('/api/admin/account/recovery-codes', { password }); reset(); setCodes(r.recoveryCodes); });
+          else void run(async () => { await api.post('/api/admin/account/totp-disable', { password, code }); reset(); toast('2-step sign-in is off'); reload(); });
+        }}>
+          <Row label="Password" hint={mode === 'regen' ? 'Old codes stop working' : 'Confirm it’s you'} htmlFor="tf-pw">
+            <PasswordField bare id="tf-pw" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
+          </Row>
+          {mode === 'off' && (
+            <Row label="Code" hint="Authenticator or recovery code" htmlFor="tf-code">
+              <input id="tf-code" className="input" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" maxLength={20} />
+            </Row>
+          )}
+          <div className="save-bar">
+            <button type="button" className="btn" onClick={reset}>Cancel</button>
+            <button type="submit" className={`btn ${mode === 'off' ? 'danger-solid' : 'primary'}`} disabled={busy || !password || (mode === 'off' && !code)}>
+              {mode === 'off' ? 'Turn off' : 'Create new codes'}
+            </button>
           </div>
         </form>
       )}
-
-      {data.totp.enabled && !confirmOff && !regen && (
-        <div className="spread">
-          <span className="muted">{data.totp.recoveryCodesLeft}/10 recovery codes left</span>
-          <div className="row">
-            <button className="btn small" onClick={() => setRegen(true)}>New recovery codes</button>
-            <button className="btn small danger" onClick={() => setConfirmOff(true)}>Turn off</button>
-          </div>
-        </div>
-      )}
-
-      {data.totp.enabled && regen && (
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(async () => { const r = await api.post<{ recoveryCodes: string[] }>('/api/admin/account/recovery-codes', { password }); setPassword(''); setRegen(false); setCodes(r.recoveryCodes); }); }}>
-          <span className="muted">Old codes stop working.</span>
-          <PasswordField id="regen-pw" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
-          <div className="row"><button className="btn primary" disabled={busy || !password}>Create new codes</button><button type="button" className="btn" onClick={() => { setRegen(false); setPassword(''); }}>Cancel</button></div>
-        </form>
-      )}
-
-      {data.totp.enabled && confirmOff && (
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(async () => { await api.post('/api/admin/account/totp-disable', { password, code }); setPassword(''); setCode(''); setConfirmOff(false); toast('Two-step sign-in is off'); reload(); }); }}>
-          <PasswordField id="off-pw" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
-          <label className="field" htmlFor="off-code">Authenticator or recovery code
-            <input id="off-code" className="input" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" maxLength={20} />
-          </label>
-          <div className="row"><button className="btn danger" disabled={busy || !password || !code}>Turn off</button><button type="button" className="btn" onClick={() => { setConfirmOff(false); setPassword(''); setCode(''); }}>Cancel</button></div>
-        </form>
-      )}
-    </div>
+    </Panel>
   );
 }
 
-function SessionsCard({ data, reload }: { data: Overview; reload: () => void }) {
+function DevicesPanel({ data, reload }: { data: Overview; reload: () => void }) {
   const toast = useToast();
   const others = data.sessions.filter((s) => !s.current).length;
   const revoke = async (id: string) => {
@@ -216,39 +240,37 @@ function SessionsCard({ data, reload }: { data: Overview; reload: () => void }) 
     try { await api.post('/api/admin/account/revoke-others'); toast('Signed out of all other devices'); reload(); } catch (e) { toast(errorText(e)); }
   };
   return (
-    <div className="card stack">
-      <div className="spread">
-        <div className="lbl">Devices</div>
-        {others > 0 && <button className="btn small" onClick={revokeAll}>Sign out all others</button>}
-      </div>
-      <div className="list">
+    <Panel title="Devices" desc={`${data.sessions.length} signed in`} flush
+      actions={others > 0 && <button type="button" className="btn small" onClick={revokeAll}>Sign out others</button>}>
+      <div className="list-rows">
         {data.sessions.map((s) => (
-          <div key={s.id}>
-            <span><b style={{ fontWeight: 500 }}>{device(s.user_agent)}</b>{s.current && <span className="pill" style={{ marginLeft: 8 }}>This device</span>}<br />
-              <span className="muted">{s.ip || '—'} · active {relTime(s.last_seen_at)}</span></span>
-            {!s.current && <button className="btn small" onClick={() => revoke(s.id)}>Sign out</button>}
+          <div key={s.id} className="list-row">
+            <span>
+              <b style={{ fontWeight: 500 }}>{device(s.user_agent)}</b>{s.current && <span className="pill ok" style={{ marginLeft: 8 }}>This device</span>}
+              <span className="meta" style={{ display: 'block' }}>{s.ip || '—'} · active {relTime(s.last_seen_at)}</span>
+            </span>
+            {!s.current && <button type="button" className="btn small" onClick={() => revoke(s.id)}>Sign out</button>}
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
-function ActivityCard({ data }: { data: Overview }) {
+function ActivityPanel({ data }: { data: Overview }) {
   return (
-    <div className="card stack">
-      <div className="lbl">Activity</div>
-      {data.events.length === 0 ? <span className="muted">Nothing yet.</span> : (
-        <div className="list">
+    <Panel title="Activity" desc="Last 30 events" flush>
+      {data.events.length === 0 ? <div className="empty">Nothing yet.</div> : (
+        <div className="list-rows">
           {data.events.map((e, i) => (
-            <div key={i}>
-              <span><span className="dot" style={{ background: e.ok ? '#3d8a6f' : '#c4552f', marginRight: 8 }} />{e.event}<br />
-                <span className="muted">{device(e.user_agent)} · {e.ip || '—'}</span></span>
-              <span className="muted">{relTime(e.at)}</span>
+            <div key={i} className="list-row">
+              <span><span className={`dot ${e.ok ? 'good' : 'bad'}`} aria-hidden="true" style={{ marginRight: 8 }} />{e.event.charAt(0).toUpperCase() + e.event.slice(1)}
+                <span className="meta" style={{ display: 'block', paddingLeft: 18 }}>{device(e.user_agent)} · {e.ip || '—'}</span></span>
+              <span className="meta">{relTime(e.at)}</span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 
-export function PasswordField({ label, value, onChange, autoComplete, hint, id }: {
-  label: string; value: string; onChange: (v: string) => void; autoComplete: 'current-password' | 'new-password'; hint?: string; id: string;
+export function PasswordField({ label, value, onChange, autoComplete, hint, id, bare = false }: {
+  label: string; value: string; onChange: (v: string) => void; autoComplete: 'current-password' | 'new-password'; hint?: string; id: string; bare?: boolean;
 }) {
   const [show, setShow] = useState(false);
   return (
     <label className="field" htmlFor={id}>
-      {label}
+      {bare ? <span className="sr-only">{label}</span> : label}
       <span className="pw-wrap">
         <input id={id} className="input" type={show ? 'text' : 'password'} value={value} autoComplete={autoComplete}
           onChange={(e) => onChange(e.target.value)} maxLength={256} required spellCheck={false} autoCapitalize="off" />

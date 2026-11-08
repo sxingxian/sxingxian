@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import { watermarkAfterUpload } from '../watermark';
+import { Field, Segmented, ToggleRow } from './kit';
 import type { MediaItem, MediaProvider } from '../../lib/shared/types';
 
 type Host = 'r2' | 'nas' | 'b2' | 'youtube';
@@ -109,14 +110,11 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
           <button type="button" className="btn" onClick={onClose} aria-label="Close">✕</button>
         </header>
         <div className="body">
-          <div className="tabs" role="tablist" style={{ margin: 0 }}>
-            <button type="button" role="tab" aria-selected={tab === 'upload'} onClick={() => setTab('upload')}>Upload</button>
-            <button type="button" role="tab" aria-selected={tab === 'library'} onClick={() => setTab('library')}>Library ({libItems.length})</button>
-          </div>
+          <Segmented label="Add from" value={tab} onChange={setTab} options={[['upload', 'Upload'], ['library', `Library (${libItems.length})`]] as const} />
 
           {tab === 'upload' ? (
             <>
-              <div className="lbl">Upload to</div>
+              <Field label="Upload to">
               <div className="hosts" role="radiogroup" aria-label="Storage host">
                 {HOSTS.filter((h) => !(imagesOnly && h.id === 'youtube')).map((h) => (
                   <button key={h.id} type="button" role="radio" aria-checked={host === h.id} className="host" disabled={!hostOk(h.id)} onClick={() => setHost(h.id)}>
@@ -125,9 +123,10 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
                   </button>
                 ))}
               </div>
+              </Field>
 
               {host === 'youtube' ? (
-                <label className="field">Video link<input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" /></label>
+                <Field label="Video link" htmlFor="mp-url"><input id="mp-url" className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" /></Field>
               ) : (
                 <div className={`drop${over ? ' over' : ''}`}
                   onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -138,10 +137,12 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
                   <input ref={inputRef} type="file" hidden accept={imagesOnly ? 'image/jpeg,image/png,image/webp,image/gif,image/avif' : 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm'} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
                 </div>
               )}
-              {note && <div className="hint">{note}</div>}
-              <label className="field">Alt text<input className="input" value={alt} onChange={(e) => setAlt(e.target.value)} /></label>
+              {note && <div className="field-hint">{note}</div>}
+              <Field label="Alt text" hint="Describes the image for screen readers." htmlFor="mp-alt"><input id="mp-alt" className="input" value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={300} /></Field>
               {host !== 'youtube' && (
-                <label className="check"><input type="checkbox" checked={strip} onChange={(e) => setStrip(e.target.checked)} />Remove location and camera details (recommended)</label>
+                <div className="side-toggles">
+                  <ToggleRow label="Remove location and camera details" hint="Recommended" checked={strip} onChange={setStrip} />
+                </div>
               )}
             </>
           ) : (

@@ -1,37 +1,39 @@
+// Settings, in five tabs. Every tab uses the same pattern: titled panels of labelled rows,
+// switches that save at once, and a save bar for edits that need confirming.
 import { useEffect, useRef, useState } from 'react';
 import { drawWatermark, watermarkStored } from '../watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
 import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
-import { Switch, useToast } from '../components/ui';
+import { useToast } from '../components/ui';
+import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../components/kit';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
-import { SECTION_LABELS, type Entry, type FeaturedSetting, type FooterSetting, type SectionsSetting, type SiteSetting, type AdsSetting, type ProtectionSetting } from '../../lib/shared/types';
+import { SECTION_LABELS, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
-type Tab = 'home' | 'footer' | 'site' | 'photos' | 'ads';
+type Tab = 'home' | 'site' | 'footer' | 'photos' | 'ads';
+const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['footer', 'Footer'], ['photos', 'Photos'], ['ads', 'Ads']];
 
 export default function Settings() {
-  const [tab, setTab] = useState<Tab>('home');
+  const [tab, setTab] = useState<Tab>(() => {
+    const h = window.location.hash.slice(1) as Tab;
+    return TABS.some(([t]) => t === h) ? h : 'home';
+  });
+  const pick = (t: Tab) => { setTab(t); window.history.replaceState(null, '', `#${t}`); };
   return (
-    <>
-      <div className="topbar"><div className="crumbs"><b>Settings</b></div></div>
-      <div className="page">
-        <h1>Settings</h1>
-        <div className="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'home'} onClick={() => setTab('home')}>Sections &amp; featured post</button>
-          <button type="button" role="tab" aria-selected={tab === 'footer'} onClick={() => setTab('footer')}>Footer</button>
-          <button type="button" role="tab" aria-selected={tab === 'site'} onClick={() => setTab('site')}>Site</button>
-          <button type="button" role="tab" aria-selected={tab === 'photos'} onClick={() => setTab('photos')}>Photos</button>
-          <button type="button" role="tab" aria-selected={tab === 'ads'} onClick={() => setTab('ads')}>Ads</button>
-        </div>
-        {tab === 'home' && <HomeSettings />}
-        {tab === 'footer' && <FooterSettings />}
-        {tab === 'site' && <SiteSettings />}
-        {tab === 'photos' && <PhotoSettings />}
-        {tab === 'ads' && <AdsSettings />}
+    <Page title="Settings" width="narrow">
+      <div className="tabs" role="tablist" aria-label="Settings sections">
+        {TABS.map(([t, l]) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => pick(t)}>{l}</button>)}
       </div>
-    </>
+      {tab === 'home' && <HomeSettings />}
+      {tab === 'site' && <SiteSettings />}
+      {tab === 'footer' && <FooterSettings />}
+      {tab === 'photos' && <PhotoSettings />}
+      {tab === 'ads' && <AdsSettings />}
+    </Page>
   );
 }
+
+// ------------------------------------------------------------------ Home
 
 function HomeSettings() {
   const [sections, setSections] = useState<SectionsSetting | null>(null);
@@ -45,13 +47,14 @@ function HomeSettings() {
     api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
     api.get<{ entries: Omit<Entry, 'body'>[] }>('/api/admin/entries?kind=post').then((r) => setPosts(r.entries.filter((e) => e.status === 'published' && e.is_public))).catch(() => {});
   }, []);
+  if (!sections || !featured) return <Loading error={err} />;
 
   const saveSections = async (next: SectionsSetting) => {
     const prev = sections;
     setSections(next);
     try {
       await api.put('/api/admin/settings/sections', next);
-      toast('Sections updated');
+      toast('Saved');
     } catch (e) {
       setSections(prev);
       toast(errorText(e));
@@ -59,129 +62,43 @@ function HomeSettings() {
   };
 
   const saveFeatured = async (next: FeaturedSetting) => {
-    if (next.mode === 'manual' && !next.entryId) {
-      setFeatured(next);
-      return;
-    }
+    setFeatured(next);
+    if (next.mode === 'manual' && !next.entryId) return;
     try {
       const r = await api.put<{ value: FeaturedSetting }>('/api/admin/settings/featured', next);
       setFeatured(r.value);
-      toast('Featured post updated');
+      toast('Saved');
     } catch (e) {
       toast(errorText(e));
     }
   };
 
   return (
-    <div className="grid2">
-      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="lbl">Sections</div>
-        {err && <p className="err-text">{err}</p>}
-        {sections && (Object.keys(SECTION_LABELS) as (keyof SectionsSetting)[]).map((k) => (
-          <div key={k} className="check" style={{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line-2)' }}>
-            <span>{SECTION_LABELS[k]} <span className="status">/{k}</span></span>
-            <Switch checked={sections[k]} label={`Show ${SECTION_LABELS[k]}`} onChange={(v) => saveSections({ ...sections, [k]: v })} />
-          </div>
-        ))}
-        <span className="hint">Off = hidden everywhere. Content is kept.</span>
-      </section>
-
-      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="lbl">Featured post</div>
-        {featured && (
-          <>
-            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'latest'} onChange={() => saveFeatured({ mode: 'latest', entryId: null })} />Latest post</label>
-            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'manual'} onChange={() => saveFeatured({ mode: 'manual', entryId: featured.entryId ?? posts[0]?.id ?? null })} />Pin a post</label>
-            {featured.mode === 'manual' && (
-              <label className="field">Post
-                <select className="select" value={featured.entryId ?? ''} onChange={(e) => saveFeatured({ mode: 'manual', entryId: e.target.value || null })}>
-                  <option value="">Choose…</option>
-                  {posts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-                </select>
-              </label>
-            )}
-          </>
+    <>
+      <Panel title="Featured post" desc="The large story at the top of the home page.">
+        <Row label="Show" hint="Latest updates by itself">
+          <Segmented label="Featured post" value={featured.mode} options={[['latest', 'Latest post'], ['manual', 'Pinned post']] as const}
+            onChange={(m) => saveFeatured(m === 'latest' ? { mode: 'latest', entryId: null } : { mode: 'manual', entryId: featured.entryId ?? posts[0]?.id ?? null })} />
+        </Row>
+        {featured.mode === 'manual' && (
+          <Row label="Pinned post" hint="Published, public posts" htmlFor="feat-post">
+            <select id="feat-post" className="select" value={featured.entryId ?? ''} onChange={(e) => saveFeatured({ mode: 'manual', entryId: e.target.value || null })}>
+              <option value="">Choose…</option>
+              {posts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </Row>
         )}
-      </section>
-    </div>
+      </Panel>
+      <Panel title="Sections" desc="Off hides a section everywhere. Its content is kept.">
+        {(Object.keys(SECTION_LABELS) as (keyof SectionsSetting)[]).map((k) => (
+          <ToggleRow key={k} label={SECTION_LABELS[k]} hint={`/${k}`} checked={sections[k]} onChange={(v) => saveSections({ ...sections, [k]: v })} />
+        ))}
+      </Panel>
+    </>
   );
 }
 
-function FooterSettings() {
-  const [f, setF] = useState<FooterSetting | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [err, setErr] = useState('');
-  const toast = useToast();
-
-  useEffect(() => {
-    api.get<{ value: FooterSetting }>('/api/admin/settings/footer').then((r) => setF(r.value)).catch((e) => setErr(errorText(e)));
-  }, []);
-  if (!f) return <p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p>;
-
-  const up = (next: FooterSetting) => { setF(next); setDirty(true); };
-  const badCount = f.columns.reduce((n, c) => n + c.links.filter((l) => !isSafeHref(l.url)).length, 0);
-  const save = async () => {
-    try {
-      const r = await api.put<{ value: FooterSetting }>('/api/admin/settings/footer', f);
-      setF(r.value);
-      setDirty(false);
-      toast('Footer published');
-    } catch (e) {
-      toast(errorText(e));
-    }
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="grid2">
-        <label className="card field"><span className="lbl">About text</span>
-          <textarea className="textarea" rows={3} maxLength={160} value={f.about} onChange={(e) => up({ ...f, about: e.target.value })} />
-          <span className="hint">{f.about.length} / 160</span>
-        </label>
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label className="field"><span className="lbl">Bottom line</span>
-            <input className="input" maxLength={140} value={f.bottomLine} onChange={(e) => up({ ...f, bottomLine: e.target.value })} />
-            <span className="hint">{'{year}'} = current year</span>
-          </label>
-          <label className="check"><input type="checkbox" checked={f.showRss} onChange={(e) => up({ ...f, showRss: e.target.checked })} />Always include an RSS link</label>
-          <label className="check"><input type="checkbox" checked={f.showBuiltOn} onChange={(e) => up({ ...f, showBuiltOn: e.target.checked })} />Show “Built on Cloudflare”</label>
-        </div>
-      </div>
-      <div className="grid2">
-        {f.columns.map((c, ci) => (
-          <div key={ci} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label className="field"><span className="lbl">Column {ci + 1} heading</span>
-              <input className="input" maxLength={30} value={c.heading} onChange={(e) => { const cols = f.columns.slice(); cols[ci] = { ...c, heading: e.target.value }; up({ ...f, columns: cols }); }} />
-            </label>
-            {c.links.map((l, li) => {
-              const bad = !isSafeHref(l.url);
-              const setLink = (p: Partial<typeof l>) => { const cols = f.columns.slice(); const links = c.links.slice(); links[li] = { ...l, ...p }; cols[ci] = { ...c, links }; up({ ...f, columns: cols }); };
-              return (
-                <div key={li} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr) auto', gap: 6 }}>
-                    <input className="input" aria-label="Link label" maxLength={40} value={l.label} onChange={(e) => setLink({ label: e.target.value })} />
-                    <input className={`input mono${bad ? ' bad' : ''}`} aria-label="Link URL" value={l.url} onChange={(e) => setLink({ url: e.target.value.trim() })} />
-                    <button type="button" className="btn small" aria-label={`Remove ${l.label}`} onClick={() => { const cols = f.columns.slice(); cols[ci] = { ...c, links: c.links.filter((_, j) => j !== li) }; up({ ...f, columns: cols }); }}>✕</button>
-                  </div>
-                  {bad && <span className="err-text">Use https://…, a page on this site (/cv) or mailto:</span>}
-                </div>
-              );
-            })}
-            {c.links.length < 8 && <button type="button" className="btn small" onClick={() => { const cols = f.columns.slice(); cols[ci] = { ...c, links: [...c.links, { label: 'New link', url: 'https://' }] }; up({ ...f, columns: cols }); }}>+ Add link</button>}
-            <button type="button" className="btn small danger" onClick={() => up({ ...f, columns: f.columns.filter((_, j) => j !== ci) })}>Remove column</button>
-          </div>
-        ))}
-        {f.columns.length < 3 && (
-          <button type="button" className="card btn" style={{ height: 'auto', minHeight: 120, justifyContent: 'center' }} onClick={() => up({ ...f, columns: [...f.columns, { heading: 'Links', links: [] }] })}>+ Add column</button>
-        )}
-      </div>
-      <div className="actions">
-        <span className={`status${badCount ? ' err' : ''}`}>{badCount ? `FIX ${badCount} LINK${badCount > 1 ? 'S' : ''} BEFORE PUBLISHING` : dirty ? 'UNSAVED CHANGES' : 'LIVE'}</span>
-        <button type="button" className="btn primary" disabled={!dirty || badCount > 0} onClick={save}>Publish footer</button>
-      </div>
-    </div>
-  );
-}
+// ------------------------------------------------------------------ Site
 
 function SiteSettings() {
   const [saved, setSaved] = useState<SiteSetting | null>(null);
@@ -196,15 +113,13 @@ function SiteSettings() {
     api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); }).catch(() => {});
     api.get<{ counts: Record<string, number> }>('/api/admin/topics').then((r) => setCounts(r.counts)).catch(() => {});
   }, []);
-  if (!s || !saved) return <p className="hint">Loading…</p>;
+  if (!s || !saved) return <Loading />;
 
   const dirty = JSON.stringify(s) !== JSON.stringify(saved) || changes.length > 0;
-  // Counts follow pending renames so the chip keeps its number.
   const shown: Record<string, number> = { ...counts };
   for (const c of changes) if (c.to) shown[c.to] = (shown[c.to] ?? 0) + (counts[c.from] ?? 0);
 
   const record = (c: TopicChange) => {
-    // Chain renames (A→B then B→C becomes A→C).
     const prior = changes.find((x) => x.to === c.from);
     setChanges(prior ? changes.map((x) => (x === prior ? { from: x.from, to: c.to } : x)) : [...changes, c]);
   };
@@ -213,7 +128,7 @@ function SiteSettings() {
     const origin = changes.find((x) => x.to === t)?.from ?? t;
     const n = counts[origin] ?? 0;
     if (n > 0) {
-      const ok = await dialog.confirm({ title: `Remove “${t}”?`, body: `${n} post${n === 1 ? '' : 's'} will have no topic. You can set a new one in each post.`, confirmLabel: 'Remove', danger: true });
+      const ok = await dialog.confirm({ title: `Remove “${t}”?`, body: `${n} post${n === 1 ? '' : 's'} will have no topic.`, confirmLabel: 'Remove', danger: true });
       if (!ok) return;
     }
     setS({ ...s, topics: s.topics.filter((x) => x !== t) });
@@ -239,85 +154,99 @@ function SiteSettings() {
   };
 
   return (
-    <section className="card" style={{ maxWidth: 760 }}>
-      <div className="set-row">
-        <div className="set-l"><b>Site name</b><span>Header, tab title, RSS</span></div>
-        <input className="input" value={s.title} maxLength={60} aria-label="Site name" onChange={(e) => setS({ ...s, title: e.target.value })} />
-      </div>
-      <div className="set-row">
-        <div className="set-l"><b>Tagline</b><span>Empty = section name</span></div>
-        <div className="stack" style={{ gap: 8 }}>
-          <input className="input" value={s.tagline} maxLength={60} placeholder="journal, photos, cv…" aria-label="Tagline" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
-          <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'journal'}</i></span>
-        </div>
-      </div>
-      <div className="set-row">
-        <div className="set-l"><b>Journal topics</b><span>Filters on the home page and journal</span></div>
+    <Panel title="Site" desc="Name, tagline and journal topics.">
+      <Row label="Site name" hint="Header, tab title, RSS" htmlFor="site-name">
+        <input id="site-name" className="input" value={s.title} maxLength={60} onChange={(e) => setS({ ...s, title: e.target.value })} />
+      </Row>
+      <Row label="Tagline" hint="Empty = section name" htmlFor="site-tagline">
+        <input id="site-tagline" className="input" value={s.tagline} maxLength={60} placeholder="journal, photos, cv…" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
+        <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'journal'}</i></span>
+      </Row>
+      <Row label="Journal topics" hint="Filters on the home page">
         <TopicsEditor topics={s.topics} counts={shown} onRemove={(t) => void remove(t)}
           onChange={(topics, change) => { setS({ ...s, topics }); if (change) record(change); }} />
-      </div>
-      <div className="save-bar">
-        {dirty && <span className="status">Unsaved changes</span>}
-        {changes.some((c) => c.to) && <span className="hint">Renamed topics update their posts.</span>}
-        <button type="button" className="btn primary" disabled={!dirty || busy || !s.title.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
-      </div>
-    </section>
+      </Row>
+      <SaveBar dirty={dirty} busy={busy} onSave={save} disabled={!s.title.trim()} note={changes.some((c) => c.to) ? 'Renamed topics update their posts.' : undefined} />
+    </Panel>
   );
 }
 
-function AdsSettings() {
-  const [a, setA] = useState<AdsSetting | null>(null);
+// ------------------------------------------------------------------ Footer
+
+function FooterSettings() {
+  const [f, setF] = useState<FooterSetting | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const toast = useToast();
-  useEffect(() => {
-    api.get<{ value: AdsSetting }>('/api/admin/settings/ads').then((r) => setA(r.value)).catch((e) => setErr(errorText(e)));
-  }, []);
-  if (!a) return <p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p>;
 
-  const clientOk = a.client === '' || ADSENSE_CLIENT_RE.test(a.client.trim());
-  const slotOk = (v: string) => v === '' || ADSENSE_SLOT_RE.test(v.trim());
-  const save = async (next: AdsSetting) => {
+  useEffect(() => {
+    api.get<{ value: FooterSetting }>('/api/admin/settings/footer').then((r) => setF(r.value)).catch((e) => setErr(errorText(e)));
+  }, []);
+  if (!f) return <Loading error={err} />;
+
+  const up = (next: FooterSetting) => { setF(next); setDirty(true); };
+  const badCount = f.columns.reduce((n, c) => n + c.links.filter((l) => !isSafeHref(l.url)).length, 0);
+  const save = async () => {
+    setBusy(true);
     try {
-      const r = await api.put<{ value: AdsSetting }>('/api/admin/settings/ads', next);
-      setA(r.value);
-      toast(r.value.enabled ? 'Ads are on' : 'Saved');
+      const r = await api.put<{ value: FooterSetting }>('/api/admin/settings/footer', f);
+      setF(r.value);
+      setDirty(false);
+      toast('Footer published');
     } catch (e) {
       toast(errorText(e));
     }
+    setBusy(false);
   };
+  const setCol = (ci: number, col: FooterSetting['columns'][number]) => { const cols = f.columns.slice(); cols[ci] = col; up({ ...f, columns: cols }); };
 
   return (
-    <div className="grid2">
-      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="check" style={{ justifyContent: 'space-between' }}>
-          <span>Show ads</span>
-          <Switch checked={a.enabled} label="Show ads" disabled={!ADSENSE_CLIENT_RE.test(a.client)} onChange={(v) => save({ ...a, enabled: v })} />
-        </div>
-        <label className="field">Publisher ID
-          <input className={`input mono${clientOk ? '' : ' bad'}`} value={a.client} placeholder="ca-pub-0000000000000000" spellCheck={false} autoCapitalize="off"
-            onChange={(e) => setA({ ...a, client: e.target.value.trim() })} />
-        </label>
-        <label className="field">Home page unit <span className="hint">Ad slot ID · optional</span>
-          <input className={`input mono${slotOk(a.homeSlot) ? '' : ' bad'}`} value={a.homeSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, homeSlot: e.target.value.trim() })} />
-        </label>
-        <label className="field">End of posts unit <span className="hint">Ad slot ID · optional</span>
-          <input className={`input mono${slotOk(a.articleSlot) ? '' : ' bad'}`} value={a.articleSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, articleSlot: e.target.value.trim() })} />
-        </label>
-        <div><button type="button" className="btn primary" disabled={!clientOk || !slotOk(a.homeSlot) || !slotOk(a.articleSlot)} onClick={() => save(a)}>Save</button></div>
-      </section>
-      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="lbl">Checklist</div>
-        <dl className="facts">
-          <dt>ads.txt</dt><dd>{ADSENSE_CLIENT_RE.test(a.client) ? <a href="/ads.txt" target="_blank" rel="noopener">Live ↗</a> : 'After you save a publisher ID'}</dd>
-          <dt>Privacy</dt><dd><a href="/admin/pages/privacy">Write the Privacy page</a> (required by AdSense)</dd>
-          <dt>EU / UK</dt><dd>Publish Google’s consent message in AdSense → Privacy &amp; messaging</dd>
-          <dt>Auto ads</dt><dd>Optional, set in AdSense. The units above work without them.</dd>
-          <dt>No ads</dt><dd>Admin, CV, About, Privacy</dd>
-        </dl>
-      </section>
-    </div>
+    <>
+      <Panel title="Text" desc="Shown at the bottom of every page.">
+        <Row label="About" hint={`${f.about.length}/160`} htmlFor="ft-about">
+          <textarea id="ft-about" className="textarea" rows={3} maxLength={160} value={f.about} onChange={(e) => up({ ...f, about: e.target.value })} />
+        </Row>
+        <Row label="Bottom line" hint="{year} = current year" htmlFor="ft-bottom">
+          <input id="ft-bottom" className="input" maxLength={140} value={f.bottomLine} onChange={(e) => up({ ...f, bottomLine: e.target.value })} />
+        </Row>
+        <ToggleRow label="RSS link" hint="Always include one" checked={f.showRss} onChange={(v) => up({ ...f, showRss: v })} />
+        <ToggleRow label="“Built on Cloudflare”" checked={f.showBuiltOn} onChange={(v) => up({ ...f, showBuiltOn: v })} />
+      </Panel>
+
+      <Panel title="Link columns" desc="Up to 3 columns of up to 8 links."
+        actions={f.columns.length < 3 && <button type="button" className="btn small" onClick={() => up({ ...f, columns: [...f.columns, { heading: 'Links', links: [] }] })}>+ Column</button>}>
+        {f.columns.map((c, ci) => (
+          <Row key={ci} label={`Column ${ci + 1}`} hint="Heading, then links">
+            <input className="input" aria-label={`Column ${ci + 1} heading`} maxLength={30} value={c.heading} placeholder="Heading" onChange={(e) => setCol(ci, { ...c, heading: e.target.value })} />
+            {c.links.map((l, li) => {
+              const bad = !isSafeHref(l.url);
+              const setLink = (p: Partial<typeof l>) => { const links = c.links.slice(); links[li] = { ...l, ...p }; setCol(ci, { ...c, links }); };
+              return (
+                <div key={li} className="stack" style={{ gap: 3 }}>
+                  <div className="input-row">
+                    <input className="input" aria-label="Link label" maxLength={40} value={l.label} onChange={(e) => setLink({ label: e.target.value })} />
+                    <input className={`input mono${bad ? ' bad' : ''}`} aria-label="Link URL" value={l.url} onChange={(e) => setLink({ url: e.target.value.trim() })} />
+                    <button type="button" className="btn small" aria-label={`Remove ${l.label}`} onClick={() => setCol(ci, { ...c, links: c.links.filter((_, j) => j !== li) })}>✕</button>
+                  </div>
+                  {bad && <span className="err-text">Use https://, a page like /cv, or mailto:</span>}
+                </div>
+              );
+            })}
+            <div className="row">
+              {c.links.length < 8 && <button type="button" className="btn small" onClick={() => setCol(ci, { ...c, links: [...c.links, { label: 'New link', url: 'https://' }] })}>+ Link</button>}
+              <button type="button" className="btn small danger" onClick={() => up({ ...f, columns: f.columns.filter((_, j) => j !== ci) })}>Remove column</button>
+            </div>
+          </Row>
+        ))}
+        <SaveBar dirty={dirty} busy={busy} onSave={save} label="Publish footer" disabled={badCount > 0}
+          error={badCount ? `Fix ${badCount} link${badCount > 1 ? 's' : ''} first` : undefined} />
+      </Panel>
+    </>
   );
 }
+
+// ------------------------------------------------------------------ Photos
 
 function WatermarkPreview({ p }: { p: ProtectionSetting }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -327,18 +256,17 @@ function WatermarkPreview({ p }: { p: ProtectionSetting }) {
     if (!c || !ctx) return;
     const w = c.width;
     const h = c.height;
-    // A neutral stand-in photo: sky, horizon, ground.
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#c9d3d6'); g.addColorStop(0.55, '#8d9a9c'); g.addColorStop(0.56, '#4d544f'); g.addColorStop(1, '#232623');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    void document.fonts.load('600 40px "Inter Variable"').catch(() => undefined).then(() => {
+    const paint = () => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#c9d3d6'); g.addColorStop(0.55, '#8d9a9c'); g.addColorStop(0.56, '#4d544f'); g.addColorStop(1, '#232623');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
       if (p.watermark) drawWatermark(ctx, w, h, p);
-    });
+    };
+    paint();
+    void document.fonts.load('600 40px "Inter Variable"').catch(() => undefined).then(paint);
   }, [p]);
-  return <canvas ref={ref} width={960} height={640} style={{ width: '100%', height: 'auto', borderRadius: 10, display: 'block' }} aria-label="Watermark preview" role="img" />;
+  return <canvas ref={ref} width={960} height={600} className="wm-preview" role="img" aria-label="Watermark preview" />;
 }
 
 function PhotoSettings() {
@@ -346,6 +274,7 @@ function PhotoSettings() {
   const [saved, setSaved] = useState<ProtectionSetting | null>(null);
   const [status, setStatus] = useState<{ sig: string; total: number; pending: { id: string }[] } | null>(null);
   const [run, setRun] = useState<{ done: number; of: number; failed: number } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const toast = useToast();
 
@@ -354,20 +283,25 @@ function PhotoSettings() {
     api.get<{ value: ProtectionSetting }>('/api/admin/settings/protection').then((r) => { setP(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
     void loadStatus();
   }, []);
-  if (!p || !saved) return <p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p>;
+  if (!p || !saved) return <Loading error={err} />;
 
-  const dirty = JSON.stringify(p) !== JSON.stringify(saved);
-  const save = async (next: ProtectionSetting) => {
+  const look = (x: ProtectionSetting) => JSON.stringify([x.text, x.position, x.size, x.opacity]);
+  const dirty = look(p) !== look(saved);
+  const save = async (next: ProtectionSetting, quiet = false) => {
+    setBusy(true);
     try {
       const r = await api.put<{ value: ProtectionSetting }>('/api/admin/settings/protection', next);
       setP(r.value);
       setSaved(r.value);
-      toast('Saved');
+      if (!quiet) toast('Saved');
       await loadStatus();
     } catch (e) {
       toast(errorText(e));
     }
+    setBusy(false);
   };
+  // Switches save straight away, without unsaved look edits.
+  const flip = (patch: Partial<ProtectionSetting>) => { setP({ ...p, ...patch }); void save({ ...saved, ...patch }); };
 
   const applyAll = async () => {
     if (!status) return;
@@ -375,11 +309,7 @@ function PhotoSettings() {
     setRun({ done: 0, of: ids.length, failed: 0 });
     let failed = 0;
     for (let i = 0; i < ids.length; i++) {
-      try {
-        await watermarkStored(ids[i], saved, status.sig);
-      } catch {
-        failed++;
-      }
+      try { await watermarkStored(ids[i], saved, status.sig); } catch { failed++; }
       setRun({ done: i + 1, of: ids.length, failed });
     }
     toast(failed ? `${ids.length - failed} watermarked, ${failed} failed` : 'All photos watermarked');
@@ -389,63 +319,103 @@ function PhotoSettings() {
 
   const pending = status?.pending.length ?? 0;
   return (
-    <div className="grid2">
-      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="check" style={{ justifyContent: 'space-between' }}>
-          <span>Watermark photos</span>
-          <Switch checked={p.watermark} label="Watermark photos" onChange={(v) => save({ ...p, watermark: v })} />
-        </div>
-        <WatermarkPreview p={p} />
-        <label className="field">Text
-          <input className="input" value={p.text} maxLength={60} onChange={(e) => setP({ ...p, text: e.target.value })} />
-        </label>
-        <div className="field">Position
-          <div className="seg-row" role="radiogroup" aria-label="Position">
-            {([['br', 'Bottom right'], ['bl', 'Bottom left'], ['center', 'Centre'], ['tiled', 'Tiled']] as const).map(([v, l]) => (
-              <button key={v} type="button" role="radio" aria-checked={p.position === v} className="btn small" onClick={() => setP({ ...p, position: v })}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div className="field">Size
-          <div className="seg-row" role="radiogroup" aria-label="Size">
-            {([['s', 'Small'], ['m', 'Medium'], ['l', 'Large']] as const).map(([v, l]) => (
-              <button key={v} type="button" role="radio" aria-checked={p.size === v} className="btn small" onClick={() => setP({ ...p, size: v })}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <label className="field">Opacity · {Math.round(p.opacity * 100)}%
-          <input type="range" min={10} max={70} step={5} value={Math.round(p.opacity * 100)} onChange={(e) => setP({ ...p, opacity: Number(e.target.value) / 100 })} />
-        </label>
-        <div><button type="button" className="btn primary" disabled={!dirty || !p.text.trim()} onClick={() => save(p)}>Save</button></div>
-      </section>
+    <>
+      <Panel title="Watermark" desc="Baked into public copies (max 2560 px). Originals stay private.">
+        <ToggleRow label="Watermark photos" hint="New uploads are watermarked automatically" checked={saved.watermark} onChange={(v) => flip({ watermark: v })} />
+        <Row label="Preview"><WatermarkPreview p={{ ...p, watermark: true }} /></Row>
+        <Row label="Text" htmlFor="wm-text">
+          <input id="wm-text" className="input" value={p.text} maxLength={60} onChange={(e) => setP({ ...p, text: e.target.value })} />
+        </Row>
+        <Row label="Position">
+          <Segmented label="Position" value={p.position} onChange={(v) => setP({ ...p, position: v })}
+            options={[['br', 'Bottom right'], ['bl', 'Bottom left'], ['center', 'Centre'], ['tiled', 'Tiled']] as const} />
+        </Row>
+        <Row label="Size">
+          <Segmented label="Size" value={p.size} onChange={(v) => setP({ ...p, size: v })} options={[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']] as const} />
+        </Row>
+        <Row label="Opacity" hint={`${Math.round(p.opacity * 100)}%`} htmlFor="wm-op">
+          <input id="wm-op" type="range" min={10} max={70} step={5} value={Math.round(p.opacity * 100)} onChange={(e) => setP({ ...p, opacity: Number(e.target.value) / 100 })} />
+        </Row>
+        <SaveBar dirty={dirty} busy={busy} onSave={() => save(p)} disabled={!p.text.trim()} note={dirty && saved.watermark ? 'Existing photos will need Apply again.' : undefined} />
+      </Panel>
 
-      <div className="stack">
-        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="lbl">Photos</div>
-          {status && (
-            saved.watermark ? (
-              pending === 0
-                ? <span>All {status.total} photos are watermarked.</span>
-                : <span>{pending} of {status.total} photos still show without a watermark.</span>
-            ) : <span className="muted">Watermark is off. Originals are shown.</span>
-          )}
+      <Panel title="Existing photos">
+        <Row label="Status" hint={status ? `${status.total} photos` : undefined}>
+          {!saved.watermark ? <span className="muted">Watermark is off. Originals are shown.</span>
+            : pending === 0 ? <span>All photos are watermarked.</span>
+            : <span>{pending} still without a watermark.</span>}
           {saved.watermark && pending > 0 && !run && <div><button type="button" className="btn accent" onClick={applyAll}>Apply to {pending} photo{pending === 1 ? '' : 's'}</button></div>}
           {run && (
-            <div className="stack" style={{ gap: 6 }}>
+            <>
               <div className="meter"><i style={{ width: `${(run.done / Math.max(1, run.of)) * 100}%`, background: 'var(--accent)' }} /></div>
-              <span className="muted">{run.done} / {run.of}{run.failed ? ` · ${run.failed} failed` : ''}. Keep this tab open.</span>
-            </div>
+              <span className="muted">{run.done}/{run.of}{run.failed ? ` · ${run.failed} failed` : ''} · keep this tab open</span>
+            </>
           )}
-          <span className="muted">New uploads are watermarked automatically. Public copies are capped at 2560 px; originals stay private.</span>
-        </section>
-        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="check" style={{ justifyContent: 'space-between' }}>
-            <span>Block saving</span>
-            <Switch checked={p.blockSave} label="Block saving" onChange={(v) => save({ ...p, blockSave: v })} />
-          </div>
-          <span className="muted">Right-click, drag and long-press save are blocked. Image links can’t be opened on their own or shown on other sites. Screenshots can’t be stopped; the watermark covers those.</span>
-        </section>
-      </div>
-    </div>
+        </Row>
+      </Panel>
+
+      <Panel title="Saving">
+        <ToggleRow label="Block saving" hint="Right-click, drag, long-press, direct links and hotlinking. Screenshots can’t be stopped."
+          checked={saved.blockSave} onChange={(v) => flip({ blockSave: v })} />
+      </Panel>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ Ads
+
+function AdsSettings() {
+  const [a, setA] = useState<AdsSetting | null>(null);
+  const [saved, setSaved] = useState<AdsSetting | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const toast = useToast();
+  useEffect(() => {
+    api.get<{ value: AdsSetting }>('/api/admin/settings/ads').then((r) => { setA(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
+  }, []);
+  if (!a || !saved) return <Loading error={err} />;
+
+  const clientOk = a.client === '' || ADSENSE_CLIENT_RE.test(a.client);
+  const slotOk = (v: string) => v === '' || ADSENSE_SLOT_RE.test(v);
+  const ids = (x: AdsSetting) => JSON.stringify([x.client, x.homeSlot, x.articleSlot]);
+  const dirty = ids(a) !== ids(saved);
+  const save = async (next: AdsSetting) => {
+    setBusy(true);
+    try {
+      const r = await api.put<{ value: AdsSetting }>('/api/admin/settings/ads', next);
+      setA(r.value);
+      setSaved(r.value);
+      toast(r.value.enabled ? 'Ads are on' : 'Saved');
+    } catch (e) {
+      toast(errorText(e));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <Panel title="Google AdSense" desc="Never shown in the admin, CV, About or Privacy.">
+        <ToggleRow label="Show ads" hint={ADSENSE_CLIENT_RE.test(saved.client) ? undefined : 'Save a publisher ID first'}
+          checked={saved.enabled} disabled={!ADSENSE_CLIENT_RE.test(saved.client)} onChange={(v) => save({ ...saved, enabled: v })} />
+        <Row label="Publisher ID" hint="ca-pub-…" htmlFor="ads-client">
+          <input id="ads-client" className={`input mono${clientOk ? '' : ' bad'}`} value={a.client} placeholder="ca-pub-0000000000000000" spellCheck={false} autoCapitalize="off"
+            onChange={(e) => setA({ ...a, client: e.target.value.trim() })} />
+        </Row>
+        <Row label="Home page unit" hint="Ad slot ID · optional" htmlFor="ads-home">
+          <input id="ads-home" className={`input mono${slotOk(a.homeSlot) ? '' : ' bad'}`} value={a.homeSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, homeSlot: e.target.value.trim() })} />
+        </Row>
+        <Row label="End of posts unit" hint="Ad slot ID · optional" htmlFor="ads-article">
+          <input id="ads-article" className={`input mono${slotOk(a.articleSlot) ? '' : ' bad'}`} value={a.articleSlot} inputMode="numeric" placeholder="1234567890" onChange={(e) => setA({ ...a, articleSlot: e.target.value.trim() })} />
+        </Row>
+        <SaveBar dirty={dirty} busy={busy} onSave={() => save({ ...a, enabled: saved.enabled && ADSENSE_CLIENT_RE.test(a.client) })}
+          disabled={!clientOk || !slotOk(a.homeSlot) || !slotOk(a.articleSlot)} />
+      </Panel>
+      <Panel title="Checklist">
+        <Row label="ads.txt">{ADSENSE_CLIENT_RE.test(saved.client) ? <a href="/ads.txt" target="_blank" rel="noopener">Live ↗</a> : <span className="muted">After you save a publisher ID</span>}</Row>
+        <Row label="Privacy page"><a href="/admin/pages/privacy">Write it</a><span className="muted">Required by AdSense</span></Row>
+        <Row label="EU / UK consent"><span className="muted">Publish Google’s message in AdSense → Privacy &amp; messaging</span></Row>
+        <Row label="Auto ads"><span className="muted">Optional, set in AdSense</span></Row>
+      </Panel>
+    </>
   );
 }

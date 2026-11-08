@@ -4,7 +4,8 @@ import { useDialog } from '../components/dialog';
 import DateTimePicker from '../components/DateTimePicker';
 import Editor from '../editor/Editor';
 import MediaPicker from '../components/MediaPicker';
-import { Switch, useToast } from '../components/ui';
+import { useToast } from '../components/ui';
+import { Field, Segmented, ToggleRow } from '../components/kit';
 import { slugify } from '../../lib/shared/safe';
 import { KIND_LABELS, KIND_PATH, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting } from '../../lib/shared/types';
 
@@ -139,13 +140,13 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
       <div className="topbar">
         <div className="crumbs"><span>{KIND_LABELS[draft.kind]}</span><span>/</span><b>{draft.title || 'Untitled'}</b></div>
         <div className="actions">
-          <span className={`status${err ? ' err' : ''}`}>{err ? 'NOT SAVED' : saving ? 'SAVING…' : dirty ? 'UNSAVED CHANGES' : 'SAVED'}</span>
+          <span className={`status${err ? ' err' : ''}`}>{err ? 'Not saved' : saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
           {entryId && draft.status === 'published' && draft.is_public && <a className="btn" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Publish…</button>
           <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
         </div>
       </div>
-      {err && <div className="page" style={{ paddingBottom: 0 }}><p className="err-text" role="alert">{err}</p></div>}
+      {err && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
           <div className="doc">
@@ -183,37 +184,26 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close publishing" onClick={() => setSheet(false)} />}
         <aside className={`editor-side${sheet ? ' open' : ''}`} aria-label="Publishing">
           <span className="grip" aria-hidden="true" />
-          <div className="spread">
-            <div className="lbl">Publishing</div>
+          <div className="side-head">
+            <h2>Publishing</h2>
             <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
           </div>
-          <label className="field">Status
-            <select className="select" value={draft.status} onChange={(e) => patch({ status: e.target.value as Draft['status'], ...(e.target.value === 'draft' ? {} : {}) })}>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
-          </label>
-          <div className="check" style={{ justifyContent: 'space-between' }}>
-            <span>Show publicly</span>
-            <Switch checked={draft.is_public} label="Show publicly" onChange={(v) => patch({ is_public: v })} />
+          <Field label="Status" hint={draft.status === 'draft' ? 'Only you can see drafts.' : undefined}>
+            <Segmented label="Status" value={draft.status} onChange={(v) => patch({ status: v })} options={[['draft', 'Draft'], ['published', 'Published']] as const} />
+          </Field>
+          <div className="side-toggles">
+            <ToggleRow label="Show publicly" hint={draft.is_public && draft.status === 'draft' ? 'Live once published' : undefined} checked={draft.is_public} onChange={(v) => patch({ is_public: v })} />
+            {draft.kind === 'post' && (
+              <ToggleRow label="Feature on home page" hint={isFeatured ? 'Pinned on the home page' : undefined} checked={isFeatured} onChange={(v) => void setFeature(v)} />
+            )}
           </div>
-          {draft.is_public && draft.status === 'draft' && <span className="hint">Live once published.</span>}
-          <div className="field">Publish date
+          <Field label="Publish date" hint="Future date = scheduled.">
             <DateTimePicker value={draft.published_at} onChange={(iso) => patch({ published_at: iso })} />
-            <span className="hint">Future date = scheduled.</span>
-          </div>
-          <label className="field">URL slug
-            <input className="input mono" value={draft.slug} onChange={(e) => { slugTouched.current = true; patch({ slug: slugify(e.target.value) }); }} />
-            <span className="hint">{liveUrl}</span>
-          </label>
-          {draft.kind === 'post' && (
-            <div className="check" style={{ justifyContent: 'space-between' }}>
-              <span>Feature on home page</span>
-              <Switch checked={isFeatured} label="Feature on home page" onChange={setFeature} />
-            </div>
-          )}
-          {draft.kind === 'post' && isFeatured && <span className="hint">Pinned on the home page.</span>}
-          {entryId && <button type="button" className="btn danger" style={{ marginTop: 'auto' }} onClick={remove}>Delete entry</button>}
+          </Field>
+          <Field label="URL slug" hint={liveUrl} htmlFor="ed-slug">
+            <input id="ed-slug" className="input mono" value={draft.slug} onChange={(e) => { slugTouched.current = true; patch({ slug: slugify(e.target.value) }); }} />
+          </Field>
+          {entryId && <button type="button" className="btn danger side-danger" onClick={remove}>Delete entry</button>}
         </aside>
       </div>
       {picker && <MediaPicker onPick={(m) => picker(m)} onClose={() => picker(null)} />}
