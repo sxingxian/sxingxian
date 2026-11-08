@@ -33,7 +33,7 @@ const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`,
         </div></figure>
       </div>
     ) : entry.cover_media_id ? (
-      <div class="hero"><button type="button" class="lb" data-lightbox data-caption={entry.title} aria-label={`View photo: ${entry.title}`}><img src={`/media/${entry.cover_media_id}`} alt="" decoding="async" draggable="false" /></button></div>
+      <div class="hero" style={`view-transition-name:c-${entry.id.replace(/[^a-zA-Z0-9-]/g, '')}`}><button type="button" class="lb" data-lightbox data-caption={entry.title} aria-label={`View photo: ${entry.title}`}><img src={`/media/${entry.cover_media_id}`} alt="" decoding="async" draggable="false" /></button></div>
     ) : null}
     <div class="prose" set:html={html} />
     <AdSlot slot="article" />

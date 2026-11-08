@@ -19,22 +19,24 @@ const [feed, work, galleries, films] = await Promise.all([
   sections.film ? listPublicEntries('film', { limit: 1 }) : Promise.resolve([]),
 ]);
 const latestFilm = films[0];
+const words = featured ? featured.title.trim().split(/\s+/) : [];
+const coverName = featured && featured.cover_media_id ? `view-transition-name:c-${featured.id.replace(/[^a-zA-Z0-9-]/g, '')}` : undefined;
 ---
-<Site>
+<Site motion intro={!topic}>
   {featured && (
     <section class="wrap">
       <article class="featured">
-        <a class="cover" href={`/journal/${featured.slug}`} tabindex="-1" aria-hidden="true">
-          <Thumb image={featured.cover_media_id ? { kind: 'media', id: featured.cover_media_id } : null} eager />
+        <a class="cover rv-cover" data-rv="fcover" href={`/journal/${featured.slug}`} tabindex="-1" aria-hidden="true" style={coverName}>
+          <span class="par"><Thumb image={featured.cover_media_id ? { kind: 'media', id: featured.cover_media_id } : null} eager /></span>
         </a>
         <div class="stack">
-          <span class="row-meta">
+          <span class="row-meta rv" data-rv="fmeta">
             <span class="lbl accent">Featured{featured.topic ? ` · ${featured.topic}` : ''}</span>
             <span class="meta">{formatDate(featured.published_at)} · {featured.read_minutes} min</span>
           </span>
-          <h1><a href={`/journal/${featured.slug}`}>{featured.title}</a></h1>
-          {featured.dek && <p>{featured.dek}</p>}
-          <a class="read" href={`/journal/${featured.slug}`}>Read →</a>
+          <h1 class="title rv" data-rv="ftitle"><a href={`/journal/${featured.slug}`}>{words.map((w, i) => (<><span class={`w w${Math.min(i + 1, 14)}`}><span>{w}</span></span>{i < words.length - 1 ? ' ' : ''}</>))}</a></h1>
+          {featured.dek && <p class="rv" data-rv="fdek">{featured.dek}</p>}
+          <a class="read rv" data-rv="fread" href={`/journal/${featured.slug}`}>Read <span class="arrow" aria-hidden="true">→</span></a>
         </div>
       </article>
     </section>
@@ -42,7 +44,7 @@ const latestFilm = films[0];
 
   <section class="wrap main">
     <div>
-      <div class="list-head">
+      <div class="list-head rv" data-rv="lhead">
         <h2>{topic ? topic : 'Latest'}</h2>
         <nav class="topics" aria-label="Filter by topic">
           <a class="topic" href="/" aria-current={topic === '' ? 'true' : undefined}>All</a>
@@ -51,25 +53,27 @@ const latestFilm = films[0];
           ))}
         </nav>
       </div>
-      {feed.length === 0 ? (
-        <p class="empty">No posts here yet.</p>
-      ) : (
-        feed.map((item) => <PostRow item={item} />)
-      )}
-      <div class="pager"><span></span><a href={topic ? `/journal?topic=${encodeURIComponent(topic)}` : '/journal'}>All posts →</a></div>
+      <div class="feed">
+        {feed.length === 0 ? (
+          <p class="empty">No posts here yet.</p>
+        ) : (
+          feed.map((item) => <PostRow item={item} reveal />)
+        )}
+      </div>
+      <div class="pager rv" data-rv="pager"><span></span><a href={topic ? `/journal?topic=${encodeURIComponent(topic)}` : '/journal'}>All posts <span class="arrow" aria-hidden="true">→</span></a></div>
       <AdSlot slot="home" />
     </div>
 
     <aside class="side" aria-label="More from sxingxian">
-      <div class="card">
+      <div class="card rv" data-rv="side">
         <span class="lbl">Follow along</span>
         <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Every post, here and on the journal, in one feed for your reader.</p>
         <div class="rss-url"><code>sxingxian.com/rss.xml</code><a href="/rss.xml">Open</a></div>
       </div>
 
       {sections.work && work.length > 0 && (
-        <div class="card">
-          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All →</a></div>
+        <div class="card rv" data-rv="side">
+          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All <span class="arrow" aria-hidden="true">→</span></a></div>
           {work.map((w) => (
             <a class="mini" href={`/work/${w.slug}`}>
               <span class="th"><Thumb image={w.cover_media_id ? { kind: 'media', id: w.cover_media_id } : null} /></span>
@@ -80,8 +84,8 @@ const latestFilm = films[0];
       )}
 
       {sections.photos && galleries.length > 0 && (
-        <div class="card">
-          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">Galleries →</a></div>
+        <div class="card rv" data-rv="side">
+          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">Galleries <span class="arrow" aria-hidden="true">→</span></a></div>
           <div class="photo-grid">
             {galleries.map((g) => (
               <a href={`/photos/${g.slug}`} aria-label={g.title}>
@@ -93,11 +97,65 @@ const latestFilm = films[0];
       )}
 
       {sections.film && latestFilm && (
-        <a class="card mini" style="border-top:1px solid var(--line);align-items:center" href={`/film/${latestFilm.slug}`}>
+        <a class="card mini rv" data-rv="side" style="border-top:1px solid var(--line);align-items:center" href={`/film/${latestFilm.slug}`}>
           <span class="th" style="width:92px;height:58px"><Thumb image={latestFilm.cover_media_id ? { kind: 'media', id: latestFilm.cover_media_id } : null} /></span>
           <span><span class="lbl">Latest film</span><b>{latestFilm.title}</b></span>
         </a>
       )}
     </aside>
   </section>
+
+  <!-- Reveal-on-view. html.motion (set in <head>) hides [data-rv] until this marks them seen.
+       First visit in a session: a staggered load sequence (after the intro curtain, if shown).
+       Later visits: what's on screen is shown at once; the rest reveals once as it scrolls in. -->
+  <script is:inline>
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains('motion')) return;
+    var els = Array.prototype.slice.call(document.querySelectorAll('[data-rv]'));
+    var FIXED = { fcover: 0, fmeta: 1, ftitle: 2, fdek: 3, fread: 4 };
+    function reveal(list) {
+      list.sort(function (a, b) { var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return Math.abs(ra.top - rb.top) < 24 ? ra.left - rb.left : ra.top - rb.top; });
+      var n = list.some(function (el) { return FIXED[el.getAttribute('data-rv')] !== undefined; }) ? 3 : 0;
+      list.forEach(function (el) {
+        var f = FIXED[el.getAttribute('data-rv')];
+        el.style.transitionDelay = ((f !== undefined ? f : Math.min(9, n++)) * 70) + 'ms';
+        el.classList.add('in');
+      });
+    }
+    var io = new IntersectionObserver(function (entries) {
+      var fresh = [];
+      entries.forEach(function (e) { if (e.isIntersecting) { io.unobserve(e.target); fresh.push(e.target); } });
+      if (fresh.length) reveal(fresh);
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    function start() {
+      if (start.done) return;
+      start.done = true;
+      // What's already on screen reveals now, in reading order; the rest waits for the observer.
+      var h = window.innerHeight * 0.94, now = [];
+      els.forEach(function (el) { var r = el.getBoundingClientRect(); if (r.top < h && r.bottom > 0) now.push(el); else io.observe(el); });
+      if (now.length) reveal(now); // the rect reads above already flushed the hidden styles, so this transitions
+    }
+    if (d.classList.contains('returning')) {
+      // Back on the home page this session: no load sequence for what's already on screen.
+      var h = window.innerHeight;
+      els.forEach(function (el) { var r = el.getBoundingClientRect(); if (r.top < h && r.bottom > 0) el.classList.add('in', 'now'); });
+      requestAnimationFrame(function () { requestAnimationFrame(function () { els.forEach(function (el) { el.classList.remove('now'); }); }); });
+      els = els.filter(function (el) { return !el.classList.contains('in'); });
+      start();
+    } else if (d.classList.contains('intro')) {
+      var curtain = document.querySelector('.intro-curtain');
+      var evs = ['pointerdown', 'wheel', 'touchstart', 'keydown'];
+      var off = function () { evs.forEach(function (ev) { window.removeEventListener(ev, skip); }); };
+      var done = function () { d.classList.remove('intro', 'intro-skip'); if (curtain) curtain.remove(); off(); };
+      var t1 = setTimeout(start, 1250);   // the page's own reveal begins under the lifting curtain
+      var t2 = setTimeout(done, 1800);
+      var skip = function () { clearTimeout(t1); clearTimeout(t2); d.classList.add('intro-skip'); start(); setTimeout(done, 240); off(); };
+      evs.forEach(function (ev) { window.addEventListener(ev, skip, { passive: true }); });
+    } else {
+      start();
+    }
+    d.setAttribute('data-rv-ready', '');
+  })();
+  </script>
 </Site>

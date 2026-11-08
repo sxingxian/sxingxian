@@ -15,8 +15,12 @@ interface Props {
   description?: string;
   noindex?: boolean;
   image?: string;
+  /** Home page: reveal-on-view motion. */
+  motion?: boolean;
+  /** Home page without a topic filter: the intro curtain on the first visit in a session. */
+  intro?: boolean;
 }
-const { title, description, noindex = false, image } = Astro.props;
+const { title, description, noindex = false, image, motion = false, intro = false } = Astro.props;
 const { site, sections, footer } = await getSettings(['site', 'sections', 'footer']);
 const nav = navItems(sections);
 const path = Astro.url.pathname;
@@ -37,6 +41,7 @@ const canonical = new URL(path, Astro.site ?? Astro.url).toString();
 const ads = await adsFor(path);
 const showPrivacy = await hasPrivacyPage().catch(() => false);
 const protect = (await getSetting('protection').catch(() => null))?.blockSave ?? true;
+const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ? '\u00a0' : ch, cls: `l l${Math.min(i + 1, 12)}` }));
 ---
 <!doctype html>
 <html lang="en" data-protect={protect ? '' : undefined}>
@@ -61,8 +66,19 @@ const protect = (await getSetting('protection').catch(() => null))?.blockSave ??
       <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ads.client}`} crossorigin="anonymous" is:inline></script>
     )}
     <script is:inline>(function(){var d=document.documentElement;d.classList.add('js');try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
+    {/* Before first paint: hide reveal targets and decide on the intro. The first home visit in a session gets the
+         intro (unless reduced motion); later visits are 'returning'. Fails open after 3 s if the page script never ran. */}
+    {motion && (
+      <script is:inline data-intro={intro ? '1' : '0'}>(function(){var d=document.documentElement,s=document.currentScript;if(!('IntersectionObserver' in window))return;d.classList.add('motion');var rm=false;try{rm=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}var seen='1';try{seen=sessionStorage.getItem('sx-home');sessionStorage.setItem('sx-home','1');}catch(e){}if(seen)d.classList.add('returning');else if(s&&s.getAttribute('data-intro')==='1'&&!rm)d.classList.add('intro');setTimeout(function(){if(!d.hasAttribute('data-rv-ready'))d.classList.remove('motion','intro');},3000);})();</script>
+    )}
   </head>
   <body>
+    {intro && (
+      <div class="intro-curtain" aria-hidden="true">
+        <span class="cur-mark"><span class="cur-word">{curtainLetters.map((l) => <span class={l.cls}><span>{l.ch}</span></span>)}</span>{tagline && <span class="cur-sub">{tagline}</span>}</span>
+        <span class="cur-bar"></span>
+      </div>
+    )}
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="wrap">
@@ -148,10 +164,22 @@ const protect = (await getSetting('protection').catch(() => null))?.blockSave ??
       var mq = window.matchMedia('(prefers-color-scheme: dark)');
       function saved() { try { var t = localStorage.getItem(KEY); return t === 'light' || t === 'dark' ? t : 'system'; } catch (e) { return 'system'; } }
       function effective(pref) { return pref === 'system' ? (mq.matches ? 'dark' : 'light') : pref; }
-      function apply(pref) {
+      function set(pref) {
         try { if (pref === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, pref); } catch (e) {}
         if (pref === 'system') d.removeAttribute('data-theme'); else d.setAttribute('data-theme', pref);
         sync();
+      }
+      // The new theme spreads in a circle from the button (View Transitions; instant elsewhere or with reduced motion).
+      function apply(pref, btn) {
+        var before = effective(saved()), after = effective(pref);
+        var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (before === after || still || !document.startViewTransition || !btn) { set(pref); return; }
+        var r = btn.getBoundingClientRect();
+        d.style.setProperty('--vx', (r.left + r.width / 2) + 'px');
+        d.style.setProperty('--vy', (r.top + r.height / 2) + 'px');
+        d.setAttribute('data-vt', 'theme');
+        var t = document.startViewTransition(function () { set(pref); });
+        t.finished.finally(function () { d.removeAttribute('data-vt'); });
       }
       function sync() {
         var pref = saved(), eff = effective(pref);
@@ -161,8 +189,8 @@ const protect = (await getSetting('protection').catch(() => null))?.blockSave ??
       document.addEventListener('click', function (e) {
         var t = e.target.closest && e.target.closest('[data-theme-toggle],[data-theme-set],[data-menu-open],[data-menu-close]');
         if (!t) return;
-        if (t.hasAttribute('data-theme-toggle')) apply(effective(saved()) === 'dark' ? 'light' : 'dark');
-        else if (t.hasAttribute('data-theme-set')) apply(t.getAttribute('data-theme-set'));
+        if (t.hasAttribute('data-theme-toggle')) apply(effective(saved()) === 'dark' ? 'light' : 'dark', t);
+        else if (t.hasAttribute('data-theme-set')) apply(t.getAttribute('data-theme-set'), t);
         else if (t.hasAttribute('data-menu-open')) openMenu(true);
         else if (t.hasAttribute('data-menu-close')) openMenu(false);
       });
