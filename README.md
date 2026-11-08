@@ -54,7 +54,7 @@ scripts/                    migrate, security tests, client-bundle secret scan
 ### 1. Neon
 
 1. Create a Neon project and copy the **pooled** connection string.
-2. Run the migrations from your machine. Export the variable in your shell; don't put it in a file that git tracks.
+2. Run the migrations, either from GitHub Actions (see **GitHub Actions** below; recommended) or from your machine. Export the variable in your shell; don't put it in a file that git tracks.
    ```bash
    export DATABASE_URL='…'
    npm ci
@@ -117,6 +117,33 @@ npx wrangler secret put B2_S3_SECRET_ACCESS_KEY
 Hosts without credentials appear greyed out in the upload dialog.
 
 **Video is R2-only.** Cloudflare's CDN terms restrict serving video and large files that are hosted outside Cloudflare. Use R2 for short clips and YouTube or Vimeo for long ones.
+
+## GitHub Actions (Neon + Cloudflare)
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **CI** (`ci.yml`) | Every push and PR | `npm audit` and `npm run verify` (type check, build, security lint, security tests, secret scan) |
+| **Neon · test migrations on a branch** (`neon-pr.yml`) | PRs that change `migrations/**` | Creates a fresh Neon branch `preview/pr-<n>` copied from production, applies all migrations, re-runs them (they must apply nothing), comments the schema diff on the PR, and deletes the branch when the PR closes. Production is never touched. |
+| **Neon · migrate production** (`neon-migrate.yml`) | Manual (with a *dry run* option), or called by Deploy | Shows pending migrations. If any are pending, it takes an instant **backup branch** `backup/pre-migrate-<run>` (kept 7 days), then applies the migrations. |
+| **Deploy** (`deploy.yml`) | Manual | verify → **migrate Neon** → deploy the Worker. The Worker only deploys if the migration succeeded. |
+
+### One-time setup
+
+1. **Connect Neon.** Either use the Neon GitHub integration (Neon console → Integrations → GitHub), which creates both of these for you, or add them by hand:
+   - Repository **secret** `NEON_API_KEY`: Neon console → Account settings → API keys. Prefer a project-scoped key.
+   - Repository **variable** `NEON_PROJECT_ID`: Neon console → Project settings.
+2. **Create a `production` environment** (Settings → Environments). Add these **environment secrets**:
+   - `DATABASE_URL`: the production **pooled** connection string
+   - `CLOUDFLARE_API_TOKEN`: a token with the *Edit Cloudflare Workers* template
+   - `CLOUDFLARE_ACCOUNT_ID`
+
+   Under *Required reviewers*, add yourself, so every production migration and deploy waits for your approval.
+3. Run **Actions → Neon · migrate production** once, with *dry run* ticked, to confirm the connection. Then run it again to create the tables.
+
+Day to day:
+- **New schema changes:** add a new file `migrations/0002_<name>.sql` (never edit an applied one; the script refuses changed checksums). Open a PR to test it on a Neon branch, merge it, then run **Deploy**.
+- **Check the database locally:** `npm run db:status` shows what's applied and what's pending.
+- **Write expand-then-contract migrations:** add new columns or tables first, and remove old ones in a later release. That way the running Worker never sees a schema it can't handle.
 
 ## Local development
 

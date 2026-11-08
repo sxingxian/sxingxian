@@ -1,0 +1,103 @@
+name: Neon · test migrations on a branch
+
+# For every pull request that changes the database schema:
+#   1. create a fresh Neon branch copied from production (data included, isolated),
+#   2. apply all migrations to it and run them a second time (must be a no-op),
+#   3. comment the schema diff on the pull request,
+#   4. delete the branch when the pull request is closed or merged.
+# Production is never touched here.
+#
+# Needs: repository secret NEON_API_KEY, repository variable NEON_PROJECT_ID.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - 'migrations/**'
+      - 'scripts/migrate.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-pr-${{ github.event.number }}
+  cancel-in-progress: true
+
+env:
+  BRANCH_NAME: preview/pr-${{ github.event.number }}
+
+jobs:
+  test-migrations:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write # schema-diff comment
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      # Start from a clean copy of production on every push, so edited
+      # migrations are tested from scratch rather than on top of old ones.
+      - name: Remove previous preview branch
+        continue-on-error: true
+        uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ env.BRANCH_NAME }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Expiry date
+        run: echo "EXPIRES_AT=$(date -u --date '+14 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Create preview branch from production
+        id: branch
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: ${{ env.BRANCH_NAME }}
+          expires_at: ${{ env.EXPIRES_AT }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Apply migrations to preview branch
+        env:
+          DATABASE_URL: ${{ steps.branch.outputs.db_url_pooled }}
+        run: node scripts/migrate.mjs
+
+      - name: Re-run migrations (must apply nothing)
+        env:
+          DATABASE_URL: ${{ steps.branch.outputs.db_url_pooled }}
+        run: |
+          out=$(node scripts/migrate.mjs)
+          echo "$out"
+          echo "$out" | grep -q "Already up to date" || { echo "::error::Migrations are not idempotent."; exit 1; }
+
+      - name: Comment schema diff on the pull request
+        uses: neondatabase/schema-diff-action@80cfa8521628e890015b60f5291a7738926617dc # v1.0.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          compare_branch: ${{ env.BRANCH_NAME }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          github-token: ${{ github.token }}
+
+  delete-preview-branch:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete preview branch
+        continue-on-error: true
+        uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ env.BRANCH_NAME }}
+          api_key: ${{ secrets.NEON_API_KEY }}

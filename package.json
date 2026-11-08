@@ -15,7 +15,8 @@
     "security:scan": "node scripts/scan-client-bundle.mjs",
     "test:security": "node scripts/test-security.mjs",
     "verify": "astro check && astro build && npm run lint:security && npm run test:security && npm run security:scan",
-    "lint:security": "eslint ."
+    "lint:security": "eslint .",
+    "db:status": "node scripts/migrate.mjs --status"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.4.6",

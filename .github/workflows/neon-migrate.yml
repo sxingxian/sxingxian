@@ -1,0 +1,93 @@
+name: Neon · migrate production
+
+# Applies pending migrations/*.sql to the production Neon database.
+# Runs on its own (Actions → "Neon · migrate production" → Run workflow) and is
+# called by the Deploy workflow before the Worker is deployed.
+#
+# Needs (see README → GitHub Actions):
+#   environment "production" secret  DATABASE_URL   production connection string
+#   repository secret                NEON_API_KEY   for the pre-migration backup branch
+#   repository variable              NEON_PROJECT_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only list pending migrations (change nothing)
+        type: boolean
+        default: false
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-production-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Check required configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          missing=0
+          [ -n "$DATABASE_URL" ]    || { echo "::error::Add the DATABASE_URL secret to the 'production' environment."; missing=1; }
+          [ -n "$NEON_API_KEY" ]    || { echo "::error::Add the NEON_API_KEY repository secret."; missing=1; }
+          [ -n "$NEON_PROJECT_ID" ] || { echo "::error::Add the NEON_PROJECT_ID repository variable."; missing=1; }
+          exit $missing
+
+      - name: Pending migrations
+        id: status
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          out=$(node scripts/migrate.mjs --status)
+          echo "$out"
+          if echo "$out" | grep -q "0 pending"; then echo "pending=false" >> "$GITHUB_OUTPUT"; else echo "pending=true" >> "$GITHUB_OUTPUT"; fi
+          { echo '### Neon migration status'; echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Instant copy-on-write snapshot of production, kept for 7 days.
+      # To roll back: restore from this branch in the Neon console.
+      - name: Expiry date for backup branch
+        if: steps.status.outputs.pending == 'true' && inputs.dry_run != true
+        run: echo "EXPIRES_AT=$(date -u --date '+7 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Backup branch before migrating
+        if: steps.status.outputs.pending == 'true' && inputs.dry_run != true
+        id: backup
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: backup/pre-migrate-${{ github.run_id }}
+          expires_at: ${{ env.EXPIRES_AT }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Apply migrations
+        if: steps.status.outputs.pending == 'true' && inputs.dry_run != true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node scripts/migrate.mjs
+          echo "Backup branch: backup/pre-migrate-${{ github.run_id }} (expires in 7 days)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nothing to apply
+        if: steps.status.outputs.pending != 'true'
+        run: echo "Production database is already up to date." | tee -a "$GITHUB_STEP_SUMMARY"
