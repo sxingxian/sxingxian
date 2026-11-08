@@ -1,28 +1,14 @@
-// Worker entry: Astro handles HTTP; the scheduled handler runs WordPress jobs.
+// Worker entry: Astro handles HTTP. Background jobs (WordPress checks, clean-up) are
+// started by site traffic (see lib/server/maintenance.ts), so no cron trigger is needed.
+// If you add a cron trigger in wrangler.jsonc, it runs the same jobs.
 import { handle } from '@astrojs/cloudflare/handler';
-import { healthCheck, reconcile, syncIncremental, log } from './lib/server/wordpress';
-import { purgeAuthData } from './lib/server/users';
-
-async function runCron(cron: string, scheduledTime: number): Promise<void> {
-  try {
-    if (cron === '0 19 * * *') {
-      await purgeAuthData().catch(() => {});
-      await reconcile();
-      return;
-    }
-    const status = await healthCheck();
-    const minute = new Date(scheduledTime).getUTCMinutes();
-    if (status === 'up' && minute % 15 === 0) await syncIncremental();
-  } catch (e) {
-    await log(`Cron ${cron}`, `error: ${e instanceof Error ? e.message : 'unknown'}`, false).catch(() => {});
-  }
-}
+import { runMaintenance } from './lib/server/maintenance';
 
 export default {
   fetch(request, env, ctx) {
     return handle(request, env, ctx);
   },
-  scheduled(controller, _env, ctx) {
-    ctx.waitUntil(runCron(controller.cron, controller.scheduledTime));
+  scheduled(_controller, _env, ctx) {
+    ctx.waitUntil(runMaintenance());
   },
 } satisfies ExportedHandler<Env>;

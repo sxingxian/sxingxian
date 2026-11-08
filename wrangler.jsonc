@@ -37,9 +37,13 @@
     { "name": "LOGIN_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
   ],
 
-  // Every 5 min: WordPress health check (+ incremental pull every 15 min).
-  // 19:00 UTC = 03:00 SGT: nightly reconcile to catch deletions, and removal of expired sessions.
+  // No cron triggers: the Workers free plan allows only 5 per account, shared by all your
+  // Workers. Background jobs (WordPress health check every 5 min, sync every 15 min, daily
+  // reconcile and session clean-up) are started by site traffic instead; see
+  // src/lib/server/maintenance.ts. If you have a free slot (or Workers Paid), you can use
+  //   "crons": ["*/5 * * * *"]
+  // to run the same jobs on a timer as well. An empty list removes any earlier schedules.
   "triggers": {
-    "crons": ["*/5 * * * *", "0 19 * * *"]
+    "crons": []
   }
 }

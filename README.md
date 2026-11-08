@@ -15,7 +15,7 @@ A journal-first personal site with a Notion-style CMS. Posts you write here and 
 | Database | **Neon** Postgres over HTTP (`@neondatabase/serverless`), parameterised SQL only |
 | Media | Choose per upload: **Cloudflare R2**, your **NAS** (S3-compatible, via Cloudflare Tunnel) or **Backblaze B2**; YouTube/Vimeo for long video |
 | Auth | Own accounts in **Neon**: bcrypt passwords (pgcrypto), HttpOnly `__Host-` session cookie, optional authenticator-app 2-step with recovery codes, lockout + per-IP rate limit |
-| Jobs | Cron Triggers on the same Worker: WordPress health check, sync, nightly reconcile |
+| Jobs | WordPress health check, sync, daily reconcile and session clean-up, started by site traffic and claimed atomically in Neon. **No cron triggers needed** (the free plan allows 5 per account); one optional `*/5 * * * *` trigger runs the same jobs. |
 
 Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
 
@@ -38,7 +38,7 @@ Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
 
 ```
 src/
-  worker.ts                 Worker entry: Astro fetch handler + cron handler
+  worker.ts                 Worker entry: Astro fetch handler + optional cron handler
   middleware.ts             session check, CSRF guard, CSP nonce, security headers
   pages/                    Public pages, /admin shell, /api/admin/*, /api/hooks/wordpress, /media/:id, /rss.xml
   admin/                    React admin app (views, editor, media picker)
@@ -73,9 +73,11 @@ scripts/                    migrate, security tests, client-bundle secret scan
 | Path | When | What |
 |---|---|---|
 | Webhook | On publish, edit, unpublish or delete | The plugin sends only `{post_id, action}`, signed with HMAC-SHA256 and a timestamp (rejected after 5 min). The site then **fetches that post from the WordPress REST API itself**, so forged or tampered payloads can't inject content. |
-| Incremental pull | Every 15 min | `GET /wp-json/wp/v2/posts?modified_after=…` catches missed webhooks. |
-| Reconcile | Nightly, 03:00 SGT | Compares every published ID and marks deleted, trashed or private posts as removed. |
-| Health check | Every 5 min | `GET /wp-json/` (5 s timeout). **2 failures in a row hide all WordPress posts** (feed, topic filters, RSS); **2 successes** show them again. |
+| Incremental pull | About every 15 min* | `GET /wp-json/wp/v2/posts?modified_after=…` catches missed webhooks. |
+| Reconcile | Daily* | Compares every published ID and marks deleted, trashed or private posts as removed. |
+| Health check | About every 5 min* | `GET /wp-json/` (5 s timeout). **2 failures in a row hide all WordPress posts** (feed, topic filters, RSS); **2 successes** show them again. |
+
+\* These jobs run in the background when the site gets a visit (at most once per interval, claimed atomically in the `jobs` table), so no Cloudflare cron trigger is needed. If nobody visits, nothing runs. After a quiet spell, the first visit can still see the last known WordPress status for a moment while it starts a fresh check in the background. New posts still arrive straight away through the webhook. The admin's WordPress page has **Sync now**, **Check now** and **Full check** buttons.
 
 Only the title, excerpt, featured image and link are copied. Cards link to WordPress, which stays the canonical page.
 

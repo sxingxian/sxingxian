@@ -1,6 +1,6 @@
 # Deploying sxingxian.com
 
-The site runs on free tiers: **Neon** (Postgres) for the database and the admin accounts, and **Cloudflare Workers** for the site, the admin portal, media storage (R2) and the scheduled WordPress jobs. Admin sign-in is the site's own (accounts in Neon, optional authenticator-app 2-step); Cloudflare Access is not used. Allow 30–45 minutes the first time.
+The site runs on free tiers: **Neon** (Postgres) for the database and the admin accounts, and **Cloudflare Workers** for the site, the admin portal, media storage (R2) and the background WordPress jobs. Admin sign-in is the site's own (accounts in Neon, optional authenticator-app 2-step); Cloudflare Access is not used. Allow 30–45 minutes the first time.
 
 | Host | Serves | Where it runs |
 | --- | --- | --- |
@@ -45,7 +45,9 @@ Cloudflare → **Workers & Pages → Create → Import a repository** → GitHub
   (uploads a version for other branches without sending it live; you can also turn off non-production builds under Settings → Build → Branch control).
 - **Build variables:** `NODE_VERSION` = `22`
 
-The first build deploys straight away. Everything else the Worker needs is in `wrangler.jsonc`: the custom domain, the R2 binding, the rate limits (WordPress webhook; sign-in attempts, 10 a minute per IP) and the cron triggers (health check every 5 minutes; nightly WordPress reconcile and expired-session clean-up at 03:00 SGT). The Worker answers only on `sxingxian.com`; the `workers.dev` address and per-version preview addresses are off.
+The first build deploys straight away. Everything else the Worker needs is in `wrangler.jsonc`: the custom domain, the R2 binding, the rate limits (WordPress webhook; sign-in attempts, 10 a minute per IP) and **no cron triggers**.
+
+> **Cron triggers:** the Workers free plan allows only **5 cron triggers per account**, shared by all your Workers, so this Worker uses none. Its background jobs (WordPress health check about every 5 minutes, sync every 15, daily reconcile and expired-session clean-up) start after site visits instead. If you later have a free slot or Workers Paid, you can add `"crons": ["*/5 * * * *"]` under `triggers` in `wrangler.jsonc` to run the same jobs on a timer too. If a deploy ever says *"reached the Workers Free limit of 5 cron triggers"*, make sure `crons` is `[]` and push again. The Worker answers only on `sxingxian.com`; the `workers.dev` address and per-version preview addresses are off.
 
 ### Variables and secrets
 
@@ -156,7 +158,7 @@ The command-line fixes need only the Neon connection string, so you can always g
 - [ ] Admin → **Settings**: site title, sections on/off (Work, Photos, Film, CV, About), featured post (pinned or latest), footer text and links.
 - [ ] Upload an image to R2 in the media library, insert it in a post, publish, and check it shows on the public page.
 - [ ] Run `https://securityheaders.com` and `https://observatory.mozilla.org` against `https://sxingxian.com`. You should get an A or better.
-- [ ] Cloudflare → `sxingxian` → **Logs**: the cron runs every 5 minutes without errors.
+- [ ] Browse the site, then Admin → **WordPress**: *Last check* shows a recent time and the activity log has no errors.
 
 ## Day to day
 

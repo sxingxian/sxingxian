@@ -97,7 +97,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
           {rules && (
             <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="lbl">Rules</div>
-              <label className="check"><input type="checkbox" checked={rules.hideWhenDown} onChange={(e) => saveRules({ ...rules, hideWhenDown: e.target.checked })} />Hide WordPress posts while WordPress is down (checked every 5 min; 2 fails hide, 2 OKs show)</label>
+              <label className="check"><input type="checkbox" checked={rules.hideWhenDown} onChange={(e) => saveRules({ ...rules, hideWhenDown: e.target.checked })} />Hide WordPress posts while WordPress is down (checked about every 5 min while the site has visitors; 2 fails hide, 2 OKs show)</label>
               <label className="check"><input type="checkbox" checked={rules.autoShow} onChange={(e) => saveRules({ ...rules, autoShow: e.target.checked })} />Show new WordPress posts automatically (otherwise switch each one on below)</label>
               <label className="check"><input type="checkbox" checked={rules.includeInRss} onChange={(e) => saveRules({ ...rules, includeInRss: e.target.checked })} />Include WordPress posts in RSS</label>
               <div className="lbl" style={{ marginTop: 6 }}>WordPress category → journal topic</div>
@@ -118,8 +118,8 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
           <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div className="lbl">How syncing works</div>
             <p className="hint" style={{ margin: 0 }}>1. The sxingxian-sync plugin on WordPress pings this site when you publish, edit or delete. The site then fetches that post from WordPress itself.</p>
-            <p className="hint" style={{ margin: 0 }}>2. Every 15 minutes the site pulls anything changed, in case a ping was missed.</p>
-            <p className="hint" style={{ margin: 0 }}>3. Every night at 03:00 SGT a full check removes posts deleted, trashed or made private on WordPress.</p>
+            <p className="hint" style={{ margin: 0 }}>2. About every 15 minutes (while the site has visitors) it pulls anything changed, in case a ping was missed.</p>
+            <p className="hint" style={{ margin: 0 }}>3. Once a day a full check removes posts deleted, trashed or made private on WordPress. Use Full check to run it now.</p>
             <p className="hint" style={{ margin: 0 }}>Only titles, excerpts, images and links are copied. Readers open the full post on WordPress.</p>
           </section>
         </div>

@@ -5,6 +5,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env } from 'cloudflare:workers';
 import { sessionFromRequest } from './lib/server/users';
+import { maintenanceOnRequest } from './lib/server/maintenance';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -103,6 +104,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
     context.locals.user = session.user;
     context.locals.sessionHash = session.tokenHash;
+  }
+
+  // Start any due background job (WordPress health check, sync, clean-up) after this
+  // response. Not for the webhook or sign-in endpoints, so they can't be used to drive it.
+  if (request.method === 'GET' && !path.startsWith('/api/hooks/') && !isAuthApi(path)) {
+    maintenanceOnRequest((p) => context.locals.cfContext?.waitUntil(p));
   }
 
   const nonce = makeNonce();
