@@ -1,0 +1,33 @@
+---
+// One-time creation of the first (owner) account. Closed once any account exists.
+import '@fontsource-variable/inter';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/jetbrains-mono';
+import Setup from '../../admin/auth/Setup';
+import { userCount } from '../../lib/server/users';
+import { env } from 'cloudflare:workers';
+
+const tokenConfigured = (env.SETUP_TOKEN ?? '').length >= 24;
+let available = false;
+let closedMessage = 'To create the first account, add a SETUP_TOKEN secret (24+ random characters) to the Worker in Cloudflare, then reload this page.';
+try {
+  const count = await userCount();
+  available = tokenConfigured && count === 0;
+  if (count > 0) closedMessage = 'An admin account already exists. Sign in instead. You can now delete the SETUP_TOKEN secret.';
+} catch {
+  closedMessage = 'The database isn’t reachable yet. Check DATABASE_URL in the Worker settings and that the migrations have run.';
+}
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Set up · sxingxian</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <Setup client:only="react" available={available} closedMessage={closedMessage} />
+  </body>
+</html>

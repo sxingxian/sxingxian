@@ -86,3 +86,45 @@ export const mediaMetaSchema = z.object({
 });
 
 export const embedInputSchema = z.object({ url: z.string().max(300), alt: z.string().max(300).default('') });
+
+// ------------------------------------------------------------- accounts
+
+const emailField = z.string().trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address'));
+const passwordField = z.string().min(1, 'Enter a password').max(256);
+
+export const loginSchema = z.object({
+  email: z.string().max(254),
+  password: z.string().max(256),
+  code: z.string().trim().max(20).optional(),
+});
+
+export const setupSchema = z.object({
+  token: z.string().max(256),
+  name: z.string().trim().max(80).default(''),
+  email: emailField,
+  password: passwordField,
+});
+
+export const passwordChangeSchema = z.object({
+  current: z.string().max(256),
+  next: passwordField,
+});
+
+export const passwordConfirmSchema = z.object({ password: z.string().max(256) });
+export const totpCodeSchema = z.object({ code: z.string().trim().max(20) });
+export const totpDisableSchema = z.object({ password: z.string().max(256), code: z.string().trim().max(20) });
+export const profileSchema = z.object({ name: z.string().trim().max(80) });
+
+export const userCreateSchema = z.object({
+  email: emailField,
+  name: z.string().trim().max(80).default(''),
+  role: z.enum(['owner', 'admin']).default('admin'),
+});
+
+export const userPatchSchema = z.object({
+  role: z.enum(['owner', 'admin']).optional(),
+  disabled: z.boolean().optional(),
+  resetPassword: z.literal(true).optional(),
+  reset2fa: z.literal(true).optional(),
+  unlock: z.literal(true).optional(),
+});

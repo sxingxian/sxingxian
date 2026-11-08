@@ -3,7 +3,7 @@
 A journal-first personal site with a Notion-style CMS. Posts you write here and posts from the WordPress journal at **hey.sxingxian.com** appear in one feed. Work, photos, film, a CV page and an About page sit alongside, and each can be switched on or off.
 
 - **Public site:** `https://sxingxian.com`
-- **Admin:** `https://sxingxian.com/admin` (protected by Cloudflare Access)
+- **Admin:** `https://sxingxian.com/admin` (own sign-in; accounts stored in Neon)
 - **WordPress journal:** `https://hey.sxingxian.com` (its own admin: `https://hey.sxingxian.com/admin`)
 
 ## Stack
@@ -14,7 +14,7 @@ A journal-first personal site with a Notion-style CMS. Posts you write here and 
 | Admin | React app at `/admin`, editor built on **Tiptap 3**: slash menu, drag handles, resizable 2/3-column blocks |
 | Database | **Neon** Postgres over HTTP (`@neondatabase/serverless`), parameterised SQL only |
 | Media | Choose per upload: **Cloudflare R2**, your **NAS** (S3-compatible, via Cloudflare Tunnel) or **Backblaze B2**; YouTube/Vimeo for long video |
-| Auth | **Cloudflare Access** (Zero Trust) + server-side JWT verification on every admin request |
+| Auth | Own accounts in **Neon**: bcrypt passwords (pgcrypto), HttpOnly `__Host-` session cookie, optional authenticator-app 2-step with recovery codes, lockout + per-IP rate limit |
 | Jobs | Cron Triggers on the same Worker: WordPress health check, sync, nightly reconcile |
 
 Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
@@ -39,7 +39,7 @@ Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
 ```
 src/
   worker.ts                 Worker entry: Astro fetch handler + cron handler
-  middleware.ts             Access JWT check, CSRF guard, CSP nonce, security headers
+  middleware.ts             session check, CSRF guard, CSP nonce, security headers
   pages/                    Public pages, /admin shell, /api/admin/*, /api/hooks/wordpress, /media/:id, /rss.xml
   admin/                    React admin app (views, editor, media picker)
   lib/server/               SERVER-ONLY: db, repo, auth, storage, wordpress, renderer
@@ -57,7 +57,8 @@ scripts/                    migrate, security tests, client-bundle secret scan
 |---|---|
 | Code | **Cloudflare Workers Builds** (Worker connected to this repo): every push to `main` builds and deploys `sxingxian` on `sxingxian.com`. |
 | Database | **Actions → Deploy Neon**: checks CI passed, backs up production to a Neon branch, applies `migrations/*.sql`. Manual, or automatic after CI with `AUTO_DEPLOY_NEON=true`. |
-| Secrets | Cloudflare → `sxingxian` → Settings → Variables and secrets (`DATABASE_URL`, `ACCESS_AUD`, `WP_WEBHOOK_SECRET`, `ACCESS_TEAM_DOMAIN`, `ADMIN_EMAILS`). GitHub holds only `NEON_API_KEY` + `NEON_PROJECT_ID`. |
+| Secrets | Cloudflare → `sxingxian` → Settings → Variables and secrets (`DATABASE_URL`, `AUTH_SECRET`, `SETUP_TOKEN` (first account only), `WP_WEBHOOK_SECRET`). GitHub holds only `NEON_API_KEY` + `NEON_PROJECT_ID`. |
+| Admin accounts | First owner via `/admin/setup` (one-time) or `npm run user -- create`. More users in Admin → Users. See [docs/DEPLOYMENT.md §7](docs/DEPLOYMENT.md#7-first-admin-account). |
 
 ### GitHub Actions
 
@@ -81,15 +82,14 @@ Only the title, excerpt, featured image and link are copied. Cards link to WordP
 ## Local development
 
 ```bash
-cp .dev.vars.example .dev.vars   # fill DATABASE_URL with a Neon *dev branch*
-npm run dev                      # http://localhost:4321  —  /admin works on localhost
+cp .dev.vars.example .dev.vars        # DATABASE_URL = a Neon *dev branch*, plus AUTH_SECRET
+export DATABASE_URL='…dev branch…'
+npm run db:migrate
+npm run user -- create you@example.com --role owner
+npm run dev                           # http://localhost:4321/admin → sign in
 ```
 
-`DEV_AUTH_BYPASS=true` only works when **both** of these hold:
-- the dev server is running;
-- the request is to `localhost`.
-
-The bypass branch is removed at build time, so production builds never contain it.
+There is no sign-in bypass, in development or production. `npm run user -- list | reset-password | reset-2fa | unlock | disable | enable` manages accounts from the command line.
 
 ## Checks
 

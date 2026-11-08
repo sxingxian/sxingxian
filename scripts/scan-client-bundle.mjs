@@ -11,9 +11,9 @@ const CLIENT = join(ROOT, 'dist', 'client');
 // Names of server-only secrets/bindings. If any appears in a client file, a
 // server module was bundled into the browser by mistake.
 const SECRET_NAMES = [
-  'DATABASE_URL', 'ACCESS_AUD', 'WP_WEBHOOK_SECRET', 'NAS_S3_ACCESS_KEY_ID', 'NAS_S3_SECRET_ACCESS_KEY',
-  'B2_S3_ACCESS_KEY_ID', 'B2_S3_SECRET_ACCESS_KEY', 'DEV_AUTH_BYPASS', 'cloudflare:workers',
-  '@neondatabase/serverless', 'aws4fetch', 'createRemoteJWKSet',
+  'DATABASE_URL', 'AUTH_SECRET', 'SETUP_TOKEN', 'WP_WEBHOOK_SECRET', 'NAS_S3_ACCESS_KEY_ID', 'NAS_S3_SECRET_ACCESS_KEY',
+  'B2_S3_ACCESS_KEY_ID', 'B2_S3_SECRET_ACCESS_KEY', 'cloudflare:workers',
+  '@neondatabase/serverless', 'aws4fetch', 'password_hash', 'totp_secret_enc', 'gen_salt', 'sxingxian/session/v1',
 ];
 
 const PATTERNS = [

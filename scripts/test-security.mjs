@@ -1,5 +1,6 @@
 // Security regression tests for the content renderer, link allow-list,
-// embed parsing and WordPress text cleaning. Run: npm run test:security
+// embed parsing, WordPress text cleaning, and admin accounts (passwords,
+// TOTP, encryption at rest, session cookies). Run: npm run test:security
 import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,11 @@ await build({
   stdin: {
     contents: `export { renderDoc } from './src/lib/server/render.ts';
                export { isSafeHref, parseVideoUrl, embedSrc } from './src/lib/shared/safe.ts';
-               export { htmlToText, esc } from './src/lib/server/text.ts';`,
+               export { htmlToText, esc } from './src/lib/server/text.ts';
+               export * as ac from './src/lib/server/authcrypto.ts';
+               export { sessionCookie, clearSessionCookie, SESSION_COOKIE } from './src/lib/server/users.ts';
+               export { safeNext } from './src/admin/auth/fields.tsx';
+               export { loginSchema, userPatchSchema } from './src/lib/shared/schemas.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -21,8 +26,14 @@ await build({
   platform: 'node',
   outfile: out,
   logLevel: 'error',
+  jsx: 'automatic',
+  // users.ts reads Worker settings; give it an empty stand-in so the pure helpers can be tested.
+  plugins: [{ name: 'cf-stub', setup(b) {
+    b.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: 'cf', namespace: 'stub' }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
+  } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, htmlToText, esc } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -111,6 +122,113 @@ t('strips tags and scripts from excerpts', () => {
   const s = htmlToText('<p>Hello <script>alert(1)</script><b>world</b> &amp; &#8217;friends&#8217; [&hellip;]</p>');
   assert.equal(s, 'Hello world & ’friends’');
   assert.ok(!esc(s).includes('<'));
+});
+
+const ta = async (name, fn) => {
+  await fn();
+  passed++;
+  console.log(`  ✓ ${name}`);
+};
+
+console.log('Admin accounts');
+await ta('TOTP matches the RFC 6238 test vectors (SHA-1, 8 digits)', async () => {
+  const secret = new TextEncoder().encode('12345678901234567890');
+  const vectors = [[59, '94287082'], [1111111109, '07081804'], [1111111111, '14050471'], [1234567890, '89005924'], [2000000000, '69279037'], [20000000000, '65353130']];
+  for (const [time, code] of vectors) assert.equal(await ac.totpAt(new Uint8Array(secret), Math.floor(time / 30), 8), code, String(time));
+});
+await ta('TOTP accepts ±1 step, rejects replays and older steps', async () => {
+  const secret = ac.newTotpSecret();
+  const now = Date.now();
+  const step = Math.floor(now / 30000);
+  const code = await ac.totpAt(secret, step);
+  assert.equal(await ac.verifyTotp(secret, code, now, 0), step);
+  assert.equal(await ac.verifyTotp(secret, code, now, step), null, 'same step twice must fail');
+  assert.equal(await ac.verifyTotp(secret, await ac.totpAt(secret, step - 3), now, 0), null, 'old code must fail');
+  assert.equal(await ac.verifyTotp(secret, '12345', now, 0), null);
+  assert.equal(await ac.verifyTotp(secret, 'abcdef', now, 0), null);
+});
+await ta('base32 round-trips and rejects bad input', async () => {
+  const b = ac.randomBytes(20);
+  assert.deepEqual([...ac.base32Decode(ac.base32Encode(b))], [...b]);
+  assert.equal(ac.base32Encode(new TextEncoder().encode('foobar')), 'MZXW6YTBOI');
+  assert.throws(() => ac.base32Decode('not*base32'));
+});
+await ta('TOTP secrets are encrypted at rest and bound to the user', async () => {
+  const key = 'k'.repeat(40);
+  const secret = ac.newTotpSecret();
+  const sealed = await ac.sealSecret(key, secret, 'user-a');
+  assert.ok(sealed.startsWith('v1.') && !sealed.includes(ac.base32Encode(secret)));
+  assert.deepEqual([...(await ac.openSecret(key, sealed, 'user-a'))], [...secret]);
+  assert.equal(await ac.openSecret(key, sealed, 'user-b'), null, 'another user id must not decrypt');
+  assert.equal(await ac.openSecret('x'.repeat(40), sealed, 'user-a'), null, 'wrong key must not decrypt');
+  const [v, iv, ct] = sealed.split('.');
+  const flipped = ct.slice(0, -2) + (ct.at(-2) === 'A' ? 'B' : 'A') + ct.at(-1);
+  assert.equal(await ac.openSecret(key, [v, iv, flipped].join('.'), 'user-a'), null, 'tampering must be detected');
+  assert.ok(ac.authSecretProblem('short'));
+  assert.equal(ac.authSecretProblem('a'.repeat(32)), null);
+});
+await ta('password pre-hash is deterministic, 44 chars, and Unicode-normalised', async () => {
+  const a = await ac.prehashPassword('correct horse battery');
+  assert.equal(a.length, 44);
+  assert.equal(a, await ac.prehashPassword('correct horse battery'));
+  assert.notEqual(a, await ac.prehashPassword('correct horse batterY'));
+  assert.equal(await ac.prehashPassword('caf\u00e9 au lait 12'), await ac.prehashPassword('cafe\u0301 au lait 12'));
+  const long = 'x'.repeat(100) + 'a';
+  assert.notEqual(await ac.prehashPassword(long), await ac.prehashPassword('x'.repeat(100) + 'b'), 'no 72-byte truncation');
+});
+t('password policy', () => {
+  assert.ok(ac.passwordProblem('short'));
+  assert.ok(ac.passwordProblem('password1234'));
+  assert.ok(ac.passwordProblem('aaaaaaaaaaaaaaaa'));
+  assert.ok(ac.passwordProblem('xingxian-garden-2026', 'xingxian@example.com'));
+  assert.ok(ac.passwordProblem('x'.repeat(300)));
+  assert.equal(ac.passwordProblem('tidal lantern copper moss'), null);
+});
+t('generated passwords, recovery codes and session tokens are random and well-formed', () => {
+  const pw = new Set(Array.from({ length: 200 }, () => ac.randomPassword()));
+  assert.equal(pw.size, 200);
+  const group = /^[a-hjkmnp-z2-9]{5}$/;
+  for (const p of pw) {
+    const parts = p.split('-');
+    assert.equal(parts.length, 4, p);
+    for (const g of parts) assert.match(g, group, p);
+  }
+  const codes = ac.makeRecoveryCodes();
+  assert.equal(new Set(codes).size, 10);
+  for (const c of codes) assert.match(c, /^[a-hjkmnp-z2-9]{5}-[a-hjkmnp-z2-9]{5}$/);
+  const tok = ac.newSessionToken();
+  assert.match(tok, ac.SESSION_TOKEN_RE);
+  assert.notEqual(tok, ac.newSessionToken());
+  assert.equal(ac.normaliseRecoveryCode(' ABCDE-fghjk '), 'abcdefghjk');
+});
+await ta('session tokens and recovery codes are stored only as hashes', async () => {
+  const tok = ac.newSessionToken();
+  const h = await ac.hashSessionToken(tok);
+  assert.match(h, /^[0-9a-f]{64}$/);
+  assert.ok(!h.includes(tok));
+  assert.equal(await ac.hashRecoveryCode('ABCDE-FGHJK'), await ac.hashRecoveryCode('abcdefghjk'));
+});
+t('constant-time compare', () => {
+  assert.ok(ac.safeEqual('abc', 'abc'));
+  assert.ok(!ac.safeEqual('abc', 'abd'));
+  assert.ok(!ac.safeEqual('abc', 'abcd'));
+});
+t('session cookie is __Host-, HttpOnly, Secure, SameSite=Strict, Path=/', () => {
+  const c = sessionCookie('t'.repeat(43));
+  assert.ok(c.startsWith(`${SESSION_COOKIE}=`) && SESSION_COOKIE.startsWith('__Host-'));
+  for (const part of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/']) assert.ok(c.includes(part), part);
+  assert.ok(!/Domain=/i.test(c));
+  assert.ok(clearSessionCookie().includes('Max-Age=0'));
+});
+t('post-login redirect only goes to admin pages on this site', () => {
+  for (const bad of ['https://evil.com', '//evil.com', '/\\evil.com', '/admin.evil.com', 'javascript:alert(1)', '/admin/login', '/admin/../x', '/admin\n']) assert.equal(safeNext(bad), '/admin', bad);
+  assert.equal(safeNext('/admin/journal'), '/admin/journal');
+  assert.equal(safeNext('/admin/edit/new?kind=post'), '/admin/edit/new?kind=post');
+});
+t('sign-in and user-update payloads are bounded', () => {
+  assert.equal(loginSchema.safeParse({ email: 'a@b.co', password: 'x'.repeat(257) }).success, false);
+  assert.equal(userPatchSchema.safeParse({ role: 'superuser' }).success, false);
+  assert.equal(userPatchSchema.safeParse({ resetPassword: false }).success, false);
 });
 
 console.log(`\n${passed} security tests passed.`);

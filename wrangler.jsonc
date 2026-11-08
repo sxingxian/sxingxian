@@ -20,8 +20,7 @@
   "observability": { "enabled": true },
 
   // Fixed, non-secret values. Everything specific to your accounts
-  // (ACCESS_TEAM_DOMAIN, ADMIN_EMAILS, DATABASE_URL, ACCESS_AUD, WP_WEBHOOK_SECRET,
-  // optional NAS_/B2_ storage) is set in Cloudflare → sxingxian → Settings →
+  // (DATABASE_URL, AUTH_SECRET, SETUP_TOKEN, WP_WEBHOOK_SECRET, optional NAS_/B2_ storage) is set in Cloudflare → sxingxian → Settings →
   // Variables and secrets, and kept across deploys by "keep_vars". See docs/DEPLOYMENT.md.
   "vars": {
     "SITE_URL": "https://sxingxian.com",
@@ -32,13 +31,14 @@
     { "binding": "MEDIA", "bucket_name": "sxingxian-media" }
   ],
 
-  // Rate limit for the public WordPress webhook endpoint.
+  // Rate limits: the public WordPress webhook, and sign-in/setup attempts per IP address.
   "ratelimits": [
-    { "name": "WEBHOOK_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }
+    { "name": "WEBHOOK_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },
+    { "name": "LOGIN_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
   ],
 
   // Every 5 min: WordPress health check (+ incremental pull every 15 min).
-  // 19:00 UTC = 03:00 SGT: nightly reconcile to catch deletions.
+  // 19:00 UTC = 03:00 SGT: nightly reconcile to catch deletions, and removal of expired sessions.
   "triggers": {
     "crons": ["*/5 * * * *", "0 19 * * *"]
   }

@@ -1,6 +1,6 @@
 # Deploying sxingxian.com
 
-The site runs on free tiers: **Neon** (Postgres) for the database and **Cloudflare Workers** for the site, the admin portal, media storage (R2) and the scheduled WordPress jobs. Allow 30–45 minutes the first time.
+The site runs on free tiers: **Neon** (Postgres) for the database and the admin accounts, and **Cloudflare Workers** for the site, the admin portal, media storage (R2) and the scheduled WordPress jobs. Admin sign-in is the site's own (accounts in Neon, optional authenticator-app 2-step); Cloudflare Access is not used. Allow 30–45 minutes the first time.
 
 | Host | Serves | Where it runs |
 | --- | --- | --- |
@@ -20,32 +20,18 @@ Do the steps in order: the database must exist before the Worker's first deploy,
 ## 1. Neon project
 
 1. console.neon.tech → **New project**. Name `sxingxian`, Postgres 17, region **AWS Asia Pacific (Singapore)** (closest to you and to Cloudflare's SIN edge).
-2. Keep the default database `neondb` and role `neondb_owner`. (If you choose other names, set the GitHub variables `NEON_DATABASE_NAME` and `NEON_ROLE_NAME` in section 7.)
-3. **Connect** → tick **Connection pooling** → copy the connection string. It starts with `postgresql://`, and its host name contains `-pooler`. Keep it somewhere private for step 4; never commit it.
+2. Keep the default database `neondb` and role `neondb_owner`. (If you choose other names, set the GitHub variables `NEON_DATABASE_NAME` and `NEON_ROLE_NAME` in section 5.)
+3. **Connect** → tick **Connection pooling** → copy the connection string. It starts with `postgresql://`, and its host name contains `-pooler`. Keep it somewhere private for section 3; never commit it.
 4. **Account settings → API keys → Create** a key for GitHub. A **project-scoped** key for `sxingxian` is enough. Copy it.
 5. **Project settings → General** → copy the **Project ID** (e.g. `cool-river-12345678`).
 
-The tables are created in section 7 by the **Deploy Neon** workflow, so there is nothing to run here.
+The tables (including the admin accounts) are created in section 6 by the **Deploy Neon** workflow, so there is nothing to run here.
 
-## 2. Cloudflare Access (protects `/admin`)
-
-Zero Trust → **Access → Applications → Add an application → Self-hosted**:
-
-- **Application name:** `sxingxian admin`
-- **Public hostnames:** `sxingxian.com` with the paths **`admin`**, **`admin/*`** and **`api/admin/*`** (three entries).
-  Do **not** add `api/hooks/*`: WordPress must be able to reach the webhook. It is protected by its own signature.
-- **Policy:** Action *Allow* → Include → *Emails* → your email address.
-- Save, then copy:
-  - the **Application Audience (AUD) tag** (Application → Overview), used as `ACCESS_AUD`;
-  - your **team domain**, e.g. `yourteam.cloudflareaccess.com` (Zero Trust → Settings), used as `ACCESS_TEAM_DOMAIN`.
-
-The Worker checks the Access token on every admin request (signature, issuer, audience, expiry, and your email), so the admin stays closed even if the Access application is misconfigured.
-
-## 3. R2 bucket (media)
+## 2. R2 bucket (media)
 
 Cloudflare → **R2 Object Storage → Create bucket** → name **`sxingxian-media`**, location *Asia-Pacific*. Leave public access **off**: media is served through the Worker at `/media/:id`.
 
-## 4. Cloudflare Worker (connected to Git)
+## 3. Cloudflare Worker (connected to Git)
 
 Make sure `sxingxian.com` is a zone in the same Cloudflare account. If the zone already has an `A`, `AAAA` or `CNAME` record for the bare `sxingxian.com`, delete it first; the Worker claims that hostname as a custom domain on its first deploy. Leave the `hey` record for WordPress alone.
 
@@ -59,19 +45,18 @@ Cloudflare → **Workers & Pages → Create → Import a repository** → GitHub
   (uploads a version for other branches without sending it live; you can also turn off non-production builds under Settings → Build → Branch control).
 - **Build variables:** `NODE_VERSION` = `22`
 
-The first build deploys straight away. Everything else the Worker needs is in `wrangler.jsonc`: the custom domain, the R2 binding, the webhook rate limit and the cron triggers (health check every 5 minutes, nightly reconcile at 03:00 SGT). The Worker answers only on `sxingxian.com`; the `workers.dev` address and per-version preview addresses are off.
+The first build deploys straight away. Everything else the Worker needs is in `wrangler.jsonc`: the custom domain, the R2 binding, the rate limits (WordPress webhook; sign-in attempts, 10 a minute per IP) and the cron triggers (health check every 5 minutes; nightly WordPress reconcile and expired-session clean-up at 03:00 SGT). The Worker answers only on `sxingxian.com`; the `workers.dev` address and per-version preview addresses are off.
 
 ### Variables and secrets
 
-`sxingxian` → **Settings → Variables and secrets → Add**. Saving creates a new deployment automatically.
+`sxingxian` → **Settings → Variables and secrets → Add**. Saving creates a new deployment automatically. Use **Secret** (encrypted, write-only) for all of these.
 
 | Name | Type | Value |
 | --- | --- | --- |
 | `DATABASE_URL` | Secret | Neon pooled connection string (section 1, step 3) |
-| `ACCESS_AUD` | Secret | AUD tag (section 2) |
-| `WP_WEBHOOK_SECRET` | Secret | A new random value: `openssl rand -hex 32`, or any 64-character password generator. You also paste it into WordPress (section 5). |
-| `ACCESS_TEAM_DOMAIN` | Text | `yourteam.cloudflareaccess.com` |
-| `ADMIN_EMAILS` | Text | Your email. Comma-separate more than one. |
+| `AUTH_SECRET` | Secret | A new random value, 32+ characters (`openssl rand -hex 32`, or a password generator). Encrypts the 2-step sign-in secrets stored in Neon. Keep a copy in your password manager: if it changes, everyone's 2-step sign-in must be set up again. |
+| `SETUP_TOKEN` | Secret | Another random value, 24+ characters. Unlocks the one-time page that creates the first admin account (section 7). Delete it afterwards. |
+| `WP_WEBHOOK_SECRET` | Secret | A third random value (`openssl rand -hex 32`). You also paste it into WordPress (section 4). |
 
 `SITE_URL` and `WP_BASE_URL` are already set in `wrangler.jsonc`. `keep_vars` is on, so deploys from Git never wipe what you add here. Secrets are encrypted by Cloudflare, never in the repository, and never sent to the browser (the CI secret scan checks every build).
 
@@ -92,7 +77,7 @@ Video uploads always go to R2: Cloudflare's CDN terms restrict serving video hos
 
 To send `www.sxingxian.com` to the bare domain: add a proxied `CNAME www → sxingxian.com`, then Rules → **Redirect Rules** → *Redirect from WWW to root* template.
 
-## 5. WordPress (`hey.sxingxian.com`)
+## 4. WordPress (`hey.sxingxian.com`)
 
 1. Upload the folder `wordpress-plugin/sxingxian-sync/` to `wp-content/plugins/` and activate **sxingxian sync** at `https://hey.sxingxian.com/admin`.
 2. Add to `wp-config.php`, above the "That's all, stop editing!" line, with the **same** value as `WP_WEBHOOK_SECRET`:
@@ -102,7 +87,7 @@ To send `www.sxingxian.com` to the bare domain: add a proxied `CNAME www → sxi
    ```
 3. If `hey.sxingxian.com` is proxied by Cloudflare with Bot Fight Mode, Super Bot Fight Mode or a WAF challenge, add a WAF **skip** rule for the path `/wp-json/` so the Worker's sync isn't challenged.
 
-## 6. GitHub (database deploys)
+## 5. GitHub (database deploys)
 
 Repository → **Settings → Environments → New environment** → `production`. Optionally add yourself under *Required reviewers*, so every database change waits for your tap on Approve.
 
@@ -119,7 +104,7 @@ No connection string or Cloudflare token is stored in GitHub. The Deploy Neon wo
 
 Instead of adding the two Neon values by hand, you can use Neon console → **Integrations → GitHub**, which creates `NEON_API_KEY` and `NEON_PROJECT_ID` for you.
 
-## 7. Create the tables
+## 6. Create the tables
 
 GitHub app → the repository → **Actions** → **Deploy Neon** → **Run workflow**:
 
@@ -128,10 +113,44 @@ GitHub app → the repository → **Actions** → **Deploy Neon** → **Run work
 
 Then open `https://sxingxian.com`. The journal is empty until you write a post or WordPress syncs.
 
+## 7. First admin account
+
+Admin accounts live in the Neon `users` table. There is no public sign-up.
+
+**From a phone:**
+
+1. Open `https://sxingxian.com/admin/setup`. It only works while the `users` table is empty **and** the `SETUP_TOKEN` secret is set.
+2. Paste the setup token, enter your name, email and a password (12+ characters; a few unrelated words is strong and easy to remember), and press **Create account**. You become the **owner** and are signed in.
+3. **Account → Two-step sign-in → Set up.** Scan the QR code with an authenticator app (1Password, Google Authenticator, Authy…), enter the code, and save the 10 recovery codes in your password manager.
+4. Cloudflare → `sxingxian` → Settings → Variables and secrets → delete `SETUP_TOKEN`. (The setup page is already closed for good once an account exists; this just tidies up.)
+
+**From a computer** (instead of the setup page):
+
+```bash
+export DATABASE_URL='…'          # the Neon connection string
+npm ci
+npm run user -- create you@example.com --name "Your Name" --role owner
+```
+
+You're asked for the password at a hidden prompt (press Enter to generate a temporary one instead).
+
+**More admins:** Admin → **Users** → **Add user** (owners only). A temporary password is shown once; send it privately. They must choose their own password at first sign-in.
+
+**Locked out?**
+
+| Problem | Fix |
+|---|---|
+| Too many wrong passwords | The account unlocks by itself (1 minute after the 5th failure, doubling up to 1 hour). An owner can press **Unlock** in Users, or run `npm run user -- unlock you@example.com`. |
+| Forgot the password | Another owner: Users → **Reset password**. Or `npm run user -- reset-password you@example.com`. |
+| Lost the phone with the authenticator | Sign in with a recovery code ("Lost your phone?"). No codes left: another owner presses **Reset 2-step**, or `npm run user -- reset-2fa you@example.com`. |
+
+The command-line fixes need only the Neon connection string, so you can always get back in.
+
 ## 8. After the first deploy
 
 - [ ] `https://sxingxian.com` loads; `https://sxingxian.com/rss.xml` is valid.
-- [ ] `https://sxingxian.com/admin` asks you to sign in with Cloudflare Access, then opens the admin. In a private window with another email, it is refused.
+- [ ] `https://sxingxian.com/admin` sends you to the sign-in page. You can sign in with password + authenticator code; a wrong password is refused; **Account → Signed-in devices** shows this browser.
+- [ ] Sign out, then check `https://sxingxian.com/admin/setup` says setup is closed.
 - [ ] Admin → **WordPress** → **Sync now**. Recent WordPress posts appear in the journal. Map WordPress categories to topics, and choose whether new WordPress posts show automatically.
 - [ ] Publish or edit a test post on `hey.sxingxian.com`; it updates on `sxingxian.com` within a few seconds (webhook). The admin's WordPress page shows the sync log.
 - [ ] Admin → **Settings**: site title, sections on/off (Work, Photos, Film, CV, About), featured post (pinned or latest), footer text and links.
@@ -141,7 +160,7 @@ Then open `https://sxingxian.com`. The journal is empty until you write a post o
 
 ## Day to day
 
-**Writing:** sign in at `sxingxian.com/admin`. Nothing to deploy.
+**Writing:** sign in at `sxingxian.com/admin`. Nothing to deploy. Sessions last 7 days; **Account** shows your devices and recent sign-ins.
 
 **Code changes:** merge to `main`. CI runs the checks; Cloudflare builds and deploys the Worker by itself. Build progress and logs are in Cloudflare → `sxingxian` → **Deployments**.
 
@@ -167,14 +186,17 @@ Because code goes live on push while migrations run a few minutes later, write m
 - Every production migration is preceded by a Neon backup branch and runs in a transaction under an advisory lock, so two runs can't overlap and a failed file changes nothing.
 - The Worker serves only `sxingxian.com` (`workers_dev` and `preview_urls` are off), and `keep_vars` stops deploys from clearing dashboard settings.
 - Secrets live only in Cloudflare (Worker runtime) and GitHub (Neon API key). None are in the repository, the build output or the browser.
+- Admin passwords are stored as bcrypt (cost 12) in Neon, session tokens only as SHA-256 hashes, and 2-step secrets encrypted with `AUTH_SECRET`. A Neon backup alone is not enough to sign in.
 
 ## Local development
 
 ```bash
 cp .dev.vars.example .dev.vars   # DATABASE_URL = a Neon *dev branch*, never production
 npm ci
-DATABASE_URL='…dev branch…' npm run db:migrate
-npm run dev                      # http://localhost:4321, /admin works on localhost only
+export DATABASE_URL='…dev branch…'
+npm run db:migrate
+npm run user -- create you@example.com --role owner
+npm run dev                      # http://localhost:4321/admin → sign in with that account
 ```
 
 `npm run db:status` shows applied and pending migrations for whatever `DATABASE_URL` points at.

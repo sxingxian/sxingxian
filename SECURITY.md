@@ -3,8 +3,8 @@
 ## Design
 
 ### No secrets on the client
-- Every secret — the Neon connection string, Access audience tag, webhook secret and storage keys — is a **Cloudflare Worker secret**. Secrets are read only through `import { env } from 'cloudflare:workers'` inside `src/lib/server/**`.
-- The admin app (`src/admin/**`) imports only `src/lib/shared/**` (types, Zod schemas, URL helpers). The browser talks to `/api/admin/*` and holds no credentials. The Cloudflare Access cookie is HttpOnly and managed by Cloudflare.
+- Every secret — the Neon connection string, `AUTH_SECRET`, `SETUP_TOKEN`, the webhook secret and storage keys — is a **Cloudflare Worker secret**. Secrets are read only through `import { env } from 'cloudflare:workers'` inside `src/lib/server/**`.
+- The admin app (`src/admin/**`) imports only `src/lib/shared/**` (types, Zod schemas, URL helpers). The browser talks to `/api/admin/*` and holds no credentials it can read: the session cookie is HttpOnly. Help text that names a secret is rendered by the server, so even secret *names* never appear in the browser bundle (the scan enforces this).
 - Media is always served through `/media/:id`. Storage hosts and keys are never exposed.
 - `npm run security:scan` fails the build if any secret name, server-only module, connection string, key pattern or source map shows up in `dist/client`. It fails the same way if a secret file or secret-looking string is tracked by git.
 
@@ -15,19 +15,25 @@
 - The Worker serves only `sxingxian.com`: `workers_dev` and `preview_urls` are off, so there is no unprotected `*.workers.dev` copy of the admin.
 
 ### Admin authentication and authorisation
-- Cloudflare Access protects `/admin*` and `/api/admin*` at the edge.
-- `src/middleware.ts` **also verifies the Access JWT on every request**:
-  - RS256 signature against the team JWKS, plus issuer, audience and expiry;
-  - the email must be in `ADMIN_EMAILS`.
+Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events`; migration `0002_users.sql`). Cloudflare Access is not used.
 
-  A misconfigured or bypassed Access policy still results in 401.
-- **Local dev bypass:** it works only in `astro dev`, only on `localhost`, and only with `DEV_AUTH_BYPASS=true`. The `import.meta.env.DEV` guard removes it from production builds. This was verified on the built worker: with the variable set, `/admin` still returns 401.
+- **Passwords:** the Worker pre-hashes with SHA-256 (domain-separated, NFKC-normalised), and Neon stores `bcrypt(prehash)` at cost 12 via `pgcrypto`. The plaintext never leaves the Worker, bcrypt's 72-byte limit can't truncate long passphrases, and hashing runs on Neon rather than the Worker's CPU budget. Policy: 12–256 characters, not a common password, doesn't contain the email name.
+- **No account enumeration:** unknown emails are checked against a dummy bcrypt hash and get the same message ("Email or password is incorrect"), with matching timing (measured: ~200 ms vs ~230 ms against local Postgres).
+- **Brute force:** 10 attempts a minute per IP (Workers rate-limit binding), and after 5 consecutive failures the account locks for 1 minute, doubling up to 1 hour. While locked, even the right password is refused.
+- **Sessions:** a 256-bit random token in a `__Host-sx_session` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/`, no Domain), valid 7 days. Neon stores only its SHA-256, so a database leak doesn't hand out sessions. Every admin request re-checks the session and that the user is not disabled. Changing the password, a reset, or disabling the user deletes their other sessions. Users can see and revoke devices.
+- **2-step sign-in (TOTP, RFC 6238):** ±1 time step; each step is accepted once (atomic `UPDATE … WHERE totp_last_step < step`), so a code can't be replayed. The TOTP secret is encrypted with AES-256-GCM, with the key derived from the `AUTH_SECRET` Worker secret via HKDF and the user id bound as additional data. 10 single-use recovery codes are stored as SHA-256. Turning 2-step off needs the password plus a code.
+- **First account:** `/admin/setup` works only while the `users` table is empty **and** a 24+ character `SETUP_TOKEN` secret is set (compared in constant time). The insert runs in one transaction under an advisory lock with `WHERE NOT EXISTS (SELECT 1 FROM users)`, so two simultaneous requests can't both create an owner. Once any account exists, setup is closed whatever the token.
+- **Roles:** `owner` (also manages users) and `admin` (content). Users can't demote or disable themselves, and the last active owner can't be removed. New users and resets get a random ~98-bit temporary password, shown once. The server only lets them change it (every other admin route returns 403) until they do.
+- **Recovery without the site:** `npm run user -- reset-password | reset-2fa | unlock` uses the same hashing code from the command line, with the password typed at a hidden prompt (never an argument, so it stays out of shell history).
+- **Audit trail:** sign-ins, failures, lockouts and account changes go to `auth_events` (kept 180 days), shown on the Account page.
+- **No bypass:** there is no development sign-in bypass. Local development signs in against a Neon dev branch.
 
 ### Cross-site request forgery
-- Admin API writes (POST, PUT, PATCH, DELETE) require **both**:
+- Admin API and sign-in API (`/api/auth/*`) writes (POST, PUT, PATCH, DELETE) require **both**:
   - an `Origin` header equal to the site origin;
   - a custom `X-Sx-Admin: 1` header, which can't be sent cross-site without a CORS preflight the API never grants.
-- Astro's `security.checkOrigin` is also on.
+- Astro's `security.checkOrigin` is also on, and the session cookie is `SameSite=Strict`.
+- After sign-in, `?next=` is accepted only if, after URL normalisation, it is an `/admin` path on this site (no other origins, `..`, backslashes or encoded dots).
 
 ### Injection
 - **SQL:** every query uses Neon's tagged template or `$n` parameters. There is no string-built SQL.
@@ -84,10 +90,20 @@
 | Static analysis | ESLint + `eslint-plugin-security` + Mozilla `eslint-plugin-no-unsanitized` | **Clean** after triage (below) |
 | XSS / injection regression tests | `npm run test:security` | **22/22 pass.** Covers script/attribute injection, `javascript:`/`data:`/protocol-relative links, CSS injection via column widths, malicious embed IDs, path-traversal media IDs and deep nesting. |
 | Secrets in client bundle and repo | `npm run security:scan` | **Clean.** 1 false positive fixed: a placeholder connection string in `.dev.vars.example` was removed rather than weakening the pattern. |
-| Runtime: auth gate | Production build in `astro preview` (workerd) | `/admin` and `/api/admin/me` → **401** without a token, with a forged `alg:none` token, and even with `DEV_AUTH_BYPASS=true` on localhost. |
+| Runtime: auth gate (v0.1, Cloudflare Access; since replaced) | Production build in `astro preview` (workerd) | `/admin` and `/api/admin/me` → **401** without a token, with a forged `alg:none` token, and even with `DEV_AUTH_BYPASS=true` on localhost. |
 | Runtime: CSRF guard | dev server | Writes without `X-Sx-Admin` or from a foreign `Origin` → **403**. |
 | Runtime: CSP | dev server | CSP header present; **every** `<script>` carries the nonce (0 without). |
 | Runtime: webhook | dev server | Bad or expired signature → **401** |
+
+### Accounts update — 8 Nov 2026 (Cloudflare Access → Neon accounts)
+
+| Check | Tool | Result |
+|---|---|---|
+| Unit tests | `npm run test:security` | **34/34 pass.** New: RFC 6238 TOTP vectors; replay and old-code rejection; AES-GCM tamper, wrong-key and wrong-user rejection; pre-hash normalisation and no 72-byte truncation; password policy; randomness and format of tokens and codes; cookie attributes; `next` redirect allow-list; payload bounds. |
+| Sign-in logic against real Postgres 16 | `src/lib/server/users.ts` through a Neon-HTTP shim | Pass: setup closes after the first account; correct and incorrect passwords; same message for unknown emails; lockout on the 5th failure (and it holds with the right password); session lookup, forged, expired and disabled-user sessions refused; only hashes stored; 2-step required, wrong code refused, code replay refused; recovery code works once; duplicate email (23505); upper-case email rejected by a CHECK constraint. |
+| Runtime: auth gate | production build in `astro preview` (workerd) | `/admin/*` → **303** to `/admin/login?next=…`; `/api/admin/me` → **401**; a forged session cookie fails closed; sign-in and setup POSTs without the header or from a foreign origin → **403**; sign-in page has a nonce on every script, `no-store`, `noindex` and `frame-ancestors 'none'`. |
+| Client bundle | `npm run security:scan` | Clean. It now also fails on `AUTH_SECRET`, `SETUP_TOKEN`, `password_hash`, `totp_secret_enc`, `gen_salt` and the session hash label. |
+| Dependencies | `npm audit` | 0 vulnerabilities. Removed `jose`; added `uqr` (MIT, no dependencies) for the QR code. |
 
 **Lint triage**
 - **Fixed:** WordPress category → topic lookup now uses `Object.hasOwn`. A category literally named `__proto__` would otherwise have broken mapping.
@@ -103,7 +119,8 @@
 ## Known trade-offs
 - `style-src` allows `'unsafe-inline'` because the editor and a few layout attributes set inline styles. Scripts remain nonce-only, and stored content cannot emit `style` attributes except clamped numeric column widths.
 - The settings and WordPress-status caches live per Worker isolate (15–20 s), so changes can take a few seconds to show everywhere.
-- The admin relies on Cloudflare Access for login. Keep the Access policy restricted to your email, and enable a second factor in your identity provider.
+- Admin sign-in is self-hosted, so turn on **2-step sign-in** for every account, and keep `AUTH_SECRET` in a password manager: if it is lost, 2-step must be reset (from Users or the command line) and set up again.
+- The per-account lockout can be triggered by someone who knows an admin email, which delays (but doesn't block) that admin for up to an hour. This is the usual trade-off against password guessing; owners and the command line can unlock at once.
 
 ## Reporting
 Please email the site owner privately rather than opening a public issue.

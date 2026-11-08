@@ -1,0 +1,31 @@
+---
+// Public sign-in page for sxingxian.com/admin. Already signed in → straight to the admin.
+import '@fontsource-variable/inter';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/jetbrains-mono';
+import Login from '../../admin/auth/Login';
+import { sessionFromRequest, userCount } from '../../lib/server/users';
+import { env } from 'cloudflare:workers';
+
+let setupAvailable = false;
+try {
+  if (await sessionFromRequest(Astro.request)) return Astro.redirect('/admin', 303);
+  setupAvailable = (env.SETUP_TOKEN ?? '').length >= 24 && (await userCount()) === 0;
+} catch {
+  // Database unreachable: still show the form; sign-in will report the problem.
+}
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Sign in · sxingxian</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <Login client:only="react" setupAvailable={setupAvailable} />
+    <noscript>Sign-in needs JavaScript.</noscript>
+  </body>
+</html>

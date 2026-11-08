@@ -1,15 +1,25 @@
 // Runs on every server-rendered request.
-//  1. Protects /admin and /api/admin with Cloudflare Access JWT verification.
-//  2. Blocks cross-site writes to the admin API (Origin check + custom header).
+//  1. Protects /admin and /api/admin with the admin session (accounts in Neon).
+//  2. Blocks cross-site writes to the admin and sign-in APIs (Origin check + custom header).
 //  3. Adds security headers and a strict, per-request-nonce Content Security Policy.
 import { defineMiddleware } from 'astro:middleware';
 import { env } from 'cloudflare:workers';
-import { verifyAdmin } from './lib/server/auth';
+import { sessionFromRequest } from './lib/server/users';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// Pages anyone may open (they only show a form). Everything else under /admin needs a session.
+const PUBLIC_ADMIN_PAGES = new Set(['/admin/login', '/admin/setup']);
+
+// While a user must change a temporary password, only these work.
+const PASSWORD_CHANGE_ALLOWED = new Set(['/api/admin/me', '/api/admin/account/password', '/admin/account']);
+
 function isAdminPath(path: string): boolean {
   return path === '/admin' || path.startsWith('/admin/') || path.startsWith('/api/admin/') || path === '/api/admin';
+}
+
+function isAuthApi(path: string): boolean {
+  return path.startsWith('/api/auth/');
 }
 
 function makeNonce(): string {
@@ -59,34 +69,40 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const path = url.pathname;
   const admin = isAdminPath(path);
 
-  if (admin) {
-    const auth = await verifyAdmin(request);
-    if (!auth.ok) {
-      const isApi = path.startsWith('/api/');
-      return new Response(isApi ? JSON.stringify({ error: 'Unauthorised' }) : 'Unauthorised. Sign in through Cloudflare Access.', {
-        status: 401,
-        headers: {
-          'content-type': isApi ? 'application/json' : 'text/plain; charset=utf-8',
-          'cache-control': 'no-store',
-          ...BASE_HEADERS,
-        },
-      });
-    }
-    context.locals.adminEmail = auth.email;
+  const isApi = path.startsWith('/api/');
+  const deny = (status: number, message: string) =>
+    new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...BASE_HEADERS },
+    });
 
-    if (path.startsWith('/api/admin') && MUTATING.has(request.method)) {
-      const origin = request.headers.get('Origin');
-      const sameOrigin = origin === url.origin;
-      // A custom header cannot be sent cross-site without a CORS preflight,
-      // which this API never grants.
-      const marked = request.headers.get('X-Sx-Admin') === '1';
-      if (!sameOrigin || !marked) {
-        return new Response(JSON.stringify({ error: 'Cross-site request blocked' }), {
-          status: 403,
-          headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...BASE_HEADERS },
-        });
-      }
+  // CSRF: writes must come from this site's own pages. A custom header cannot be sent
+  // cross-site without a CORS preflight, which this API never grants. The session
+  // cookie is also SameSite=Strict.
+  if ((path.startsWith('/api/admin') || isAuthApi(path)) && MUTATING.has(request.method)) {
+    const sameOrigin = request.headers.get('Origin') === url.origin;
+    const marked = request.headers.get('X-Sx-Admin') === '1';
+    if (!sameOrigin || !marked) return deny(403, 'Cross-site request blocked');
+  }
+
+  if (admin && !PUBLIC_ADMIN_PAGES.has(path)) {
+    let session = null;
+    try {
+      session = await sessionFromRequest(request, (p) => context.locals.cfContext?.waitUntil(p));
+    } catch {
+      return isApi ? deny(503, 'Database unavailable') : new Response('The admin is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...BASE_HEADERS } });
     }
+    if (!session) {
+      if (isApi) return deny(401, 'Unauthorised');
+      const next = path === '/admin' || path === '/admin/' ? '' : `?next=${encodeURIComponent(path + url.search)}`;
+      return new Response(null, { status: 303, headers: { Location: `/admin/login${next}`, 'cache-control': 'no-store', ...BASE_HEADERS } });
+    }
+    if (session.user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(path)) {
+      if (isApi) return deny(403, 'Change your temporary password first');
+      return new Response(null, { status: 303, headers: { Location: '/admin/account', 'cache-control': 'no-store', ...BASE_HEADERS } });
+    }
+    context.locals.user = session.user;
+    context.locals.sessionHash = session.tokenHash;
   }
 
   const nonce = makeNonce();
@@ -95,7 +111,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
   const headers = new Headers(response.headers);
   for (const [k, v] of Object.entries(BASE_HEADERS)) headers.set(k, v);
-  if (admin) {
+  if (admin || isAuthApi(path)) {
     headers.set('Cache-Control', 'no-store');
     headers.set('X-Robots-Tag', 'noindex, nofollow');
   }

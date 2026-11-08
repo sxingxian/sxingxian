@@ -10,12 +10,11 @@ interface SxEnv {
   ASSETS: Fetcher;
   MEDIA: R2Bucket;
   WEBHOOK_LIMITER?: RateLimit;
+  LOGIN_LIMITER?: RateLimit;
 
   // vars (non-secret)
   SITE_URL: string;
   WP_BASE_URL: string;
-  ACCESS_TEAM_DOMAIN?: string;
-  ADMIN_EMAILS?: string;
   NAS_S3_ENDPOINT?: string;
   NAS_S3_BUCKET?: string;
   NAS_S3_REGION?: string;
@@ -25,15 +24,13 @@ interface SxEnv {
 
   // secrets (wrangler secret put)
   DATABASE_URL: string;
-  ACCESS_AUD: string;
+  AUTH_SECRET?: string;   // encrypts 2FA secrets at rest (32+ chars)
+  SETUP_TOKEN?: string;   // one-time token for /admin/setup while no account exists
   WP_WEBHOOK_SECRET: string;
   NAS_S3_ACCESS_KEY_ID?: string;
   NAS_S3_SECRET_ACCESS_KEY?: string;
   B2_S3_ACCESS_KEY_ID?: string;
   B2_S3_SECRET_ACCESS_KEY?: string;
-
-  // local development only
-  DEV_AUTH_BYPASS?: string;
 }
 
 declare namespace Cloudflare {
@@ -44,6 +41,7 @@ interface Env extends SxEnv {}
 declare namespace App {
   interface Locals {
     cspNonce?: string;
-    adminEmail?: string;
+    user?: import('./lib/server/users').SessionUser;
+    sessionHash?: string;
   }
 }

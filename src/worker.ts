@@ -1,10 +1,12 @@
 // Worker entry: Astro handles HTTP; the scheduled handler runs WordPress jobs.
 import { handle } from '@astrojs/cloudflare/handler';
 import { healthCheck, reconcile, syncIncremental, log } from './lib/server/wordpress';
+import { purgeAuthData } from './lib/server/users';
 
 async function runCron(cron: string, scheduledTime: number): Promise<void> {
   try {
     if (cron === '0 19 * * *') {
+      await purgeAuthData().catch(() => {});
       await reconcile();
       return;
     }

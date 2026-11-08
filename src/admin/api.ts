@@ -1,6 +1,6 @@
 // Browser-side API client for the admin. It carries no credentials of its own:
-// the Cloudflare Access cookie is sent automatically (same origin), and the
-// X-Sx-Admin header is required by the server for every write (CSRF guard).
+// the HttpOnly session cookie is sent automatically (same origin, SameSite=Strict),
+// and the X-Sx-Admin header is required by the server for every write (CSRF guard).
 
 export class ApiError extends Error {
   status: number;
@@ -26,8 +26,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   const res = await fetch(path, init);
   if (res.status === 401) {
-    // Access session expired: reload so Cloudflare Access can sign in again.
-    window.location.reload();
+    // Session ended (signed out elsewhere, expired, or account disabled): back to sign-in.
+    const here = window.location.pathname + window.location.search;
+    window.location.assign(`/admin/login?next=${encodeURIComponent(here)}`);
     throw new ApiError(401, 'Session expired');
   }
   const data = (await res.json().catch(() => ({}))) as { error?: string; details?: unknown };

@@ -29,9 +29,9 @@ export default defineConfig(
     rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
   {
-    // The security tests deliberately contain attack payloads (javascript: URLs)
-    // and import their own freshly built bundle.
-    files: ['scripts/test-security.mjs'],
+    // The security tests deliberately contain attack payloads (javascript: URLs).
+    // Both scripts import a bundle they have just built from this repository's own source.
+    files: ['scripts/test-security.mjs', 'scripts/user.mjs'],
     rules: { 'no-script-url': 'off', 'no-unsanitized/method': 'off' },
   },
 );
