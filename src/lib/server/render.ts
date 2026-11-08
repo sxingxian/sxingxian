@@ -3,7 +3,7 @@
 // escaped; links and embeds are checked against fixed patterns. This is the
 // only path by which stored content becomes HTML — there is no raw-HTML block.
 import type { DocNode } from '../shared/types';
-import { embedSrc, isSafeHref, UUID_RE } from '../shared/safe';
+import { embedSrc, isSafeHref, osmEmbedSrc, osmLink, UUID_RE, validMapPoint } from '../shared/safe';
 import { esc } from './text';
 
 const MAX_DEPTH = 40;
@@ -104,13 +104,24 @@ function renderNode(node: DocNode, depth: number): string {
       }</figure>`;
     }
     case 'embed': {
-      const provider = a.provider === 'youtube' || a.provider === 'vimeo' ? a.provider : null;
+      const provider = a.provider === 'youtube' || a.provider === 'vimeo' || a.provider === 'tiktok' ? a.provider : null;
       const src = provider && typeof a.videoId === 'string' ? embedSrc(provider, a.videoId) : null;
       if (!src) return '';
+      const portrait = provider === 'tiktok' || a.portrait === true;
       const caption = typeof a.caption === 'string' ? a.caption.slice(0, 300) : '';
-      return `<figure class="embed"><div class="embed-frame"><iframe src="${esc(src)}" title="${esc(caption || 'Embedded video')}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="fullscreen; picture-in-picture; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>${
+      return `<figure class="embed${portrait ? ' portrait' : ''}"><div class="embed-frame"><iframe src="${esc(src)}" title="${esc(caption || 'Embedded video')}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="fullscreen; picture-in-picture; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>${
         caption ? `<figcaption>${esc(caption)}</figcaption>` : ''
       }</figure>`;
+    }
+    case 'map': {
+      const p = validMapPoint(a.lat, a.lon, a.zoom);
+      if (!p) return '';
+      const label = typeof a.label === 'string' ? a.label.slice(0, 120) : '';
+      const caption = typeof a.caption === 'string' ? a.caption.slice(0, 300) : '';
+      const text = [label, caption].filter(Boolean).join(' · ');
+      return `<figure class="map"><div class="map-frame"><iframe src="${esc(osmEmbedSrc(p))}" title="${esc(label || 'Map')}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-popups"></iframe></div><figcaption>${
+        text ? `${esc(text)} · ` : ''
+      }<a href="${esc(osmLink(p))}" target="_blank" rel="noopener noreferrer">Open map ↗</a></figcaption></figure>`;
     }
     case 'columns': {
       const cols = (node.content ?? []).filter((c) => c?.type === 'column').slice(0, 3);

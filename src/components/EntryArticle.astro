@@ -27,7 +27,7 @@ const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`,
     {entry.dek && <p class="dek">{entry.dek}</p>}
     {videoSrc ? (
       <div class="prose" style="padding-top:28px">
-        <figure class="embed" style="margin:0"><div class="embed-frame">
+        <figure class={`embed${video?.portrait ? ' portrait' : ''}`} style="margin:0"><div class="embed-frame">
           <iframe src={videoSrc} title={entry.title} loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="fullscreen; picture-in-picture; encrypted-media" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>
         </div></figure>
       </div>

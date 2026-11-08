@@ -19,7 +19,9 @@
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* Footer sits at the bottom of the window on short pages, and after the content on long ones. */
 body {
+  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
   margin: 0; background: var(--bg); color: var(--ink);
   font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
@@ -138,6 +140,12 @@ img { max-width: 100%; display: block; }
 .prose .fig-full img { border-radius: 0; }
 .prose .embed-frame { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #111; }
 .prose .embed-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.embed.portrait .embed-frame, .prose .embed.portrait .embed-frame { aspect-ratio: 9 / 16; width: 100%; max-width: 340px; margin-inline: auto; }
+.embed.portrait figcaption { text-align: center; }
+.prose .map { margin: 1.6em 0 0; }
+.prose .map-frame { position: relative; aspect-ratio: 7 / 4; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--bg-2); }
+.prose .map-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.prose .map figcaption a { color: var(--accent); }
 .cols { display: grid; align-items: start; }
 .cols-gap-s { gap: 12px; } .cols-gap-m { gap: 24px; } .cols-gap-l { gap: 40px; }
 .cols > .col > * + * { margin-top: 1em; }
@@ -155,7 +163,7 @@ img { max-width: 100%; display: block; }
 .sheet .prose figure img { border-radius: 6px; }
 
 /* footer */
-.site-footer { margin-top: 80px; border-top: 1px solid var(--line); background: var(--bg-2); }
+.site-footer { margin-top: auto; border-top: 1px solid var(--line); background: var(--bg-2); }
 .foot-grid { padding-top: 36px; padding-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 28px; font-size: 14px; }
 .foot-grid .col-links { display: flex; flex-direction: column; gap: 6px; }
 .foot-grid .col-links a:hover { color: var(--accent); }
@@ -188,6 +196,10 @@ img { max-width: 100%; display: block; }
   .site-header, .site-footer, .cv-bar, .skip { display: none !important; }
   .cv-wrap { background: none; padding: 0; }
   .sheet { box-shadow: none; padding: 0; max-width: none; }
-  body { background: #fff; }
+  body { background: #fff; display: block; min-height: 0; }
+  #main { padding-bottom: 0; }
   @page { margin: 16mm; }
 }
+
+/* layout: main grows to push the footer down; keep a gap above the footer */
+#main { flex: 1 0 auto; padding-bottom: 80px; }

@@ -30,7 +30,7 @@ const ITEMS: Item[] = [
   { group: 'Basic', title: 'Code', hint: 'Code block', icon: '</>', keywords: 'code pre snippet', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
   { group: 'Basic', title: 'Divider', hint: 'Horizontal line', icon: '—', keywords: 'divider hr line rule', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
   {
-    group: 'Media', title: 'Image', hint: 'Upload or choose — R2, NAS or B2', icon: '▣', keywords: 'image photo picture upload media',
+    group: 'Media', title: 'Image', hint: 'Upload or choose', icon: '▣', keywords: 'image photo picture upload media',
     run: (e, r) => {
       e.chain().focus().deleteRange(r).run();
       void pickMedia(e).then((m) => {
@@ -38,9 +38,12 @@ const ITEMS: Item[] = [
       });
     },
   },
-  { group: 'Media', title: 'Video', hint: 'YouTube or Vimeo link', icon: '▶', keywords: 'video youtube vimeo embed film', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed' }).run() },
-  { group: 'Layout', title: '2 columns', hint: 'Drag the divider to resize', icon: '▥', keywords: 'columns two 2 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(2)).run() },
-  { group: 'Layout', title: '3 columns', hint: 'Two resizable dividers', icon: '▦', keywords: 'columns three 3 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(3)).run() },
+  { group: 'Media', title: 'Video', hint: 'YouTube or Vimeo', icon: '▶', keywords: 'video youtube vimeo embed film', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed' }).run() },
+  { group: 'Media', title: 'YouTube Short', hint: 'Vertical video', icon: '▯', keywords: 'shorts youtube short vertical reel', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed', attrs: { portrait: true } }).run() },
+  { group: 'Media', title: 'TikTok', hint: 'TikTok video', icon: '♪', keywords: 'tiktok tik tok vertical reel', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed', attrs: { portrait: true } }).run() },
+  { group: 'Media', title: 'Map', hint: 'Place or coordinates', icon: '⌖', keywords: 'map location place address pin osm google', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'map' }).run() },
+  { group: 'Layout', title: '2 columns', hint: 'Resizable', icon: '▥', keywords: 'columns two 2 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(2)).run() },
+  { group: 'Layout', title: '3 columns', hint: 'Resizable', icon: '▦', keywords: 'columns three 3 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(3)).run() },
 ];
 
 interface MenuRef {
@@ -50,6 +53,9 @@ interface MenuRef {
 const Menu = forwardRef<MenuRef, SuggestionProps<Item>>(function Menu(props, ref) {
   const [index, setIndex] = useState(0);
   useEffect(() => setIndex(0), [props.items]);
+  useEffect(() => {
+    document.querySelector('.menu [aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [index]);
   const choose = (i: number) => {
     const item = props.items[i];
     if (item) props.command(item);

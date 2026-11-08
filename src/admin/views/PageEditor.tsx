@@ -113,9 +113,9 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' }) {
         </div>
         <aside className="editor-side" aria-label="Page settings">
           <div className="lbl">Page</div>
-          {slug === 'cv' && <span className="hint">Type “/2 columns” or “/3 columns” to add a layout. Drag the dividers to resize; the public page and print-to-PDF use the same layout.</span>}
+          {slug === 'cv' && <span className="hint">“/2 columns” or “/3 columns” for layouts.</span>}
           <label className="check"><input type="checkbox" checked={page.noindex} onChange={(e) => { setPage({ ...page, noindex: e.target.checked }); setDirty(true); }} />Hide from search engines</label>
-          {slug === 'cv' && <span className="hint">Keep your phone number and home address off this page — it is public.</span>}
+          {slug === 'cv' && <span className="hint">Public page: leave out phone and address.</span>}
         </aside>
       </div>
       {picker && <MediaPicker onPick={(m) => picker(m)} onClose={() => picker(null)} />}

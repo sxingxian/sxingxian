@@ -6,9 +6,10 @@ import { NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
 import DragHandle from '@tiptap/extension-drag-handle-react';
-import { Callout, Column, Columns, Embed, Figure, SxStorage, type PickedMedia } from './nodes';
+import { Callout, Column, Columns, Embed, Figure, MapBlock, SxStorage, type PickedMedia } from './nodes';
 import { SlashCommand } from './slash';
 import { isSafeHref } from '../../lib/shared/safe';
+import { useDialog } from '../components/dialog';
 import type { DocNode } from '../../lib/shared/types';
 
 interface Props {
@@ -18,16 +19,23 @@ interface Props {
   allowH1?: boolean;
 }
 
-function setLink(editor: TEditor) {
+async function setLink(editor: TEditor, dialog: ReturnType<typeof useDialog>) {
   const prev = (editor.getAttributes('link').href as string | undefined) ?? '';
-  const url = window.prompt('Link (https://…, /page or mailto:)', prev);
-  if (url === null) return;
+  const url = await dialog.prompt({
+    title: prev ? 'Edit link' : 'Add link',
+    defaultValue: prev,
+    placeholder: 'https://…  ·  /cv  ·  mailto:',
+    inputMode: 'url',
+    confirmLabel: 'Apply',
+    validate: (v) => (v.trim() === '' || isSafeHref(v.trim()) ? null : 'Use https://, a page like /cv, or mailto:'),
+  });
+  if (url === null) return void editor.chain().focus().run();
   if (url.trim() === '') return void editor.chain().focus().extendMarkRange('link').unsetLink().run();
-  if (!isSafeHref(url.trim())) return void window.alert('That link is not allowed. Use https://…, a page on this site like /cv, or mailto:.');
   editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
 }
 
 export default function Editor({ content, onChange, pickMedia, allowH1 = false }: Props) {
+  const dialog = useDialog();
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
 
@@ -45,11 +53,12 @@ export default function Editor({ content, onChange, pickMedia, allowH1 = false }
         },
       }),
       Placeholder.configure({
-        placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : "Type '/' for blocks — images, video, columns…"),
+        placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : "Type '/' for blocks"),
       }),
       SxStorage,
       Figure,
       Embed,
+      MapBlock,
       Callout,
       Column,
       Columns,
@@ -84,7 +93,7 @@ export default function Editor({ content, onChange, pickMedia, allowH1 = false }
           <button type="button" aria-pressed={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>{'</>'}</button>
           <button type="button" aria-pressed={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
           <button type="button" aria-pressed={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</button>
-          <button type="button" aria-pressed={editor.isActive('link')} onClick={() => setLink(editor)}>Link</button>
+          <button type="button" aria-pressed={editor.isActive('link')} onClick={() => void setLink(editor, dialog)}>Link</button>
         </div>
       </BubbleMenu>
       <EditorContent editor={editor} />

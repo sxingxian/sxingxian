@@ -53,14 +53,14 @@ export default function Login({ setupAvailable }: { setupAvailable: boolean }) {
             </>
           ) : (
             <label className="field" htmlFor="code">
-              {useRecovery ? 'Recovery code' : 'Code from your authenticator app'}
+              {useRecovery ? 'Recovery code' : 'Authenticator code'}
               <input id="code" ref={codeRef} className={useRecovery ? 'input' : 'input code-input'} value={code}
                 onChange={(e) => setCode(useRecovery ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 6))}
                 inputMode={useRecovery ? 'text' : 'numeric'} autoComplete="one-time-code" maxLength={20} required
                 placeholder={useRecovery ? 'xxxxx-xxxxx' : '000000'} autoCapitalize="off" spellCheck={false} />
               <button type="button" className="linkbtn hint" style={{ background: 'none', border: 0, padding: 0, textAlign: 'left', cursor: 'pointer', textDecoration: 'underline' }}
                 onClick={() => { setUseRecovery(!useRecovery); setCode(''); }}>
-                {useRecovery ? 'Use the authenticator app instead' : 'Lost your phone? Use a recovery code'}
+                {useRecovery ? 'Use authenticator code' : 'Use a recovery code'}
               </button>
             </label>
           )}
@@ -72,7 +72,7 @@ export default function Login({ setupAvailable }: { setupAvailable: boolean }) {
           )}
         </form>
         <div className="auth-foot">
-          {setupAvailable ? <a href="/admin/setup">Create the first admin account</a> : 'Forgot your password? Ask an owner to reset it, or use the command line (see docs).'}
+          {setupAvailable ? <a href="/admin/setup">Create the first admin account</a> : 'Forgot your password? Ask an owner.'}
         </div>
       </div>
     </main>

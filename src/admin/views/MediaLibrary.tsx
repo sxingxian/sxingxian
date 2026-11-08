@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import MediaPicker from '../components/MediaPicker';
 import { relTime, useToast } from '../components/ui';
+import { useDialog } from '../components/dialog';
 import type { MediaItem } from '../../lib/shared/types';
 
 export default function MediaLibrary() {
@@ -9,12 +10,14 @@ export default function MediaLibrary() {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState('');
   const toast = useToast();
+  const dialog = useDialog();
 
   const load = () => api.get<{ media: MediaItem[] }>('/api/admin/media').then((r) => setItems(r.media)).catch((e) => setErr(errorText(e)));
   useEffect(() => { void load(); }, []);
 
   const remove = async (m: MediaItem) => {
-    if (!window.confirm('Delete this file? Pages that use it will show a broken image.')) return;
+    const ok = await dialog.confirm({ title: 'Delete this file?', body: 'Anywhere it’s used will show a broken image.', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
     try {
       await api.del(`/api/admin/media/${m.id}`);
       setItems((xs) => xs?.filter((x) => x.id !== m.id) ?? null);
@@ -32,7 +35,6 @@ export default function MediaLibrary() {
       </div>
       <div className="page">
         <h1>Media</h1>
-        <p className="sub">Everything is served from /media/… whichever host it lives on, so files can move hosts later without breaking links.</p>
         {err && <p className="err-text">{err}</p>}
         <div className="lib" style={{ marginTop: 18 }}>
           {items === null && <div className="empty">Loading…</div>}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
+import { useDialog } from '../components/dialog';
+import DateTimePicker from '../components/DateTimePicker';
 import Editor from '../editor/Editor';
 import MediaPicker from '../components/MediaPicker';
 import { Switch, useToast } from '../components/ui';
@@ -23,14 +25,8 @@ interface Draft {
   published_at: string | null;
 }
 
-function toLocalInput(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const off = d.getTimezoneOffset();
-  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
-}
-
 export default function EntryEditor({ id, kind: newKind, go }: { id: string | null; kind: EntryKind; go: (p: string) => void }) {
+  const dialog = useDialog();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [entryId, setEntryId] = useState<string | null>(id);
   const [dirty, setDirty] = useState(false);
@@ -107,7 +103,9 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   );
 
   const remove = async () => {
-    if (!entryId || !window.confirm('Delete this entry permanently?')) return;
+    if (!entryId) return;
+    const ok = await dialog.confirm({ title: 'Delete this entry?', body: 'This can’t be undone.', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
     try {
       await api.del(`/api/admin/entries/${entryId}`);
       setDirty(false);
@@ -152,7 +150,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             <textarea className="title-input" rows={1} placeholder="Untitled" value={draft.title} aria-label="Title"
               onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current ? {} : { slug: slugify(e.target.value) }) })}
               onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
-            <textarea className="dek-input" rows={1} placeholder="A one-line summary shown in lists…" value={draft.dek} aria-label="Summary"
+            <textarea className="dek-input" rows={1} placeholder="Summary" value={draft.dek} aria-label="Summary"
               onChange={(e) => patch({ dek: e.target.value })}
               onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
             <div className="props">
@@ -163,7 +161,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
                     {site.topics.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 ) : (
-                  <input className="input" value={draft.topic} maxLength={40} onChange={(e) => patch({ topic: e.target.value })} placeholder="e.g. Infrastructure" />
+                  <input className="input" value={draft.topic} maxLength={40} onChange={(e) => patch({ topic: e.target.value })} placeholder="Topic" />
                 )}
               </label>
               <div className="prop"><span>Cover image</span>
@@ -192,11 +190,11 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             <span>Show publicly</span>
             <Switch checked={draft.is_public} label="Show publicly" onChange={(v) => patch({ is_public: v })} />
           </div>
-          {draft.is_public && draft.status === 'draft' && <span className="hint">It goes live once the status is Published.</span>}
-          <label className="field">Publish date
-            <input className="input" type="datetime-local" value={toLocalInput(draft.published_at)} onChange={(e) => patch({ published_at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
-            <span className="hint">A future date schedules it. Empty = when you publish.</span>
-          </label>
+          {draft.is_public && draft.status === 'draft' && <span className="hint">Live once published.</span>}
+          <div className="field">Publish date
+            <DateTimePicker value={draft.published_at} onChange={(iso) => patch({ published_at: iso })} />
+            <span className="hint">Future date = scheduled.</span>
+          </div>
           <label className="field">URL slug
             <input className="input mono" value={draft.slug} onChange={(e) => { slugTouched.current = true; patch({ slug: slugify(e.target.value) }); }} />
             <span className="hint">{liveUrl}</span>
@@ -207,7 +205,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
               <Switch checked={isFeatured} label="Feature on home page" onChange={setFeature} />
             </div>
           )}
-          {draft.kind === 'post' && <span className="hint">{isFeatured ? 'Pinned as the featured post.' : 'When nothing is pinned, the latest post is featured.'}</span>}
+          {draft.kind === 'post' && isFeatured && <span className="hint">Pinned on the home page.</span>}
           {entryId && <button type="button" className="btn danger" style={{ marginTop: 'auto' }} onClick={remove}>Delete entry</button>}
         </aside>
       </div>

@@ -72,7 +72,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
       <div className="page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <h1>WordPress journal</h1>
-          <p className="sub">Posts published on {wpBaseUrl.replace('https://', '')} appear in the main feed as cards that link back. WordPress stays where you write them.</p>
+          <p className="sub">Synced from {wpBaseUrl.replace('https://', '')}.</p>
         </div>
         {err && <p className="err-text">{err}</p>}
         {source && (
@@ -80,9 +80,9 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
             <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <span className="dot" style={{ background: down ? '#b4421e' : '#1e7a4f' }} />
               <span>
-                <b>{down ? `Unreachable since ${relTime(source.status_since)} — WordPress posts are hidden` : `Reachable — ${visible} WordPress posts are showing`}</b>
+                <b>{down ? `Down since ${relTime(source.status_since)} · posts hidden` : `Online · ${visible} posts showing`}</b>
                 <br />
-                <span className="status">last check {relTime(source.last_check_at)}{source.last_check_ms ? ` · ${source.last_check_ms} ms` : ''} · last sync {relTime(source.last_sync_at)}</span>
+                <span className="status">checked {relTime(source.last_check_at)}{source.last_check_ms ? ` · ${source.last_check_ms} ms` : ''} · synced {relTime(source.last_sync_at)}</span>
               </span>
             </span>
             <span className="actions">
@@ -97,10 +97,10 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
           {rules && (
             <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="lbl">Rules</div>
-              <label className="check"><input type="checkbox" checked={rules.hideWhenDown} onChange={(e) => saveRules({ ...rules, hideWhenDown: e.target.checked })} />Hide WordPress posts while WordPress is down (checked about every 5 min while the site has visitors; 2 fails hide, 2 OKs show)</label>
-              <label className="check"><input type="checkbox" checked={rules.autoShow} onChange={(e) => saveRules({ ...rules, autoShow: e.target.checked })} />Show new WordPress posts automatically (otherwise switch each one on below)</label>
-              <label className="check"><input type="checkbox" checked={rules.includeInRss} onChange={(e) => saveRules({ ...rules, includeInRss: e.target.checked })} />Include WordPress posts in RSS</label>
-              <div className="lbl" style={{ marginTop: 6 }}>WordPress category → journal topic</div>
+              <label className="check"><input type="checkbox" checked={rules.hideWhenDown} onChange={(e) => saveRules({ ...rules, hideWhenDown: e.target.checked })} />Hide posts while WordPress is down</label>
+              <label className="check"><input type="checkbox" checked={rules.autoShow} onChange={(e) => saveRules({ ...rules, autoShow: e.target.checked })} />Show new posts automatically</label>
+              <label className="check"><input type="checkbox" checked={rules.includeInRss} onChange={(e) => saveRules({ ...rules, includeInRss: e.target.checked })} />Include in RSS</label>
+              <div className="lbl" style={{ marginTop: 6 }}>Category → topic</div>
               {map.map(([k, v], i) => (
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: 6, alignItems: 'center' }}>
                   <input className="input" aria-label="WordPress category" value={k} onChange={(e) => setMap(map.map((m, j) => (j === i ? [e.target.value, m[1]] : m)))} />
@@ -110,24 +110,26 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
                 </div>
               ))}
               <div className="actions">
-                <button type="button" className="btn small" onClick={() => setMap([...map, ['', '']])}>+ Add mapping</button>
-                <button type="button" className="btn small primary" onClick={() => saveRules({ ...rules, categoryMap: Object.fromEntries(map.filter(([k, v]) => k.trim() && v.trim())) })}>Save mappings</button>
+                <button type="button" className="btn small" onClick={() => setMap([...map, ['', '']])}>+ Add</button>
+                <button type="button" className="btn small primary" onClick={() => saveRules({ ...rules, categoryMap: Object.fromEntries(map.filter(([k, v]) => k.trim() && v.trim())) })}>Save</button>
               </div>
             </section>
           )}
           <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div className="lbl">How syncing works</div>
-            <p className="hint" style={{ margin: 0 }}>1. The sxingxian-sync plugin on WordPress pings this site when you publish, edit or delete. The site then fetches that post from WordPress itself.</p>
-            <p className="hint" style={{ margin: 0 }}>2. About every 15 minutes (while the site has visitors) it pulls anything changed, in case a ping was missed.</p>
-            <p className="hint" style={{ margin: 0 }}>3. Once a day a full check removes posts deleted, trashed or made private on WordPress. Use Full check to run it now.</p>
-            <p className="hint" style={{ margin: 0 }}>Only titles, excerpts, images and links are copied. Readers open the full post on WordPress.</p>
+            <div className="lbl">Sync</div>
+            <dl className="facts">
+              <dt>Instant</dt><dd>Webhook on publish, edit, delete</dd>
+              <dt>~15 min</dt><dd>Catch-up pull</dd>
+              <dt>Daily</dt><dd>Full check for removed posts</dd>
+              <dt>Copied</dt><dd>Title, excerpt, image, link</dd>
+            </dl>
           </section>
         </div>
 
         <section>
           <div className="lbl" style={{ marginBottom: 8 }}>Posts from WordPress</div>
           <div className="table-box">
-            {posts.length === 0 ? <div className="empty">No posts synced yet. Press “Sync now”.</div> : (
+            {posts.length === 0 ? <div className="empty">Nothing synced yet.</div> : (
               <table>
                 <thead><tr><th>Title</th><th>Topic</th><th>Published</th><th style={{ textAlign: 'right' }}>Show on main site</th></tr></thead>
                 <tbody>

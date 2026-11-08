@@ -26,7 +26,7 @@ Public pages ship **no JavaScript**. Only `/admin` loads the editor bundle.
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**
   - **Blocks:** text, headings, lists, quote, callout, code, divider.
-  - **Media:** images (with alt text, caption and width) and YouTube/Vimeo embeds.
+  - **Media:** images (with alt text, caption and width), YouTube and Vimeo, vertical YouTube Shorts and TikTok, and maps (OpenStreetMap; search a place, or paste coordinates or a Google Maps/OSM link).
   - **Layout:** 2- or 3-column blocks with draggable dividers, presets, gap, phone stacking and dividers.
   - **Editing:** a formatting bubble and drag handles.
 - **CV page** (`/cv`): built from column blocks, printable to PDF from the browser (print stylesheet included).

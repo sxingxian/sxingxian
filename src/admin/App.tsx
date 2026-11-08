@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import './admin.css';
 import { api } from './api';
 import { ToastProvider } from './components/ui';
+import { DialogProvider } from './components/dialog';
 import EntryList from './views/EntryList';
 import EntryEditor from './views/EntryEditor';
 import PageEditor from './views/PageEditor';
@@ -85,6 +86,7 @@ export default function App() {
 
   return (
     <ToastProvider>
+      <DialogProvider>
       <div className="shell">
         <aside className="sidebar">
           <div className="brand"><b>sxingxian<span style={{ color: '#e0532f' }}>.</span></b><small>Studio · admin</small></div>
@@ -112,6 +114,7 @@ export default function App() {
         </aside>
         <div className="content">{view}</div>
       </div>
+      </DialogProvider>
     </ToastProvider>
   );
 }

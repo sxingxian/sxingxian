@@ -48,14 +48,12 @@ export default function Setup({ available, closedMessage }: { available: boolean
       <div className="auth-card">
         <div className="brand-mini">sxingxian<span>.</span></div>
         <h1>Create the owner account</h1>
-        <p className="muted" style={{ margin: 0 }}>This page works once. After this account exists, it closes for good.</p>
         {err && <div className="alert err" role="alert">{err}</div>}
         <form onSubmit={submit}>
           <label className="field" htmlFor="token">
             Setup token
             <input id="token" className="input" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off"
               spellCheck={false} autoCapitalize="off" required maxLength={256} />
-            <span className="hint">The one-time setup token you added to the Worker in Cloudflare.</span>
           </label>
           <label className="field" htmlFor="name">
             Name
@@ -67,7 +65,7 @@ export default function Setup({ available, closedMessage }: { available: boolean
               autoComplete="username" required maxLength={254} autoCapitalize="off" spellCheck={false} />
           </label>
           <PasswordField id="password" label="Password" value={password} onChange={setPassword} autoComplete="new-password"
-            hint="At least 12 characters. A few unrelated words is strong and easy to remember." />
+            hint="12+ characters" />
           <StrengthMeter value={password} />
           <PasswordField id="confirm" label="Confirm password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
           {mismatch && <span className="err-text">The passwords don’t match.</span>}

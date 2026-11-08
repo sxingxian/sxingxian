@@ -47,9 +47,9 @@ export const POST: APIRoute = async ({ request }) => {
     const parsed = embedInputSchema.safeParse(raw);
     if (!parsed.success) return error(422, 'Validation failed');
     const video = parseVideoUrl(parsed.data.url);
-    if (!video) return error(422, 'Paste a YouTube or Vimeo link');
+    if (!video || video.provider === 'tiktok') return error(422, 'Paste a YouTube or Vimeo link');
     const media = await insertMedia({
-      provider: video.provider, object_key: '', embed_id: video.id, mime: 'text/x-embed', bytes: 0,
+      provider: video.provider as 'youtube' | 'vimeo', object_key: '', embed_id: video.id, mime: 'text/x-embed', bytes: 0,
       width: null, height: null, alt: parsed.data.alt, filename: parsed.data.url.slice(0, 200),
     });
     return json({ media }, { status: 201 });

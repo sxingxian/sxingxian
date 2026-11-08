@@ -12,7 +12,7 @@ const out = join(dir, 'bundle.mjs');
 await build({
   stdin: {
     contents: `export { renderDoc } from './src/lib/server/render.ts';
-               export { isSafeHref, parseVideoUrl, embedSrc } from './src/lib/shared/safe.ts';
+               export { isSafeHref, parseVideoUrl, embedSrc, parseMapInput, isTikTokShortLink } from './src/lib/shared/safe.ts';
                export { htmlToText, esc } from './src/lib/server/text.ts';
                export * as ac from './src/lib/server/authcrypto.ts';
                export { sessionCookie, clearSessionCookie, SESSION_COOKIE } from './src/lib/server/users.ts';
@@ -33,7 +33,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -111,10 +111,50 @@ t('blocks dangerous schemes', () => {
 
 console.log('Video links');
 t('parses known providers only', () => {
-  assert.deepEqual(parseVideoUrl('https://youtu.be/dQw4w9WgXcQ'), { provider: 'youtube', id: 'dQw4w9WgXcQ' });
-  assert.deepEqual(parseVideoUrl('https://vimeo.com/76979871'), { provider: 'vimeo', id: '76979871' });
+  assert.deepEqual(parseVideoUrl('https://youtu.be/dQw4w9WgXcQ'), { provider: 'youtube', id: 'dQw4w9WgXcQ', portrait: false });
+  assert.deepEqual(parseVideoUrl('https://vimeo.com/76979871'), { provider: 'vimeo', id: '76979871', portrait: false });
+  assert.deepEqual(parseVideoUrl('https://www.youtube.com/shorts/dQw4w9WgXcQ'), { provider: 'youtube', id: 'dQw4w9WgXcQ', portrait: true });
+  assert.deepEqual(parseVideoUrl('https://www.tiktok.com/@scout2015/video/6718335390845095173?lang=en'), { provider: 'tiktok', id: '6718335390845095173', portrait: true });
+  assert.equal(parseVideoUrl('https://www.tiktok.com/@x/video/123"><script>'), null);
+  assert.equal(parseVideoUrl('https://tiktok.com.evil.com/@x/video/6718335390845095173'), null);
+  assert.equal(parseVideoUrl('http://www.tiktok.com/@x/video/6718335390845095173'), null);
   assert.equal(parseVideoUrl('https://evil.com/watch?v=dQw4w9WgXcQ'), null);
   assert.equal(parseVideoUrl('javascript:alert(1)'), null);
+});
+
+console.log('TikTok, Shorts and maps');
+t('TikTok and Shorts embeds render portrait players from fixed hosts only', () => {
+  const tt = renderDoc(doc({ type: 'embed', attrs: { provider: 'tiktok', videoId: '6718335390845095173' } }));
+  assert.ok(tt.includes('src="https://www.tiktok.com/player/v1/6718335390845095173?rel=0&amp;description=1"'));
+  assert.ok(tt.includes('class="embed portrait"') && tt.includes('sandbox='));
+  assert.equal(renderDoc(doc({ type: 'embed', attrs: { provider: 'tiktok', videoId: 'abc' } })), '');
+  const sh = renderDoc(doc({ type: 'embed', attrs: { provider: 'youtube', videoId: 'dQw4w9WgXcQ', portrait: true } }));
+  assert.ok(sh.includes('youtube-nocookie.com/embed/dQw4w9WgXcQ') && sh.includes('portrait'));
+});
+t('TikTok share-link detection', () => {
+  assert.ok(isTikTokShortLink('https://vm.tiktok.com/ZMabc123/'));
+  assert.ok(isTikTokShortLink('https://www.tiktok.com/t/ZTabc/'));
+  assert.ok(!isTikTokShortLink('https://vm.tiktok.com.evil.com/x'));
+  assert.ok(!isTikTokShortLink('http://vm.tiktok.com/x'));
+});
+t('map block: only valid coordinates, fixed OpenStreetMap host, escaped label', () => {
+  const html = renderDoc(doc({ type: 'map', attrs: { lat: 1.2834, lon: 103.8607, zoom: 16, label: '<b>Marina</b>"', caption: 'x' } }));
+  assert.ok(html.includes('src="https://www.openstreetmap.org/export/embed.html?bbox='));
+  assert.ok(html.includes('&lt;b&gt;Marina&lt;/b&gt;&quot;') && !html.includes('<b>'));
+  assert.ok(html.includes('rel="noopener noreferrer"'));
+  for (const bad of [{ lat: 'x', lon: 1 }, { lat: 91, lon: 0 }, { lat: 0, lon: 181 }, { lat: '1;alert(1)', lon: 2 }, {}]) {
+    assert.equal(renderDoc(doc({ type: 'map', attrs: bad })), '', JSON.stringify(bad));
+  }
+  const z = renderDoc(doc({ type: 'map', attrs: { lat: 1, lon: 1, zoom: 99 } }));
+  assert.ok(z.includes('#map=19/'), 'zoom is clamped');
+});
+t('map input parsing: coordinates and map links', () => {
+  assert.deepEqual(parseMapInput('1.2834, 103.8607'), { lat: 1.2834, lon: 103.8607, zoom: 15 });
+  assert.deepEqual(parseMapInput('https://www.google.com/maps/place/X/@1.2834,103.8607,17z/data=x'), { lat: 1.2834, lon: 103.8607, zoom: 17 });
+  assert.deepEqual(parseMapInput('https://www.openstreetmap.org/#map=14/1.29/103.85'), { lat: 1.29, lon: 103.85, zoom: 14 });
+  assert.equal(parseMapInput('Marina Bay Sands'), null);
+  assert.equal(parseMapInput('javascript:alert(1)'), null);
+  assert.equal(parseMapInput('200, 500'), null);
 });
 
 console.log('WordPress text cleaning');

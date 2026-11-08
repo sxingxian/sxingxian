@@ -38,13 +38,12 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
       </div>
       <div className="page">
         <h1>{title}</h1>
-        <p className="sub">{kind === 'post' ? 'Posts written here. WordPress posts are managed under WordPress.' : 'Switch an entry off to hide it from the public site without deleting it.'}</p>
         {err && <p className="err-text">{err}</p>}
         <div className="table-box" style={{ marginTop: 18 }}>
           {rows === null ? (
             <div className="empty">Loading…</div>
           ) : rows.length === 0 ? (
-            <div className="empty">Nothing yet. Create your first {KIND_LABELS[kind].toLowerCase()}.</div>
+            <div className="empty">Nothing yet.</div>
           ) : (
             <table>
               <thead><tr><th>Title</th><th>Topic</th><th>Status</th><th>Updated</th><th style={{ textAlign: 'right' }}>Show publicly</th></tr></thead>

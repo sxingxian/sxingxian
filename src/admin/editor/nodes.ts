@@ -2,7 +2,7 @@
 // (src/lib/server/render.ts) understands exactly these node names and attrs.
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
-import { FigureView, EmbedView, ColumnsView } from './views';
+import { FigureView, EmbedView, ColumnsView, MapView } from './views';
 
 export interface PickedMedia {
   id: string;
@@ -52,6 +52,7 @@ export const Embed = Node.create({
     return {
       provider: { default: null },
       videoId: { default: '' },
+      portrait: { default: false },
       caption: { default: '' },
     };
   },
@@ -63,6 +64,33 @@ export const Embed = Node.create({
   },
   addNodeView() {
     return ReactNodeViewRenderer(EmbedView);
+  },
+});
+
+// A location on an OpenStreetMap map (no API key). The public page links to the full map.
+export const MapBlock = Node.create({
+  name: 'map',
+  group: 'block',
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      lat: { default: null },
+      lon: { default: null },
+      zoom: { default: 15 },
+      label: { default: '' },
+      caption: { default: '' },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="map"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'map' })];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(MapView);
   },
 });
 
@@ -82,7 +110,7 @@ export const Callout = Node.create({
 // A column holds normal blocks but never another column layout.
 export const Column = Node.create({
   name: 'column',
-  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | embed | callout)+',
+  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | embed | map | callout)+',
   isolating: true,
   parseHTML() {
     return [{ tag: 'div[data-type="column"]' }];

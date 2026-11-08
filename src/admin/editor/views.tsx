@@ -1,7 +1,8 @@
-// React node views: figure (image), video embed, and resizable columns.
+// React node views: figure (image), video embed, map, and resizable columns.
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { embedSrc, parseVideoUrl } from '../../lib/shared/safe';
+import { embedSrc, isTikTokShortLink, osmEmbedSrc, parseMapInput, parseVideoUrl, validMapPoint, type VideoProvider } from '../../lib/shared/safe';
+import { api, errorText } from '../api';
 
 type PickMedia = () => Promise<{ id: string; alt: string } | null>;
 function picker(editor: NodeViewProps['editor']): PickMedia | null {
@@ -40,34 +41,139 @@ export function FigureView({ node, updateAttributes, selected, editor, deleteNod
 
 // ---------------- embed ----------------
 
-export function EmbedView({ node, updateAttributes, selected, deleteNode }: NodeViewProps) {
-  const { provider, videoId, caption } = node.attrs as { provider: 'youtube' | 'vimeo' | null; videoId: string; caption: string };
+export function EmbedView({ node, updateAttributes, selected, deleteNode, editor }: NodeViewProps) {
+  const { provider, videoId, caption, portrait } = node.attrs as { provider: VideoProvider | null; videoId: string; caption: string; portrait: boolean };
   const [url, setUrl] = useState('');
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const src = provider && videoId ? embedSrc(provider, videoId) : null;
-  const apply = () => {
-    const v = parseVideoUrl(url);
-    if (!v) return setErr('Paste a YouTube or Vimeo link');
-    updateAttributes({ provider: v.provider, videoId: v.id });
+  const tall = provider === 'tiktok' || portrait;
+
+  const apply = async () => {
+    setErr('');
+    let link = url.trim();
+    if (isTikTokShortLink(link)) {
+      setBusy(true);
+      try {
+        link = (await api.post<{ url: string }>('/api/admin/resolve-link', { url: link })).url;
+      } catch (e) {
+        setBusy(false);
+        return setErr(errorText(e));
+      }
+      setBusy(false);
+    }
+    const v = parseVideoUrl(link);
+    if (!v) return setErr('Use a YouTube, Shorts, Vimeo or TikTok link');
+    updateAttributes({ provider: v.provider, videoId: v.id, portrait: v.portrait });
   };
+
   return (
-    <NodeViewWrapper className="node-embed node-figure" data-drag-handle="">
+    <NodeViewWrapper className={`node-embed node-figure${tall ? ' portrait' : ''}`} data-drag-handle="">
       {src ? (
         <div className="frame">
-          <iframe src={src} title={caption || 'Embedded video'} sandbox="allow-scripts allow-same-origin allow-presentation" allow="fullscreen; picture-in-picture" />
+          <iframe src={src} title={caption || 'Embedded video'} sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" allow="fullscreen; picture-in-picture" />
         </div>
       ) : (
         <div className="paste" contentEditable={false}>
-          <label className="sr-only" htmlFor="embed-url">Video link</label>
-          <input id="embed-url" className="input" style={{ flex: 1 }} placeholder="Paste a YouTube or Vimeo link and press Enter" value={url}
+          <input className="input" style={{ flex: 1 }} aria-label="Video link" value={url} autoFocus={editor.isFocused}
+            placeholder={portrait ? 'Paste a Shorts or TikTok link' : 'Paste a YouTube or Vimeo link'}
             onChange={(e) => { setUrl(e.target.value); setErr(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }} />
-          <button type="button" className="btn" onClick={apply}>Embed</button>
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void apply(); } }} />
+          <button type="button" className="btn" disabled={busy || !url.trim()} onClick={() => void apply()}>{busy ? '…' : 'Embed'}</button>
         </div>
       )}
       {err && <div className="err-text">{err}</div>}
-      <input className="cap" placeholder="Add a caption…" value={caption} onChange={(e) => updateAttributes({ caption: e.target.value })} />
-      {selected && <div className="tools" contentEditable={false}><button type="button" className="btn small danger" onClick={deleteNode}>Remove</button></div>}
+      <input className="cap" placeholder="Caption" value={caption} onChange={(e) => updateAttributes({ caption: e.target.value })} />
+      {selected && (
+        <div className="tools" contentEditable={false}>
+          {src && <button type="button" className="btn small" onClick={() => updateAttributes({ provider: null, videoId: '' })}>Change</button>}
+          <button type="button" className="btn small danger" onClick={deleteNode}>Remove</button>
+        </div>
+      )}
+    </NodeViewWrapper>
+  );
+}
+
+// ---------------- map ----------------
+
+interface Place { label: string; lat: number; lon: number }
+
+export function MapView({ node, updateAttributes, selected, deleteNode, editor }: NodeViewProps) {
+  const { lat, lon, zoom, label, caption } = node.attrs as { lat: number | null; lon: number | null; zoom: number; label: string; caption: string };
+  const point = validMapPoint(lat, lon, zoom);
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<Place[] | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const search = async () => {
+    const text = q.trim();
+    if (!text) return;
+    setErr('');
+    const direct = parseMapInput(text);
+    if (direct) {
+      updateAttributes({ lat: direct.lat, lon: direct.lon, zoom: direct.zoom });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await api.get<{ places: Place[] }>(`/api/admin/geocode?q=${encodeURIComponent(text)}`);
+      setResults(r.places);
+      if (!r.places.length) setErr('No places found');
+    } catch (e) {
+      setErr(errorText(e));
+    }
+    setBusy(false);
+  };
+
+  const choose = (p: Place) => {
+    updateAttributes({ lat: p.lat, lon: p.lon, zoom: 16, label: p.label.split(',').slice(0, 2).join(',').trim() });
+    setResults(null);
+    setQ('');
+  };
+
+  return (
+    <NodeViewWrapper className="node-embed node-figure node-map" data-drag-handle="">
+      {point ? (
+        <div className="frame map">
+          <iframe src={osmEmbedSrc(point)} title={label || 'Map'} sandbox="allow-scripts allow-same-origin allow-popups" />
+        </div>
+      ) : (
+        <div contentEditable={false}>
+          <div className="paste">
+            <input className="input" style={{ flex: 1 }} aria-label="Place" value={q} autoFocus={editor.isFocused}
+              placeholder="Search a place, or paste a map link / coordinates"
+              onChange={(e) => { setQ(e.target.value); setErr(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }} />
+            <button type="button" className="btn" disabled={busy || !q.trim()} onClick={() => void search()}>{busy ? '…' : 'Find'}</button>
+          </div>
+          {results && results.length > 0 && (
+            <div className="places" role="listbox" aria-label="Places">
+              {results.map((p) => (
+                <button key={`${p.lat},${p.lon}`} type="button" role="option" aria-selected={false} onClick={() => choose(p)}>{p.label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {err && <div className="err-text">{err}</div>}
+      {point && (
+        <input className="cap" placeholder="Place name" value={label} onChange={(e) => updateAttributes({ label: e.target.value.slice(0, 120) })} />
+      )}
+      <input className="cap" placeholder="Caption" value={caption} onChange={(e) => updateAttributes({ caption: e.target.value })} />
+      {selected && (
+        <div className="tools" contentEditable={false}>
+          {point && (
+            <>
+              <button type="button" className="btn small" aria-label="Zoom out" disabled={point.zoom <= 2} onClick={() => updateAttributes({ zoom: point.zoom - 1 })}>−</button>
+              <span className="status">Zoom {point.zoom}</span>
+              <button type="button" className="btn small" aria-label="Zoom in" disabled={point.zoom >= 19} onClick={() => updateAttributes({ zoom: point.zoom + 1 })}>+</button>
+              <button type="button" className="btn small" onClick={() => updateAttributes({ lat: null, lon: null })}>Change place</button>
+            </>
+          )}
+          <button type="button" className="btn small danger" onClick={deleteNode}>Remove</button>
+        </div>
+      )}
     </NodeViewWrapper>
   );
 }

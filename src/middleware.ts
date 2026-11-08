@@ -47,7 +47,7 @@ function buildCsp(nonce: string): string {
     "font-src 'self'",
     "connect-src 'self'",
     "media-src 'self' blob:",
-    'frame-src https://www.youtube-nocookie.com https://player.vimeo.com',
+    'frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.tiktok.com https://www.openstreetmap.org',
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -28,6 +28,17 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
 - **Audit trail:** sign-ins, failures, lockouts and account changes go to `auth_events` (kept 180 days), shown on the Account page.
 - **No bypass:** there is no development sign-in bypass. Local development signs in against a Neon dev branch.
 
+### Embeds
+- Video embeds are stored as provider + id only, checked against fixed patterns, and rendered only from fixed hosts in sandboxed iframes:
+  - `youtube-nocookie.com` (including Shorts);
+  - `player.vimeo.com`;
+  - `www.tiktok.com/player/v1/<numeric id>`.
+- Maps are stored as numbers only (lat/lon range-checked, zoom clamped 2–19) and rendered as an OpenStreetMap embed. No API key is needed and no third-party script runs.
+- CSP `frame-src` lists exactly these hosts.
+- `/api/admin/resolve-link` (admin only) expands TikTok share links. It follows at most 4 redirects, https only, and only to `*.tiktok.com`, so it can't be used to reach other or internal addresses.
+- `/api/admin/geocode` (admin only) asks OpenStreetMap Nominatim, on Enter only, and returns validated coordinates.
+- Browser `alert`/`confirm`/`prompt` are not used. The admin uses its own accessible dialog with a focus trap, Esc to cancel, and focus restored afterwards.
+
 ### Cross-site request forgery
 - Admin API and sign-in API (`/api/auth/*`) writes (POST, PUT, PATCH, DELETE) require **both**:
   - an `Origin` header equal to the site origin;

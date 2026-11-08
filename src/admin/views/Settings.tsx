@@ -68,8 +68,7 @@ function HomeSettings() {
   return (
     <div className="grid2">
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="lbl">Sections on the site</div>
-        <p className="hint" style={{ margin: 0 }}>A section that's off disappears from the menu and home page, and its pages return “not found”. Content is kept.</p>
+        <div className="lbl">Sections</div>
         {err && <p className="err-text">{err}</p>}
         {sections && (Object.keys(SECTION_LABELS) as (keyof SectionsSetting)[]).map((k) => (
           <div key={k} className="check" style={{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line-2)' }}>
@@ -77,22 +76,21 @@ function HomeSettings() {
             <Switch checked={sections[k]} label={`Show ${SECTION_LABELS[k]}`} onChange={(v) => saveSections({ ...sections, [k]: v })} />
           </div>
         ))}
-        <span className="hint">The journal itself is always on.</span>
+        <span className="hint">Off = hidden everywhere. Content is kept.</span>
       </section>
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="lbl">Featured post (top of the home page)</div>
+        <div className="lbl">Featured post</div>
         {featured && (
           <>
-            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'latest'} onChange={() => saveFeatured({ mode: 'latest', entryId: null })} />Always show the latest post</label>
-            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'manual'} onChange={() => saveFeatured({ mode: 'manual', entryId: featured.entryId ?? posts[0]?.id ?? null })} />Pin a post I choose</label>
+            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'latest'} onChange={() => saveFeatured({ mode: 'latest', entryId: null })} />Latest post</label>
+            <label className="check"><input type="radio" name="feat" checked={featured.mode === 'manual'} onChange={() => saveFeatured({ mode: 'manual', entryId: featured.entryId ?? posts[0]?.id ?? null })} />Pin a post</label>
             {featured.mode === 'manual' && (
               <label className="field">Post
                 <select className="select" value={featured.entryId ?? ''} onChange={(e) => saveFeatured({ mode: 'manual', entryId: e.target.value || null })}>
-                  <option value="">Choose a published post…</option>
+                  <option value="">Choose…</option>
                   {posts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
-                <span className="hint">If the pinned post is unpublished or hidden later, the latest post is shown instead.</span>
               </label>
             )}
           </>
@@ -136,7 +134,7 @@ function FooterSettings() {
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label className="field"><span className="lbl">Bottom line</span>
             <input className="input" maxLength={140} value={f.bottomLine} onChange={(e) => up({ ...f, bottomLine: e.target.value })} />
-            <span className="hint">Use {'{year}'} to keep the year current.</span>
+            <span className="hint">{'{year}'} = current year</span>
           </label>
           <label className="check"><input type="checkbox" checked={f.showRss} onChange={(e) => up({ ...f, showRss: e.target.checked })} />Always include an RSS link</label>
           <label className="check"><input type="checkbox" checked={f.showBuiltOn} onChange={(e) => up({ ...f, showBuiltOn: e.target.checked })} />Show “Built on Cloudflare”</label>

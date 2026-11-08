@@ -7,10 +7,10 @@ import type { MediaItem, MediaProvider } from '../../lib/shared/types';
 
 type Host = 'r2' | 'nas' | 'b2' | 'youtube';
 const HOSTS: { id: Host; name: string; desc: string }[] = [
-  { id: 'r2', name: 'Cloudflare R2', desc: 'Default. Served through the CDN with no egress fees. Images and short clips.' },
-  { id: 'nas', name: 'Home NAS', desc: 'Via Cloudflare Tunnel, no open ports. Images only.' },
-  { id: 'b2', name: 'Backblaze B2', desc: 'S3-compatible bucket. Images only — good as an archive.' },
-  { id: 'youtube', name: 'YouTube / Vimeo', desc: 'Paste a link. Best for long videos.' },
+  { id: 'r2', name: 'Cloudflare R2', desc: 'Default · images & clips' },
+  { id: 'nas', name: 'Home NAS', desc: 'Images' },
+  { id: 'b2', name: 'Backblaze B2', desc: 'Images · archive' },
+  { id: 'youtube', name: 'YouTube / Vimeo', desc: 'Long videos' },
 ];
 
 interface Props {
@@ -57,8 +57,8 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
   const isVideo = !!file && file.type.startsWith('video/');
   const hostOk = (h: Host) => (h === 'youtube' ? !imagesOnly : !!providers[h]);
   const note =
-    isVideo && host !== 'r2' ? 'Videos can only be stored on R2. Switch to R2, or use YouTube/Vimeo.' :
-    host === 'nas' ? 'Images load from your NAS through the tunnel and are cached at the edge.' : '';
+    isVideo && host !== 'r2' ? 'Videos go to R2 only.' :
+    '';
 
   const upload = async () => {
     setErr('');
@@ -112,7 +112,7 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
                 {HOSTS.filter((h) => !(imagesOnly && h.id === 'youtube')).map((h) => (
                   <button key={h.id} type="button" role="radio" aria-checked={host === h.id} className="host" disabled={!hostOk(h.id)} onClick={() => setHost(h.id)}>
                     <b>{h.name}</b>
-                    <span>{hostOk(h.id) ? h.desc : 'Not configured — add its credentials as Worker secrets.'}</span>
+                    <span>{hostOk(h.id) ? h.desc : 'Not set up'}</span>
                   </button>
                 ))}
               </div>
@@ -130,7 +130,7 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
                 </div>
               )}
               {note && <div className="hint">{note}</div>}
-              <label className="field">Alt text (describe the image for screen readers)<input className="input" value={alt} onChange={(e) => setAlt(e.target.value)} /></label>
+              <label className="field">Alt text<input className="input" value={alt} onChange={(e) => setAlt(e.target.value)} /></label>
               {host !== 'youtube' && (
                 <label className="check"><input type="checkbox" checked={strip} onChange={(e) => setStrip(e.target.checked)} />Remove location and camera details (recommended)</label>
               )}
@@ -150,7 +150,7 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
         </div>
         {tab === 'upload' && (
           <footer>
-            <span className="hint">Files are checked on the server; SVG and HTML are never accepted.</span>
+            <span className="hint">JPG · PNG · WebP · GIF · AVIF · MP4 · WebM</span>
             <span className="actions">
               <button type="button" className="btn" onClick={onClose}>Cancel</button>
               <button type="button" className="btn primary" disabled={busy || (host === 'youtube' ? !url : !file) || (isVideo && host !== 'r2')} onClick={upload}>
