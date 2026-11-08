@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { drawWatermark, watermarkStored } from '../watermark';
+import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
+import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
 import { Switch, useToast } from '../components/ui';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
@@ -182,29 +184,83 @@ function FooterSettings() {
 }
 
 function SiteSettings() {
+  const [saved, setSaved] = useState<SiteSetting | null>(null);
   const [s, setS] = useState<SiteSetting | null>(null);
-  const [topics, setTopics] = useState('');
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [changes, setChanges] = useState<TopicChange[]>([]);
+  const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const dialog = useDialog();
+
   useEffect(() => {
-    api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setTopics(r.value.topics.join(', ')); }).catch(() => {});
+    api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); }).catch(() => {});
+    api.get<{ counts: Record<string, number> }>('/api/admin/topics').then((r) => setCounts(r.counts)).catch(() => {});
   }, []);
-  if (!s) return <p className="hint">Loading…</p>;
+  if (!s || !saved) return <p className="hint">Loading…</p>;
+
+  const dirty = JSON.stringify(s) !== JSON.stringify(saved) || changes.length > 0;
+  // Counts follow pending renames so the chip keeps its number.
+  const shown: Record<string, number> = { ...counts };
+  for (const c of changes) if (c.to) shown[c.to] = (shown[c.to] ?? 0) + (counts[c.from] ?? 0);
+
+  const record = (c: TopicChange) => {
+    // Chain renames (A→B then B→C becomes A→C).
+    const prior = changes.find((x) => x.to === c.from);
+    setChanges(prior ? changes.map((x) => (x === prior ? { from: x.from, to: c.to } : x)) : [...changes, c]);
+  };
+
+  const remove = async (t: string) => {
+    const origin = changes.find((x) => x.to === t)?.from ?? t;
+    const n = counts[origin] ?? 0;
+    if (n > 0) {
+      const ok = await dialog.confirm({ title: `Remove “${t}”?`, body: `${n} post${n === 1 ? '' : 's'} will have no topic. You can set a new one in each post.`, confirmLabel: 'Remove', danger: true });
+      if (!ok) return;
+    }
+    setS({ ...s, topics: s.topics.filter((x) => x !== t) });
+    if (n > 0) record({ from: t, to: '' });
+  };
+
   const save = async () => {
+    setBusy(true);
     try {
-      const value = { ...s, topics: topics.split(',').map((t) => t.trim()).filter(Boolean) };
-      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', value);
+      const effective = changes.filter((c) => c.from !== c.to);
+      if (effective.length) await api.post('/api/admin/topics', { changes: effective });
+      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', s);
       setS(r.value);
+      setSaved(r.value);
+      setChanges([]);
+      const fresh = await api.get<{ counts: Record<string, number> }>('/api/admin/topics').catch(() => null);
+      if (fresh) setCounts(fresh.counts);
       toast('Saved');
     } catch (e) {
       toast(errorText(e));
     }
+    setBusy(false);
   };
+
   return (
-    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
-      <label className="field">Site name<input className="input" value={s.title} maxLength={60} onChange={(e) => setS({ ...s, title: e.target.value })} /></label>
-      <label className="field">Tagline <span className="hint">Empty = section name</span><input className="input" value={s.tagline} maxLength={60} onChange={(e) => setS({ ...s, tagline: e.target.value })} /></label>
-      <label className="field">Topics (comma separated)<input className="input" value={topics} onChange={(e) => setTopics(e.target.value)} /></label>
-      <div><button type="button" className="btn primary" onClick={save}>Save</button></div>
+    <section className="card" style={{ maxWidth: 760 }}>
+      <div className="set-row">
+        <div className="set-l"><b>Site name</b><span>Header, tab title, RSS</span></div>
+        <input className="input" value={s.title} maxLength={60} aria-label="Site name" onChange={(e) => setS({ ...s, title: e.target.value })} />
+      </div>
+      <div className="set-row">
+        <div className="set-l"><b>Tagline</b><span>Empty = section name</span></div>
+        <div className="stack" style={{ gap: 8 }}>
+          <input className="input" value={s.tagline} maxLength={60} placeholder="journal, photos, cv…" aria-label="Tagline" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
+          <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'journal'}</i></span>
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="set-l"><b>Journal topics</b><span>Filters on the home page and journal</span></div>
+        <TopicsEditor topics={s.topics} counts={shown} onRemove={(t) => void remove(t)}
+          onChange={(topics, change) => { setS({ ...s, topics }); if (change) record(change); }} />
+      </div>
+      <div className="save-bar">
+        {dirty && <span className="status">Unsaved changes</span>}
+        {changes.some((c) => c.to) && <span className="hint">Renamed topics update their posts.</span>}
+        <button type="button" className="btn primary" disabled={!dirty || busy || !s.title.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
     </section>
   );
 }
