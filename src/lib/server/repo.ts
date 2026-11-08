@@ -217,3 +217,37 @@ export async function adminListExternalPosts(): Promise<ExternalPost[]> {
 export async function setExternalVisibility(wpId: number, show: boolean): Promise<void> {
   await sql()`UPDATE external_posts SET show_on_main = ${show} WHERE wp_id = ${wpId}`;
 }
+
+// ---------------- watermark logo (single row) ----------------
+
+function toB64(b: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function fromB64(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export async function getWatermarkLogo(): Promise<{ data: Uint8Array<ArrayBuffer>; sha256: string; width: number; height: number } | null> {
+  const rows = await sql()`SELECT translate(encode(data, 'base64'), E'\n', '') AS b64, sha256, width, height FROM watermark_logo WHERE id = 1`;
+  if (!rows.length) return null;
+  const r = rows[0];
+  return { data: fromB64(r.b64 as string), sha256: r.sha256 as string, width: r.width as number, height: r.height as number };
+}
+
+export async function putWatermarkLogo(data: Uint8Array, sha256: string, width: number, height: number): Promise<void> {
+  await sql()`
+    INSERT INTO watermark_logo (id, mime, data, sha256, width, height, updated_at)
+    VALUES (1, 'image/png', decode(${toB64(data)}, 'base64'), ${sha256}, ${width}, ${height}, now())
+    ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, sha256 = EXCLUDED.sha256, width = EXCLUDED.width,
+      height = EXCLUDED.height, updated_at = now()`;
+}
+
+export async function deleteWatermarkLogo(): Promise<void> {
+  await sql()`DELETE FROM watermark_logo WHERE id = 1`;
+}

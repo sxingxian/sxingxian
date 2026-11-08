@@ -34,6 +34,11 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
   - the upload must carry the fingerprint of the current watermark settings, so stale copies are rejected (409);
   - while the watermark is on, `/media/:id` serves only that copy, capped at 2560 px. The original is readable only through the admin-only `/api/admin/media/:id/original`;
   - a photo with no copy yet is served as is and listed as pending in Settings → Photos.
+- **Watermark logo** (one row in Neon, `watermark_logo`):
+  - the admin re-encodes the picked image through a canvas to a PNG ≤512 px, which drops metadata and anything that isn't pixels. SVG is not accepted (it can carry script);
+  - `PUT /api/admin/watermark-logo` (signed-in admin, CSRF header) accepts only `image/png`, checks the signature, a well-formed IHDR, ≤1024 px, ≤256 KB, and that the file ends at IEND (no appended data). The table enforces one row, the PNG type and the size again;
+  - the logo is served only to signed-in admins, with `nosniff`, `no-store` and a `sandbox` CSP. It is never public;
+  - its hash (`protection.logoHash`) is set only by the server; the settings endpoint ignores one sent by the browser. The hash is part of the watermark fingerprint, so a new logo marks copies stale.
 - **Block saving:**
   - `/media/:id` refuses `Sec-Fetch-Dest: document`/`iframe` (an image URL opened in its own tab) and `Sec-Fetch-Site: cross-site` (hotlinking). It sends `Vary` on both headers;
   - link-preview bots and feed readers send no Sec-Fetch headers, so they still work;

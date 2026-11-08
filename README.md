@@ -37,7 +37,7 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 - **WordPress sync** (see below), with automatic hiding when WordPress is down.
 - **Photos:**
   - tapping a photo opens a full-screen lightbox, in posts and galleries and in the admin's Media page (arrows, swipe, Esc);
-  - Settings → **Photos** turns a watermark on or off (text, position, size, opacity, live preview). It is baked into public copies capped at 2560 px, new uploads are watermarked automatically, and "Apply" updates existing photos. Originals stay private, so turning it off restores them;
+  - Settings → **Photos** turns a watermark on or off (optional logo left of the text, stored in Neon; text, position, size, opacity, live preview). It is baked into public copies capped at 2560 px, new uploads are watermarked automatically, and "Apply" updates existing photos. Originals stay private, so turning it off restores them;
   - **Block saving** (on by default) stops right-click, drag and long-press saving, and refuses image URLs opened on their own or embedded on other sites.
 - **Google AdSense** (optional, Settings → Ads): a publisher ID, plus optional units on the home page and at the end of posts. `/ads.txt` is generated. Ads never appear in the admin or on CV, About and Privacy. An editable **Privacy** page (draft template included) is linked in the footer once written.
 - **RSS** at `/rss.xml`. There is no newsletter or email collection.

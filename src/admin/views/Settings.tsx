@@ -1,7 +1,8 @@
 // Settings, in five tabs. Every tab uses the same pattern: titled panels of labelled rows,
 // switches that save at once, and a save bar for edits that need confirming.
 import { useEffect, useRef, useState } from 'react';
-import { drawWatermark, watermarkStored } from '../watermark';
+import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImage } from '../watermark';
+import { logoActive, watermarkHasContent } from '../../lib/shared/watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
 import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
@@ -248,7 +249,7 @@ function FooterSettings() {
 
 // ------------------------------------------------------------------ Photos
 
-function WatermarkPreview({ p }: { p: ProtectionSetting }) {
+function WatermarkPreview({ p, logo }: { p: ProtectionSetting; logo: LogoImage | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -261,13 +262,51 @@ function WatermarkPreview({ p }: { p: ProtectionSetting }) {
       g.addColorStop(0, '#c9d3d6'); g.addColorStop(0.55, '#8d9a9c'); g.addColorStop(0.56, '#4d544f'); g.addColorStop(1, '#232623');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
-      if (p.watermark) drawWatermark(ctx, w, h, p);
+      if (p.watermark) drawWatermark(ctx, w, h, p, logo);
     };
     paint();
     void document.fonts.load('600 40px "Inter Variable"').catch(() => undefined).then(paint);
-  }, [p]);
+  }, [p, logo]);
   return <canvas ref={ref} width={960} height={600} className="wm-preview" role="img" aria-label="Watermark preview" />;
 }
+
+function LogoThumb({ img }: { img: LogoImage }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    const s = Math.min(c.width / img.width, c.height / img.height);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, (c.width - img.width * s) / 2, (c.height - img.height * s) / 2, img.width * s, img.height * s);
+  }, [img]);
+  return <canvas ref={ref} width={160} height={64} role="img" aria-label="Current logo" />;
+}
+
+const LOGO_EDGE = 512; // logos are stored at most this many pixels on the long side
+const LOGO_INPUT_MAX = 5 * 1024 * 1024;
+
+/** Re-encode a picked image as a PNG ≤512 px. Drops metadata and anything that isn't pixels. */
+async function logoToPng(file: File): Promise<Blob> {
+  if (!/^image\/(png|webp|jpeg)$/.test(file.type)) throw new Error('Use a PNG, WebP or JPEG (export SVG logos as PNG)');
+  if (file.size > LOGO_INPUT_MAX) throw new Error('That file is over 5 MB');
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, LOGO_EDGE / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * scale));
+  c.height = Math.max(1, Math.round(bmp.height * scale));
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('Canvas not available');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  const out = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'));
+  if (!out) throw new Error('Couldn’t read that image');
+  if (out.size > 256 * 1024) throw new Error('Logo is still over 256 KB after resizing. Try a simpler image.');
+  return out;
+}
+
+type LogoMode = 'original' | 'white' | 'off';
 
 function PhotoSettings() {
   const [p, setP] = useState<ProtectionSetting | null>(null);
@@ -276,16 +315,63 @@ function PhotoSettings() {
   const [run, setRun] = useState<{ done: number; of: number; failed: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [logoImg, setLogoImg] = useState<LogoImage | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const dialog = useDialog();
 
   const loadStatus = () => api.get<{ sig: string; total: number; pending: { id: string }[] }>('/api/admin/media/watermark').then(setStatus).catch(() => {});
   useEffect(() => {
     api.get<{ value: ProtectionSetting }>('/api/admin/settings/protection').then((r) => { setP(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
     void loadStatus();
   }, []);
+  const logoKey = p ? `${p.logoHash}:${p.logoTint}:${p.logo}` : '';
+  useEffect(() => {
+    if (!p || !logoActive(p)) { setLogoImg(null); return; }
+    let live = true;
+    loadLogo(p).then((img) => { if (live) setLogoImg(img); }).catch((e) => toast(errorText(e)));
+    return () => { live = false; };
+  }, [logoKey]);
   if (!p || !saved) return <Loading error={err} />;
 
-  const look = (x: ProtectionSetting) => JSON.stringify([x.text, x.position, x.size, x.opacity]);
+  const look = (x: ProtectionSetting) => JSON.stringify([x.text, x.position, x.size, x.opacity, x.logo, x.logoTint]);
+  const logoMode: LogoMode = !p.logo ? 'off' : p.logoTint;
+  const setLogoMode = (m: LogoMode) => setP({ ...p, logo: m !== 'off', logoTint: m === 'off' ? p.logoTint : m });
+
+  // Logo upload/removal is saved straight away (it's a file, not a form field).
+  const afterLogo = async (value: ProtectionSetting) => {
+    clearLogoCache();
+    setSaved(value);
+    setP((cur) => (cur ? { ...cur, logoHash: value.logoHash } : value));
+    await loadStatus();
+  };
+  const uploadLogo = async (file: File) => {
+    setLogoBusy(true);
+    try {
+      const png = await logoToPng(file);
+      const res = await fetch('/api/admin/watermark-logo', {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'image/png', 'X-Sx-Admin': '1' }, body: png,
+      });
+      const data = (await res.json().catch(() => ({}))) as { value?: ProtectionSetting; error?: string };
+      if (!res.ok || !data.value) throw new Error(data.error ?? `Upload failed (${res.status})`);
+      await afterLogo(data.value);
+      toast('Logo uploaded');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : errorText(e));
+    }
+    setLogoBusy(false);
+  };
+  const removeLogo = async () => {
+    if (!(await dialog.confirm({ title: 'Remove the logo?', body: 'Watermarks will show the text only.', confirmLabel: 'Remove', danger: true }))) return;
+    setLogoBusy(true);
+    try {
+      const r = await api.del<{ value: ProtectionSetting }>('/api/admin/watermark-logo');
+      await afterLogo(r.value);
+      toast('Logo removed');
+    } catch (e) { toast(errorText(e)); }
+    setLogoBusy(false);
+  };
   const dirty = look(p) !== look(saved);
   const save = async (next: ProtectionSetting, quiet = false) => {
     setBusy(true);
@@ -322,8 +408,24 @@ function PhotoSettings() {
     <>
       <Panel title="Watermark" desc="Baked into public copies (max 2560 px). Originals stay private.">
         <ToggleRow label="Watermark photos" hint="New uploads are watermarked automatically" checked={saved.watermark} onChange={(v) => flip({ watermark: v })} />
-        <Row label="Preview"><WatermarkPreview p={{ ...p, watermark: true }} /></Row>
-        <Row label="Text" htmlFor="wm-text">
+        <Row label="Preview"><WatermarkPreview p={{ ...p, watermark: true }} logo={logoImg} /></Row>
+        <Row label="Logo" hint="Left of the text · PNG with transparency works best">
+          <div className="logo-pick">
+            <span className="logo-thumb">{saved.logoHash && logoImg ? <LogoThumb img={logoImg} /> : <em>No logo</em>}</span>
+            <span className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn small" disabled={logoBusy} onClick={() => fileRef.current?.click()}>{logoBusy ? 'Working…' : saved.logoHash ? 'Replace' : 'Upload logo'}</button>
+              {saved.logoHash && <button type="button" className="btn small danger" disabled={logoBusy} onClick={removeLogo}>Remove</button>}
+            </span>
+            <input ref={fileRef} type="file" hidden accept="image/png,image/webp,image/jpeg"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadLogo(f); }} />
+          </div>
+        </Row>
+        {saved.logoHash && (
+          <Row label="Logo colour">
+            <Segmented label="Logo colour" value={logoMode} onChange={setLogoMode} options={[['original', 'Original'], ['white', 'White'], ['off', 'Hidden']] as const} />
+          </Row>
+        )}
+        <Row label="Text" hint={logoActive(p) ? 'Optional with a logo' : undefined} htmlFor="wm-text">
           <input id="wm-text" className="input" value={p.text} maxLength={60} onChange={(e) => setP({ ...p, text: e.target.value })} />
         </Row>
         <Row label="Position">
@@ -336,7 +438,9 @@ function PhotoSettings() {
         <Row label="Opacity" hint={`${Math.round(p.opacity * 100)}%`} htmlFor="wm-op">
           <input id="wm-op" type="range" min={10} max={70} step={5} value={Math.round(p.opacity * 100)} onChange={(e) => setP({ ...p, opacity: Number(e.target.value) / 100 })} />
         </Row>
-        <SaveBar dirty={dirty} busy={busy} onSave={() => save(p)} disabled={!p.text.trim()} note={dirty && saved.watermark ? 'Existing photos will need Apply again.' : undefined} />
+        <SaveBar dirty={dirty} busy={busy} onSave={() => save(p)} disabled={!watermarkHasContent(p)}
+          error={dirty && !watermarkHasContent(p) ? 'Add text or show the logo' : undefined}
+          note={dirty && saved.watermark ? 'Existing photos will need Apply again.' : undefined} />
       </Panel>
 
       <Panel title="Existing photos">

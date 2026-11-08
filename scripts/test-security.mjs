@@ -19,7 +19,8 @@ await build({
                export { safeNext } from './src/admin/auth/fields.tsx';
                export { loginSchema, userPatchSchema, settingsSchemas } from './src/lib/shared/schemas.ts';
                export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';
-               export { watermarkSig, watermarkable } from './src/lib/shared/watermark.ts';`,
+               export { watermarkSig, watermarkable, watermarkHasContent } from './src/lib/shared/watermark.ts';
+               export { checkPng } from './src/lib/server/png.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -35,7 +36,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -189,6 +190,42 @@ await ta('watermark fingerprint changes with the look, not with the on/off switc
   assert.match(a, /^[0-9a-f]{16}$/);
   assert.equal(a, await watermarkSig({ ...base, watermark: false, blockSave: false }));
   for (const change of [{ text: '© someone' }, { position: 'tiled' }, { size: 'l' }, { opacity: 0.5 }]) assert.notEqual(a, await watermarkSig({ ...base, ...change }), JSON.stringify(change));
+});
+await ta('watermark logo: text-only fingerprints are unchanged; the logo, its colour and on/off change it', async () => {
+  const base = { watermark: true, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true };
+  const legacy = await watermarkSig(base);
+  assert.equal(legacy, await watermarkSig({ ...base, logo: true, logoTint: 'original', logoHash: null }), 'no logo uploaded → same as before');
+  assert.equal(legacy, await watermarkSig({ ...base, logo: false, logoTint: 'white', logoHash: 'abcdef0123456789' }), 'logo hidden → same as before');
+  const withLogo = await watermarkSig({ ...base, logo: true, logoTint: 'original', logoHash: 'abcdef0123456789' });
+  assert.notEqual(legacy, withLogo);
+  assert.notEqual(withLogo, await watermarkSig({ ...base, logo: true, logoTint: 'white', logoHash: 'abcdef0123456789' }));
+  assert.notEqual(withLogo, await watermarkSig({ ...base, logo: true, logoTint: 'original', logoHash: '0000000000000000' }));
+  assert.ok(watermarkHasContent({ text: '', logo: true, logoHash: 'abcdef0123456789' }));
+  assert.ok(!watermarkHasContent({ text: '  ', logo: true, logoHash: null }));
+  assert.ok(!watermarkHasContent({ text: '', logo: false, logoHash: 'abcdef0123456789' }));
+});
+t('watermark settings never accept a logo hash from the browser', () => {
+  const r = settingsSchemas.protection.safeParse({ watermark: true, text: '', position: 'br', size: 'm', opacity: 0.4, blockSave: true, logo: true, logoTint: 'white', logoHash: 'f'.repeat(16) });
+  assert.ok(r.success);
+  assert.equal('logoHash' in r.data, false);
+  assert.equal(settingsSchemas.protection.safeParse({ watermark: true, text: 'x', position: 'br', size: 'm', opacity: 0.4, blockSave: true, logo: true, logoTint: 'pink' }).success, false);
+});
+t('watermark logo upload accepts only complete, bounded PNGs', () => {
+  const png = (w, h, extra = []) => {
+    const ihdr = [0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, w >>> 24, (w >> 16) & 255, (w >> 8) & 255, w & 255, h >>> 24, (h >> 16) & 255, (h >> 8) & 255, h & 255, 8, 6, 0, 0, 0, 0, 0, 0, 0];
+    const iend = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
+    return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...ihdr, ...iend, ...extra]);
+  };
+  const ok = checkPng(png(400, 120));
+  assert.deepEqual(ok, { ok: true, width: 400, height: 120 });
+  assert.equal(checkPng(png(2000, 100)).ok, false, 'too wide');
+  assert.equal(checkPng(png(0, 100)).ok, false, 'zero size');
+  assert.equal(checkPng(png(100, 100, [0x3c, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x3e])).ok, false, 'data appended after IEND');
+  const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+  assert.equal(checkPng(svg).ok, false, 'SVG');
+  const jpeg = new Uint8Array(64); jpeg.set([0xff, 0xd8, 0xff]);
+  assert.equal(checkPng(jpeg).ok, false, 'JPEG');
+  assert.equal(checkPng(new Uint8Array(300 * 1024)).ok, false, 'over 256 KB');
 });
 t('animated GIFs and video are never watermarked (would break them)', () => {
   for (const m of ['image/jpeg', 'image/png', 'image/webp', 'image/avif']) assert.ok(watermarkable(m), m);

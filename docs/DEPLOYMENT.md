@@ -150,10 +150,11 @@ The command-line fixes need only the Neon connection string, so you can always g
 
 ## 7a. Photo protection
 
-After a deploy that adds `migrations/0004_media_watermark.sql`, run **Deploy Neon** once.
+After a deploy that adds `migrations/0004_media_watermark.sql` or `migrations/0005_watermark_logo.sql`, run **Deploy Neon** once.
 
 Then go to Admin → Settings → **Photos**:
 - **Watermark photos:** set the text, position, size and opacity (the preview updates live), then press **Apply to N photos** for photos already uploaded. Keep the tab open until it finishes. New uploads are watermarked automatically.
+- **Logo (optional):** upload a PNG, WebP or JPEG; it sits to the left of the text. It is resized to 512 px, saved as a PNG and stored in Neon (one logo at a time). Choose **Original**, **White** or **Hidden**. Changing the logo shows **Apply to N photos** again. SVG logos: export as a transparent PNG first.
 - **Block saving:** on by default.
 
 ## 7b. Google AdSense (optional)

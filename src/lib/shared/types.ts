@@ -130,6 +130,10 @@ export interface ProtectionSetting {
   size: 's' | 'm' | 'l';
   opacity: number; // 0.1 – 0.7
   blockSave: boolean; // right-click, drag, long-press save; direct-open and hotlink refusal
+  logo: boolean; // draw the uploaded logo to the left of the text
+  logoTint: 'original' | 'white';
+  /** First 16 hex chars of the logo's SHA-256, or null when none is uploaded. Set by the server only. */
+  logoHash: string | null;
 }
 
 export interface SettingsMap {
@@ -170,7 +174,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   },
   wordpress: { autoShow: false, includeInRss: true, hideWhenDown: true, categoryMap: {} },
   ads: { enabled: false, client: '', homeSlot: '', articleSlot: '' },
-  protection: { watermark: false, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true },
+  protection: { watermark: false, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true, logo: true, logoTint: 'original', logoHash: null },
 };
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {
