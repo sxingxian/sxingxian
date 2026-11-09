@@ -498,3 +498,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .img-ph { display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 2; background: linear-gradient(135deg, var(--ph), var(--line-2)); color: var(--faint); font: 12px var(--mono); border-radius: inherit; user-select: none; }
 .lib .img-ph { aspect-ratio: 4 / 3; }
 .img-ph.lb-img { width: min(80vw, 640px); color: #9c9890; background: linear-gradient(135deg, #2a2926, #1f1e1c); border-radius: 12px; }
+
+/* desktop: the editor's side panel stays in view while the document scrolls (it scrolls on its own if taller) */
+@media (min-width: 861px) {
+  .editor-side { position: sticky; top: 56px; align-self: flex-start; height: calc(100vh - 56px); height: calc(100dvh - 56px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
