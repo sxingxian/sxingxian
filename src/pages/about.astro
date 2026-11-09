@@ -8,12 +8,14 @@ const sections = await getSetting('sections');
 const page = sections.about ? await getPage('about') : null;
 if (!page) Astro.response.status = 404;
 const html = page ? renderDoc(page.body) : '';
+import PdfViewer from '../components/PdfViewer.astro';
 ---
 {page ? (
   <Site title={page.title || 'About'} noindex={page.noindex}>
     <article class="article">
       <h1>{page.title || 'About'}</h1>
       <div class="prose" set:html={html} />
+      {html.includes('data-pdf=') && <PdfViewer />}
     </article>
   </Site>
 ) : (

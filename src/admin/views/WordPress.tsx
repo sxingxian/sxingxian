@@ -3,11 +3,13 @@ import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
 import { Empty, Page, Panel, Row, SaveBar, ToggleRow } from '../components/kit';
 import type { ExternalPost, SiteSetting, WordPressSetting } from '../../lib/shared/types';
+import { useDialog } from '../components/dialog';
+import { normalizeWpBase } from '../../lib/shared/safe';
 
 interface Source { status: 'up' | 'down'; status_since: string; consecutive_fail: number; last_check_at: string | null; last_check_ms: number | null; last_sync_at: string | null }
 interface LogRow { at: string; event: string; result: string; ok: boolean }
 
-export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string; wpAdminUrl: string }) {
+export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: { wpBaseUrl: string; wpAdminUrl: string; onAddressChanged?: () => void }) {
   const [source, setSource] = useState<Source | null>(null);
   const [log, setLog] = useState<LogRow[]>([]);
   const [posts, setPosts] = useState<ExternalPost[]>([]);
@@ -17,11 +19,15 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
   const [topics, setTopics] = useState<string[]>([]);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [address, setAddress] = useState('');
+  const [draft, setDraft] = useState('');
+  const [probe, setProbe] = useState<null | { ok: boolean; text: string }>(null);
   const toast = useToast();
+  const dialog = useDialog();
 
   const load = useCallback(() => {
-    api.get<{ source: Source; log: LogRow[]; posts: ExternalPost[] }>('/api/admin/wordpress')
-      .then((r) => { setSource(r.source); setLog(r.log); setPosts(r.posts); })
+    api.get<{ source: Source; log: LogRow[]; posts: ExternalPost[]; address: string }>('/api/admin/wordpress')
+      .then((r) => { setSource(r.source); setLog(r.log); setPosts(r.posts); setAddress(r.address); setDraft((d) => d || r.address); })
       .catch((e) => setErr(errorText(e)));
   }, []);
 
@@ -72,6 +78,40 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
     }
   };
 
+  const draftOk = normalizeWpBase(draft);
+  const addressDirty = !!draft.trim() && (draftOk ?? draft.trim()) !== address;
+  const checkAddress = async () => {
+    setBusy('probe');
+    setProbe(null);
+    try {
+      const r = await api.post<{ ok: boolean; name?: string; error?: string }>('/api/admin/wordpress', { action: 'probe', url: draft });
+      setProbe(r.ok ? { ok: true, text: `Reachable${r.name ? ` · ${r.name}` : ''} · WordPress REST API found` } : { ok: false, text: r.error ?? 'Not reachable' });
+    } catch (e) {
+      setProbe({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy('');
+    }
+  };
+  const saveAddress = async () => {
+    if (!draftOk) return;
+    const ok = await dialog.confirm({ title: `Switch to ${draftOk.replace('https://', '')}?`, body: 'Posts re-sync from the new address, so links and images update. Posts the new site doesn’t have are removed from the feed.', confirmLabel: 'Switch and re-sync' });
+    if (!ok) return;
+    setBusy('address');
+    try {
+      const r = await api.post<{ address: string; name: string }>('/api/admin/wordpress', { action: 'address', url: draftOk });
+      setAddress(r.address);
+      setDraft(r.address);
+      setProbe({ ok: true, text: `Switched${r.name ? ` · ${r.name}` : ''} · re-synced` });
+      toast('WordPress address updated');
+      onAddressChanged?.();
+      load();
+    } catch (e) {
+      setProbe({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy('');
+    }
+  };
+
   const visible = posts.filter((p) => p.show_on_main && !p.removed_at).length;
   const down = source?.status === 'down';
   const mapDirty = JSON.stringify(map) !== savedMap;
@@ -81,6 +121,21 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
       crumbs={<><span>Site</span><span>/</span><b>WordPress</b></>}
       actions={<a className="btn" href={wpAdminUrl} target="_blank" rel="noopener noreferrer">WordPress admin ↗</a>}>
       {err && <p className="err-text" role="alert">{err}</p>}
+
+      <Panel title="Site address" desc="Where your WordPress lives. Change it here if the site moves.">
+        <Row label="Address" hint="Public https address" htmlFor="wp-address">
+          <input id="wp-address" className="input mono" value={draft} inputMode="url" autoCapitalize="off" spellCheck={false} maxLength={200}
+            onChange={(e) => { setDraft(e.target.value); setProbe(null); }} placeholder="https://hey.example.com" />
+          {draft.trim() && !draftOk && <span className="err-text">Use a public https address, like https://hey.example.com</span>}
+          {probe && <span className={probe.ok ? 'ok-text' : 'err-text'} role="status">{probe.text}</span>}
+        </Row>
+        <Row label="Admin link" hint="Opens from the top of this page"><span className="mono" style={{ paddingTop: 8, fontSize: 13 }}>{(draftOk ?? address) ? `${draftOk ?? address}/admin` : '—'}</span></Row>
+        <div className="save-bar">
+          <span className="status">{addressDirty ? 'Unsaved changes' : 'Saved'}</span>
+          <button type="button" className="btn" disabled={!draftOk || !!busy} onClick={checkAddress}>{busy === 'probe' ? 'Checking…' : 'Check'}</button>
+          <button type="button" className="btn primary" disabled={!addressDirty || !draftOk || !!busy} onClick={saveAddress}>{busy === 'address' ? 'Re-syncing…' : 'Save and re-sync'}</button>
+        </div>
+      </Panel>
 
       <Panel title="Status" actions={
         <>

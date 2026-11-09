@@ -68,8 +68,9 @@ Optional media hosts (both are S3-compatible; hosts without credentials are grey
 
 | Name | Type | For |
 | --- | --- | --- |
-| `NAS_S3_ENDPOINT`, `NAS_S3_BUCKET`, `NAS_S3_REGION` | Text | NAS running MinIO or Garage, exposed through **Cloudflare Tunnel** at an `https://` hostname (no router ports opened) |
+| `NAS_S3_ENDPOINT`, `NAS_S3_BUCKET`, `NAS_S3_REGION` | Text | NAS running Garage, exposed through **Cloudflare Tunnel** at an `https://` hostname (no router ports opened). Step by step for the Synology DS720+: [SYNOLOGY.md](SYNOLOGY.md) |
 | `NAS_S3_ACCESS_KEY_ID`, `NAS_S3_SECRET_ACCESS_KEY` | Secret | NAS credentials |
+| `NAS_ACCESS_CLIENT_ID`, `NAS_ACCESS_CLIENT_SECRET` | Secret | Optional Cloudflare Access service token, if the NAS address is behind Access (recommended) |
 | `B2_S3_ENDPOINT`, `B2_S3_BUCKET`, `B2_S3_REGION` | Text | Backblaze B2 |
 | `B2_S3_ACCESS_KEY_ID`, `B2_S3_SECRET_ACCESS_KEY` | Secret | B2 application key |
 
@@ -156,6 +157,19 @@ Then go to Admin → Settings → **Photos**:
 - **Watermark photos:** set the text, position, size and opacity (the preview updates live), then press **Apply to N photos** for photos already uploaded. Keep the tab open until it finishes. New uploads are watermarked automatically.
 - **Logo (optional):** upload a PNG, WebP or JPEG; it sits to the left of the text. It is resized to 512 px, saved as a PNG and stored in Neon (one logo at a time). Choose **Original**, **White** or **Hidden**. Changing the logo shows **Apply to N photos** again. SVG logos: export as a transparent PNG first.
 - **Block saving:** on by default.
+
+## 7c. Files and PDFs
+
+- **Upload:** Media → Upload accepts PDF, Word, Excel, PowerPoint, OpenDocument, RTF, plain text, Markdown, CSV and calendar (.ics) files up to 25 MB, on R2, the NAS or B2.
+- **In a story or work entry**, type `/`:
+  - **PDF preview** shows the pages on the page (first two, then *Show all*; full screen with zoom). Download is off unless you tick *Allow download* on that block.
+  - **File attachment** adds a download card between paragraphs.
+  - **File link in text** puts a small file link inside the sentence.
+- Files always download from `/media/<id>`; they are never opened as web pages on the site.
+
+## 7d. WordPress address
+
+`WP_BASE_URL` in `wrangler.jsonc` is the starting address. If WordPress moves, change it in **Admin → WordPress → Site address**: the admin checks that the new address answers as WordPress, saves it, and re-syncs so links and images update. The saved address wins over `WP_BASE_URL`.
 
 ## 7b. Google AdSense (optional)
 

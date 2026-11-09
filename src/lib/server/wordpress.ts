@@ -10,6 +10,7 @@ import { env } from 'cloudflare:workers';
 import { sql } from './db';
 import { getSetting } from './repo';
 import { htmlToText } from './text';
+import { normalizeWpBase } from '../shared/safe';
 
 const UA = 'sxingxian-sync/1.0 (+https://sxingxian.com)';
 const FAILS_TO_DOWN = 2;
@@ -32,15 +33,21 @@ interface WpPost {
   };
 }
 
-function base(): string {
-  const raw = (env.WP_BASE_URL || '').replace(/\/+$/, '');
-  const u = new URL(raw);
-  if (u.protocol !== 'https:') throw new Error('WP_BASE_URL must be https');
-  return u.origin;
+/** The WordPress address: the one saved in the admin, else WP_BASE_URL from Cloudflare. Both are validated. */
+export async function wpBase(): Promise<string> {
+  let saved = '';
+  try {
+    saved = (await getSetting('wordpress')).baseUrl ?? '';
+  } catch {
+    saved = '';
+  }
+  const ok = (saved && normalizeWpBase(saved)) || normalizeWpBase(env.WP_BASE_URL || '');
+  if (!ok) throw new Error('WordPress address is not set (or not a public https address)');
+  return ok;
 }
 
-async function wpFetch(path: string, timeoutMs = 8000): Promise<Response> {
-  return fetch(`${base()}/wp-json${path}`, {
+async function wpFetch(path: string, timeoutMs = 8000, root?: string): Promise<Response> {
+  return fetch(`${root ?? (await wpBase())}/wp-json${path}`, {
     headers: { accept: 'application/json', 'user-agent': UA },
     signal: AbortSignal.timeout(timeoutMs),
     cf: { cacheTtl: 0 },
@@ -53,9 +60,9 @@ export async function log(event: string, result: string, ok = true): Promise<voi
   await sql()`DELETE FROM sync_log WHERE at < now() - interval '30 days'`;
 }
 
-function isSameSite(link: string): boolean {
+async function isSameSite(link: string): Promise<boolean> {
   try {
-    return new URL(link).origin === base();
+    return new URL(link).origin === new URL(await wpBase()).origin;
   } catch {
     return false;
   }
@@ -70,7 +77,7 @@ async function upsert(p: WpPost, autoShow: boolean, categoryMap: Record<string, 
   const imgRaw = media?.media_details?.sizes?.medium_large?.source_url ?? media?.source_url ?? '';
   const image = imgRaw && /^https:\/\//.test(imgRaw) ? imgRaw : '';
   const words = htmlToText(p.content?.rendered ?? '').split(/\s+/).filter(Boolean).length;
-  const url = isSameSite(p.link) ? p.link : `${base()}/?p=${p.id}`;
+  const url = (await isSameSite(p.link)) ? p.link : `${await wpBase()}/?p=${p.id}`;
 
   const rows = await sql()`
     INSERT INTO external_posts (wp_id, slug, title, excerpt, url, topic, image_url, read_minutes, published_at, modified_at, show_on_main, removed_at, synced_at)
@@ -198,6 +205,40 @@ export async function healthCheck(): Promise<'up' | 'down'> {
   if (!ok) await log('Health check', `failed (${fails} in a row)${changed ? ' · posts hidden' : ''}`, false);
   else if (changed) await log('Health check', 'recovered · posts shown again');
   return status;
+}
+
+// ---------------- changing the address ----------------
+
+/** Does this address answer as a WordPress site with the REST API? Never follows a redirect to another host. */
+export async function probeWordPress(candidate: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+  const root = normalizeWpBase(candidate);
+  if (!root) return { ok: false, error: 'Use a public https address, like https://hey.example.com' };
+  try {
+    const res = await fetch(`${root}/wp-json/`, {
+      headers: { accept: 'application/json', 'user-agent': UA },
+      signal: AbortSignal.timeout(8000),
+      redirect: 'manual',
+      cf: { cacheTtl: 0 },
+    } as RequestInit);
+    if (res.status >= 300 && res.status < 400) return { ok: false, error: `It redirects to ${res.headers.get('location')?.slice(0, 120) ?? 'another address'}. Use that address instead.` };
+    if (!res.ok) return { ok: false, error: `It answered ${res.status}. Check the address and that the REST API is on.` };
+    const text = await res.text();
+    if (text.length > 2_000_000) return { ok: false, error: 'Unexpected response.' };
+    const body = JSON.parse(text) as { name?: unknown; namespaces?: unknown };
+    const namespaces = Array.isArray(body.namespaces) ? body.namespaces : [];
+    if (!namespaces.includes('wp/v2')) return { ok: false, error: 'That address doesn’t look like WordPress (no wp/v2 REST API).' };
+    return { ok: true, name: typeof body.name === 'string' ? body.name.slice(0, 120) : '' };
+  } catch {
+    return { ok: false, error: 'Couldn’t reach it. Check the address.' };
+  }
+}
+
+/** After the address changes: forget the old sync position, pull everything again, then drop posts the new site doesn't have. */
+export async function resyncAfterAddressChange(): Promise<void> {
+  await sql()`UPDATE sources SET last_sync_at = NULL, status = 'up', consecutive_fail = 0, consecutive_ok = 0, status_since = now() WHERE id = 'wordpress'`;
+  await log('Address changed', await wpBase());
+  await syncIncremental('Full re-sync');
+  await reconcile();
 }
 
 // ---------------- webhook signature ----------------

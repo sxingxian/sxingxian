@@ -6,6 +6,8 @@ import { putObject, availableProviders } from '../../../../lib/server/storage';
 import { error, json } from '../../../../lib/server/http';
 import { embedInputSchema, mediaMetaSchema } from '../../../../lib/shared/schemas';
 import { parseVideoUrl } from '../../../../lib/shared/safe';
+import { sniffDocument } from '../../../../lib/server/filetypes';
+import { MAX_DOC_BYTES, cleanFileName } from '../../../../lib/shared/files';
 
 const MAX_IMAGE = 25 * 1024 * 1024;
 const MAX_VIDEO = 95 * 1024 * 1024; // Workers request bodies are capped at 100 MB
@@ -72,8 +74,22 @@ export const POST: APIRoute = async ({ request }) => {
   if (!availableProviders()[provider]) return error(400, `${provider.toUpperCase()} storage is not configured`);
 
   const buf = await file.arrayBuffer();
-  const real = sniff(new Uint8Array(buf.slice(0, 16)));
-  if (!real || !EXT[real]) return error(415, 'Only JPEG, PNG, WebP, GIF, AVIF, MP4 and WebM files are allowed');
+  const sniffed = sniff(new Uint8Array(buf.slice(0, 16)));
+  if (!sniffed || !EXT[sniffed]) {
+    // Not a photo or video: maybe an allowed document (decided by its contents, never the declared type).
+    if (buf.byteLength > MAX_DOC_BYTES) return error(413, 'Files must be under 25 MB');
+    const doc = sniffDocument(new Uint8Array(buf), file.name);
+    if (!doc.ok) return error(415, `${doc.reason}. Allowed: photos, video, PDF, Office and OpenDocument files, RTF, text, Markdown, CSV and calendar files.`);
+    const now = new Date();
+    const key = `files/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${doc.ext}`;
+    await putObject(provider, key, buf, doc.mime);
+    const media = await insertMedia({
+      provider, object_key: key, embed_id: '', mime: doc.mime, bytes: buf.byteLength,
+      width: null, height: null, alt, filename: cleanFileName(file.name, doc.ext),
+    });
+    return json({ media }, { status: 201 });
+  }
+  const real = sniffed;
   const isVideo = real.startsWith('video/');
   if (buf.byteLength > (isVideo ? MAX_VIDEO : MAX_IMAGE)) return error(413, isVideo ? 'Videos must be under 95 MB' : 'Images must be under 25 MB');
   // Cloudflare's CDN terms only allow serving video hosted on Cloudflare (R2/Stream).

@@ -5,6 +5,7 @@
 import type { DocNode } from '../shared/types';
 import { embedSrc, isSafeHref, osmEmbedSrc, osmLink, UUID_RE, validMapPoint } from '../shared/safe';
 import { esc } from './text';
+import { docTypeFor, formatBytes } from '../shared/files';
 
 const MAX_DEPTH = 40;
 
@@ -43,6 +44,17 @@ function renderMarks(text: string, marks: DocNode['marks']): string {
   return out;
 }
 
+/** Validated attrs shared by the file nodes. The name is the author's label; the MIME only picks a badge. */
+function fileAttrs(a: Record<string, unknown>) {
+  const id = typeof a.mediaId === 'string' && UUID_RE.test(a.mediaId) ? a.mediaId : '';
+  const name = (typeof a.name === 'string' ? a.name : '').slice(0, 140) || 'File';
+  const bytes = typeof a.bytes === 'number' && Number.isFinite(a.bytes) ? a.bytes : 0;
+  const t = docTypeFor(typeof a.mime === 'string' ? a.mime : '', name);
+  return { id, name, bytes, t };
+}
+
+const DL_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+
 function children(node: DocNode, depth: number): string {
   return (node.content ?? []).map((c) => renderNode(c, depth + 1)).join('');
 }
@@ -66,6 +78,28 @@ function renderNode(node: DocNode, depth: number): string {
       return children(node, depth);
     case 'text':
       return typeof node.text === 'string' ? renderMarks(node.text, node.marks) : '';
+    case 'fileLink': {
+      const f = fileAttrs(a);
+      if (!f.id) return '';
+      return `<a class="file-link" href="/media/${f.id}" download><span class="file-badge" style="--c:${f.t.color}" aria-hidden="true">${esc(f.t.badge)}</span>${esc(f.name)}<span class="sr-only"> (${esc(f.t.label)}${f.bytes ? `, ${formatBytes(f.bytes)}` : ''}, download)</span></a>`;
+    }
+    case 'file': {
+      const f = fileAttrs(a);
+      if (!f.id) return '';
+      const action = f.t.badge === 'ICS' ? 'Add to calendar' : 'Download';
+      return `<a class="file-card" href="/media/${f.id}" download><span class="file-badge" style="--c:${f.t.color}" aria-hidden="true">${esc(f.t.badge)}</span><span class="file-text"><span class="file-name">${esc(f.name)}</span><span class="file-meta">${esc(f.t.label)}${f.bytes ? ` · ${formatBytes(f.bytes)}` : ''}</span></span><span class="file-action">${action} ${DL_ICON}</span></a>`;
+    }
+    case 'pdf': {
+      // Server HTML is the no-JavaScript fallback: a card (with a download link only if allowed).
+      // public/pdf-viewer enhances [data-pdf] into a page-by-page preview.
+      const f = fileAttrs({ ...a, mime: 'application/pdf' });
+      if (!f.id) return '';
+      const dl = a.download === true;
+      const url = `/media/${f.id}`;
+      return `<figure class="pdf" data-pdf="${url}" data-download="${dl ? '1' : '0'}" data-size="${esc(formatBytes(f.bytes))}" aria-label="${esc(`PDF: ${f.name}`)}"><div class="pdf-bar"><span class="file-badge" style="--c:${f.t.color}" aria-hidden="true">PDF</span><span class="file-text"><span class="file-name">${esc(f.name)}</span><span class="file-meta pdf-meta">PDF${f.bytes ? ` · ${formatBytes(f.bytes)}` : ''}</span></span><span class="pdf-tools">${
+        dl ? `<a class="btn pdf-dl" href="${url}" download aria-label="${esc(`Download ${f.name}`)}">${DL_ICON}<span class="pdf-dl-label">Download</span></a>` : ''
+      }</span></div><div class="pdf-well"><p class="pdf-note">${dl ? 'Loading the preview…' : 'The preview needs JavaScript.'}</p></div></figure>`;
+    }
     case 'paragraph':
       return `<p>${children(node, depth)}</p>`;
     case 'heading': {

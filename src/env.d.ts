@@ -29,6 +29,8 @@ interface SxEnv {
   WP_WEBHOOK_SECRET: string;
   NAS_S3_ACCESS_KEY_ID?: string;
   NAS_S3_SECRET_ACCESS_KEY?: string;
+  NAS_ACCESS_CLIENT_ID?: string;
+  NAS_ACCESS_CLIENT_SECRET?: string;
   B2_S3_ACCESS_KEY_ID?: string;
   B2_S3_SECRET_ACCESS_KEY?: string;
 }

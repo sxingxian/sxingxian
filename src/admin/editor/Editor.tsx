@@ -6,7 +6,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
 import DragHandle from '@tiptap/extension-drag-handle-react';
-import { Callout, Column, Columns, Embed, Figure, MapBlock, SxStorage, type PickedMedia } from './nodes';
+import { Callout, Column, Columns, Embed, Figure, FileBlock, FileLink, MapBlock, PdfBlock, SxStorage, type FileKind, type PickedFile, type PickedMedia } from './nodes';
 import { SlashCommand } from './slash';
 import { isSafeHref } from '../../lib/shared/safe';
 import { useDialog } from '../components/dialog';
@@ -16,6 +16,7 @@ interface Props {
   content: DocNode;
   onChange: (doc: DocNode) => void;
   pickMedia: () => Promise<PickedMedia | null>;
+  pickFile?: (kind: FileKind) => Promise<PickedFile | null>;
   allowH1?: boolean;
 }
 
@@ -34,7 +35,7 @@ async function setLink(editor: TEditor, dialog: ReturnType<typeof useDialog>) {
   editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
 }
 
-export default function Editor({ content, onChange, pickMedia, allowH1 = false }: Props) {
+export default function Editor({ content, onChange, pickMedia, pickFile, allowH1 = false }: Props) {
   const dialog = useDialog();
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
@@ -57,6 +58,9 @@ export default function Editor({ content, onChange, pickMedia, allowH1 = false }
       }),
       SxStorage,
       Figure,
+      PdfBlock,
+      FileBlock,
+      FileLink,
       Embed,
       MapBlock,
       Callout,
@@ -69,8 +73,11 @@ export default function Editor({ content, onChange, pickMedia, allowH1 = false }
   });
 
   useEffect(() => {
-    if (editor) (editor.storage as unknown as { sx: { pickMedia: Props['pickMedia'] } }).sx.pickMedia = pickMedia;
-  }, [editor, pickMedia]);
+    if (!editor) return;
+    const sx = (editor.storage as unknown as { sx: { pickMedia: Props['pickMedia']; pickFile: Props['pickFile'] | null } }).sx;
+    sx.pickMedia = pickMedia;
+    sx.pickFile = pickFile ?? null;
+  }, [editor, pickMedia, pickFile]);
 
   if (!editor) return <div className="tiptap" aria-busy="true" />;
 

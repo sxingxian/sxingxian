@@ -182,3 +182,25 @@ export function osmEmbedSrc(p: MapPoint): string {
 export function osmLink(p: MapPoint): string {
   return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=${p.zoom}/${p.lat}/${p.lon}`;
 }
+
+/**
+ * A WordPress site address the server may fetch: https on the default port, a public-looking host name
+ * (no IP literals, no localhost or private/reserved names), no credentials, query or fragment.
+ * A sub-folder install (https://example.com/blog) is allowed. Returns the normalised address or null.
+ */
+export function normalizeWpBase(raw: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(String(raw).trim());
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) return null;
+  if (u.port && u.port !== '443') return null;
+  const host = u.hostname.toLowerCase();
+  if (!host.includes('.') || host.startsWith('[') || /^[\d.]+$/.test(host)) return null;
+  if (/(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|private|arpa|test|invalid|example)$/.test(host)) return null;
+  const path = u.pathname.replace(/\/+$/, '');
+  if (path.length > 100 || /\/\.\.?(\/|$)/.test(path) || !/^[\w\-./~%]*$/.test(path)) return null;
+  return `${u.protocol}//${host}${path}`;
+}

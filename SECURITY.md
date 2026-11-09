@@ -34,6 +34,13 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
   - the upload must carry the fingerprint of the current watermark settings, so stale copies are rejected (409);
   - while the watermark is on, `/media/:id` serves only that copy, capped at 2560 px. The original is readable only through the admin-only `/api/admin/media/:id/original`;
   - a photo with no copy yet is served as is and listed as pending in Settings → Photos.
+- **Documents** (PDF, Office, OpenDocument, RTF, text, Markdown, CSV, calendar):
+  - accepted only if the bytes match an allowed type for the file's extension (`lib/server/filetypes.ts`): PDF header, OOXML/ODF zip structure, OLE header, RTF header, or valid UTF-8 text with no NUL bytes; calendars must start with `BEGIN:VCALENDAR`. HTML, SVG, XML, scripts and archives are never accepted; Office/ODF files containing macros are refused;
+  - 25 MB cap; stored under `files/…` with a random name; the original name is cleaned and its extension forced to the real type;
+  - served from `/media/<id>` as `Content-Disposition: attachment` with the recorded type, `nosniff` and a `sandbox` CSP, so a file can never run as a page on the site's origin. Photo protection rules apply to images only;
+  - PDF previews are drawn by PDF.js into canvases (no PDF JavaScript, no XFA); the worker is same-origin (`worker-src 'self'`); its assets are served from `/pdfjs/`. "Download off" only hides the button — anything a visitor can see can be captured.
+- **WordPress address** (admin-editable): https only, default port, no credentials/query, no IP literals or private/reserved names (`normalizeWpBase`); the server checks `/wp-json/` answers with the `wp/v2` API and never follows a redirect to another host. The CSP's image source follows the saved address.
+- **NAS storage:** optional Cloudflare Access service token (`NAS_ACCESS_CLIENT_ID/SECRET`) sent with every NAS request, so the S3 address refuses anyone but this site.
 - **Watermark logo** (one row in Neon, `watermark_logo`):
   - the admin re-encodes the picked image through a canvas to a PNG ≤512 px, which drops metadata and anything that isn't pixels. SVG is not accepted (it can carry script);
   - `PUT /api/admin/watermark-logo` (signed-in admin, CSRF header) accepts only `image/png`, checks the signature, a well-formed IHDR, ≤1024 px, ≤256 KB, and that the file ends at IEND (no appended data). The table enforces one row, the PNG type and the size again;

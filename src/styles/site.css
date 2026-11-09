@@ -470,3 +470,59 @@ html[data-vt='theme']::view-transition-new(root) { animation: vt-reveal .55s var
   html.motion .rv, html.motion .rv * { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
   .intro-curtain { display: none !important; }
 }
+
+/* ======================================================================
+   Files in stories and work: inline file link, file card, PDF preview
+   ====================================================================== */
+.prose .file-badge { --c: #55534e; display: inline-grid; place-items: center; flex-shrink: 0; background: var(--c); color: #fff; font: 600 9.5px/1 var(--mono); letter-spacing: .03em; border-radius: 6px; }
+.prose a.file-link { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px 1px 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); text-decoration: none; font: 500 .85em/1.6 var(--sans); vertical-align: baseline; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.prose a.file-link .file-badge { padding: 3px 5px; border-radius: 4px; font-size: 9px; }
+.prose a.file-card { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; align-items: center; margin: 1.2em 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); text-decoration: none; transition: border-color .15s ease, transform .12s var(--e-out); }
+.prose a.file-card:active { transform: scale(.99); }
+.prose a.file-card .file-badge { width: 44px; height: 52px; }
+.prose .file-text { display: flex; flex-direction: column; min-width: 0; }
+.prose .file-name { font: 500 15px/1.35 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prose .file-meta { font: 11.5px/1.5 var(--mono); color: var(--faint); }
+.prose .file-action { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font: 500 13.5px var(--sans); white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) {
+  .prose a.file-card:hover, .prose a.file-link:hover { border-color: var(--line-strong); }
+  .prose a.file-card:hover .file-action svg { transform: translateY(2px); }
+  .prose a.file-card .file-action svg { transition: transform .2s var(--e-out); }
+}
+@media (max-width: 560px) { .prose a.file-card { grid-template-columns: 44px minmax(0, 1fr); } .prose .file-action { grid-column: 2; } }
+
+.prose figure.pdf { margin: 1.8em -48px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden; }
+.pdf-bar { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.pdf-bar .file-badge { width: 32px; height: 38px; font-size: 8.5px; }
+.pdf-bar .file-text { flex: 1 1 160px; }
+.pdf-bar .file-name { font-size: 14px; }
+.pdf-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.pdf-tools .btn, .pdf-fs .btn { min-height: 36px; padding: 0 12px; gap: 6px; font-size: 13px; }
+.pdf-well { position: relative; background: var(--ph); padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.pdf-note { margin: 0; padding: 28px 0; font: 13px var(--mono); color: var(--faint); }
+.pdf-pages { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 16px; }
+.pdf-page { position: relative; width: 100%; background: #fff; border-radius: 3px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 8px 24px -12px rgba(0, 0, 0, .22); overflow: hidden; }
+.pdf-page canvas { display: block; width: 100%; height: 100%; }
+.pdf-page-error::after { content: 'This page couldn’t be shown.'; position: absolute; inset: 0; display: grid; place-items: center; font: 12px var(--mono); color: #6a6862; }
+.pdf-collapsed .pdf-pages .pdf-page:nth-child(n + 3) { display: none; }
+.pdf-collapsed .pdf-well::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(to bottom, transparent, var(--ph)); pointer-events: none; }
+.pdf-more { position: relative; z-index: 1; margin-top: -60px; }
+dialog.pdf-fs { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; background: rgba(14, 14, 13, .97); color: #edebe6; display: none; flex-direction: column; }
+dialog.pdf-fs[open] { display: flex; }
+dialog.pdf-fs::backdrop { background: rgba(0, 0, 0, .6); }
+.pdf-fs-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); border-bottom: 1px solid rgba(255, 255, 255, .08); flex-wrap: wrap; }
+.pdf-fs-title { flex: 1 1 160px; font: 500 14px var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdf-fs-where, .pdf-fs-zoom { font: 12px var(--mono); color: #9c9890; min-width: 44px; text-align: center; }
+.pdf-fs .btn { background: transparent; color: #edebe6; border: 1px solid rgba(255, 255, 255, .18); border-radius: 9px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.pdf-fs .btn.icon { width: 36px; padding: 0; font-size: 16px; }
+.pdf-fs-pages { flex: 1; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 16px calc(48px + env(safe-area-inset-bottom)); }
+.pdf-fs-pages .pdf-page { width: var(--pdf-w, min(820px, 100%)); max-width: none; flex-shrink: 0; }
+html.pdf-fs-open { overflow: hidden; }
+@media (max-width: 860px) { .prose figure.pdf { margin-left: 0; margin-right: 0; } }
+@media (max-width: 640px) {
+  .prose figure.pdf { margin-left: -18px; margin-right: -18px; border-radius: 0; border-left: 0; border-right: 0; }
+  .pdf-well { padding: 14px; }
+  .pdf-dl-label, .pdf-fs-label { display: none; }
+}
+@media print { .pdf-tools, .pdf-more { display: none !important; } .pdf-collapsed .pdf-pages .pdf-page { display: block !important; } }
+.prose figure.pdf a, .prose figure.pdf a:hover { text-decoration: none; }

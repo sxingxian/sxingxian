@@ -2,18 +2,92 @@
 // (src/lib/server/render.ts) understands exactly these node names and attrs.
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
-import { FigureView, EmbedView, ColumnsView, MapView } from './views';
+import { FigureView, EmbedView, ColumnsView, MapView, PdfView, FileView } from './views';
+import { docTypeFor } from '../../lib/shared/files';
 
 export interface PickedMedia {
   id: string;
   alt: string;
 }
 
+export interface PickedFile {
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+}
+
+export type FileKind = 'pdf' | 'file';
+
 /** Shared editor storage: lets slash commands open the media picker. */
 export const SxStorage = Extension.create({
   name: 'sx',
   addStorage() {
-    return { pickMedia: null as null | (() => Promise<PickedMedia | null>) };
+    return {
+      pickMedia: null as null | (() => Promise<PickedMedia | null>),
+      pickFile: null as null | ((kind: FileKind) => Promise<PickedFile | null>),
+    };
+  },
+});
+
+/** A PDF shown page by page on the public site; download is off unless the author allows it. */
+export const PdfBlock = Node.create({
+  name: 'pdf',
+  group: 'block',
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return { mediaId: { default: null }, name: { default: '' }, bytes: { default: 0 }, download: { default: false } };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="pdf"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'pdf' })];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(PdfView);
+  },
+});
+
+/** A downloadable file shown as a card between paragraphs. */
+export const FileBlock = Node.create({
+  name: 'file',
+  group: 'block',
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return { mediaId: { default: null }, name: { default: '' }, mime: { default: '' }, bytes: { default: 0 } };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="file"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'file' })];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(FileView);
+  },
+});
+
+/** A file link inside a sentence ("see Packing list.md"). */
+export const FileLink = Node.create({
+  name: 'fileLink',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return { mediaId: { default: null }, name: { default: '' }, mime: { default: '' }, bytes: { default: 0 } };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-type="file-link"]' }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    const t = docTypeFor(String(node.attrs.mime ?? ''), String(node.attrs.name ?? ''));
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-type': 'file-link', class: 'file-chip', title: 'File link' }), ['b', { style: `background:${t.color}` }, t.badge], String(node.attrs.name || 'File')];
   },
 });
 
@@ -110,7 +184,7 @@ export const Callout = Node.create({
 // A column holds normal blocks but never another column layout.
 export const Column = Node.create({
   name: 'column',
-  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | embed | map | callout)+',
+  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | embed | map | callout | pdf | file)+',
   isolating: true,
   parseHTML() {
     return [{ tag: 'div[data-type="column"]' }];

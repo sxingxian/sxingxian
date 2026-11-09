@@ -122,7 +122,7 @@ export default function App() {
   } else if (section === 'media') {
     view = <MediaLibrary />;
   } else if (section === 'wordpress') {
-    view = <WordPress wpBaseUrl={me?.wpBaseUrl ?? 'https://hey.sxingxian.com'} wpAdminUrl={me?.wpAdminUrl ?? 'https://hey.sxingxian.com/admin'} />;
+    view = <WordPress onAddressChanged={loadMe} wpBaseUrl={me?.wpBaseUrl ?? 'https://hey.sxingxian.com'} wpAdminUrl={me?.wpAdminUrl ?? 'https://hey.sxingxian.com/admin'} />;
   } else if (section === 'settings') {
     view = <Settings />;
   } else {
