@@ -9,6 +9,7 @@ import { Field, Segmented, ToggleRow } from '../components/kit';
 import { slugify } from '../../lib/shared/safe';
 import { KIND_LABELS, KIND_PATH, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting } from '../../lib/shared/types';
 import SafeImg from '../components/SafeImg';
+import { useAutosave } from '../autosave';
 
 const EMPTY: DocNode = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -31,8 +32,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const dialog = useDialog();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [entryId, setEntryId] = useState<string | null>(id);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const entryIdRef = useRef<string | null>(id);
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
   const [site, setSite] = useState<SiteSetting | null>(null);
@@ -58,45 +58,36 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 
   const patch = useCallback((p: Partial<Draft>) => {
     setDraft((d) => (d ? { ...d, ...p } : d));
-    setDirty(true);
   }, []);
 
-  useEffect(() => {
-    const warn = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); } };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
-  const save = useCallback(async () => {
-    if (!draft) return;
-    setSaving(true);
-    setErr('');
-    const payload = { ...draft, title: draft.title.trim() || 'Untitled', slug: draft.slug || slugify(draft.title || 'untitled') };
-    try {
-      const res = entryId
-        ? await api.put<{ entry: Entry }>(`/api/admin/entries/${entryId}`, payload)
-        : await api.post<{ entry: Entry }>('/api/admin/entries', payload);
-      setDraft((d) => (d ? { ...d, slug: res.entry.slug, published_at: res.entry.published_at } : d));
-      setDirty(false);
-      toast('Saved');
-      if (!entryId) {
-        setEntryId(res.entry.id);
-        window.history.replaceState(null, '', `/admin/edit/${res.entry.id}`);
-      }
-    } catch (e) {
-      setErr(errorText(e));
-    } finally {
-      setSaving(false);
+  // Autosave: the snapshot is the whole draft; a new entry is created on its first save.
+  const persist = useCallback(async (snap: string) => {
+    const d = JSON.parse(snap) as Draft;
+    const payload = { ...d, title: d.title.trim() || 'Untitled', slug: d.slug || slugify(d.title || 'untitled') };
+    const current = entryIdRef.current;
+    const res = current
+      ? await api.put<{ entry: Entry }>(`/api/admin/entries/${current}`, payload)
+      : await api.post<{ entry: Entry }>('/api/admin/entries', payload);
+    if (!current) {
+      entryIdRef.current = res.entry.id;
+      setEntryId(res.entry.id);
+      window.history.replaceState(null, '', `/admin/edit/${res.entry.id}`);
     }
-  }, [draft, entryId, toast]);
+    // The server may adjust the slug (to keep it unique) and sets the publish date on first publish.
+    setDraft((cur) => (cur ? { ...cur, slug: cur.slug === d.slug ? res.entry.slug : cur.slug, published_at: cur.published_at === d.published_at ? res.entry.published_at : cur.published_at } : cur));
+    return JSON.stringify({ ...d, slug: res.entry.slug, published_at: res.entry.published_at });
+  }, []);
+  const auto = useAutosave(draft ? JSON.stringify(draft) : null, persist);
+  const { saveNow } = auto;
+  const patchNow = useCallback((p: Partial<Draft>) => { patch(p); saveNow(); }, [patch, saveNow]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [save]);
+  }, [saveNow]);
 
   const pickMedia = useCallback(
     () => new Promise<{ id: string; alt: string } | null>((resolve) => {
@@ -110,8 +101,8 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     const ok = await dialog.confirm({ title: 'Delete this entry?', body: 'This can’t be undone.', confirmLabel: 'Delete', danger: true });
     if (!ok) return;
     try {
+      auto.discard();
       await api.del(`/api/admin/entries/${entryId}`);
-      setDirty(false);
       go(`/admin/${draft?.kind === 'post' ? 'stories' : draft?.kind === 'project' ? 'work' : draft?.kind === 'gallery' ? 'photos' : 'film'}`);
     } catch (e) {
       setErr(errorText(e));
@@ -141,18 +132,18 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
       <div className="topbar">
         <div className="crumbs"><span>{KIND_LABELS[draft.kind]}</span><span>/</span><b>{draft.title || 'Untitled'}</b></div>
         <div className="actions">
-          <span className={`status${err ? ' err' : ''}`}>{err ? 'Not saved' : saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
+          <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
           {entryId && draft.status === 'published' && draft.is_public && <a className="btn" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Publish…</button>
-          <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
+          <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
         </div>
       </div>
-      {err && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err}</div></div>}
+      {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
           <div className="doc">
             <textarea className="title-input" rows={1} placeholder="Untitled" value={draft.title} aria-label="Title"
-              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current ? {} : { slug: slugify(e.target.value) }) })}
+              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current || draft.status === 'published' ? {} : { slug: slugify(e.target.value) }) })}
               onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
             <textarea className="dek-input" rows={1} placeholder="Summary" value={draft.dek} aria-label="Summary"
               onChange={(e) => patch({ dek: e.target.value })}
@@ -190,10 +181,10 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
           </div>
           <Field label="Status" hint={draft.status === 'draft' ? 'Only you can see drafts.' : undefined}>
-            <Segmented label="Status" value={draft.status} onChange={(v) => patch({ status: v })} options={[['draft', 'Draft'], ['published', 'Published']] as const} />
+            <Segmented label="Status" value={draft.status} onChange={(v) => patchNow({ status: v })} options={[['draft', 'Draft'], ['published', 'Published']] as const} />
           </Field>
           <div className="side-toggles">
-            <ToggleRow label="Show publicly" hint={draft.is_public && draft.status === 'draft' ? 'Live once published' : undefined} checked={draft.is_public} onChange={(v) => patch({ is_public: v })} />
+            <ToggleRow label="Show publicly" hint={draft.is_public && draft.status === 'draft' ? 'Live once published' : undefined} checked={draft.is_public} onChange={(v) => patchNow({ is_public: v })} />
             {draft.kind === 'post' && (
               <ToggleRow label="Feature on home page" hint={isFeatured ? 'Pinned on the home page' : undefined} checked={isFeatured} onChange={(v) => void setFeature(v)} />
             )}
