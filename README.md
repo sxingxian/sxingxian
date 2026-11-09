@@ -26,6 +26,7 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 - **Stories home (`/`, all at `/story`):** a featured post, latest posts (native + WordPress) with topic filters, RSS, and sidebar cards for Work, Photos and Film.
 - **Tagline:** shown next to the site name; leave it empty in Settings to show the current section's name instead (stories, work, photos, cv…).
 - **Featured post:** pin a post in the admin (Settings → Sections & featured post, or the "Feature on home page" switch in the editor), or leave it on *Always show the latest post*.
+- **Topics:** a story can have up to 3 topics; Work, Photos and Film have their own topic lists (Settings → Topics) and filter chips on their pages.
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**
   - **Blocks:** text, headings, lists, quote, callout, code, divider.

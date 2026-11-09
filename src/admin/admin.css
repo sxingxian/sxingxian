@@ -47,8 +47,22 @@ button { font: inherit; color: inherit; }
 .content { flex: 999 1 560px; min-width: 0; }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 24px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20; min-height: 56px; }
-.crumbs { display: flex; gap: 8px; align-items: center; color: var(--faint); }
-.crumbs b { color: var(--ink); font-weight: 500; }
+.crumbs { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; font-size: 13.5px; color: var(--faint); }
+.crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.crumbs li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.crumbs li + li::before { content: '/'; color: var(--field-line-h); }
+.crumbs a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--field-line-h); padding-bottom: 1px; }
+.crumbs a:hover { color: var(--ink); border-bottom-color: var(--ink-2); }
+.crumbs .crumb-here { color: var(--ink); font-weight: 500; min-width: 0; }
+.crumbs .crumb-here > span { overflow: hidden; text-overflow: ellipsis; max-width: 42ch; }
+.crumb-back { display: none; }
+@media (max-width: 760px) {
+  /* Phones: deeper screens show one back link; top-level screens show just their name. */
+  .crumbs.has-back ol { display: none; }
+  .crumbs:not(.has-back) li:not(:last-child) { display: none; }
+  .crumbs:not(.has-back) li:last-child::before { content: none; }
+  .crumbs.has-back .crumb-back { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding-right: 8px; border: 0; color: var(--accent); font-weight: 500; }
+}
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .page { max-width: 1180px; margin: 0 auto; padding: 26px 24px 80px; }
 .page h1 { margin: 0; font: 500 30px var(--serif); }
@@ -316,7 +330,6 @@ td a.title:hover { text-decoration: underline; }
   .tabbar a, .tabbar button { flex: 1; min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; color: var(--faint); font: 500 11px var(--sans); text-decoration: none; cursor: pointer; }
   .tabbar [aria-current='page'] { color: var(--ink); }
   .topbar { padding: 8px 14px; min-height: 52px; }
-  .topbar .crumbs > span { display: none; }
   .topbar .actions .status { display: none; }
   .page { padding: 18px 14px 40px; }
   h1 { font-size: 22px; }
@@ -349,7 +362,6 @@ td a.title:hover { text-decoration: underline; }
 @media (min-width: 761px) { .phone-only { display: none !important; } }
 .editor-side .grip { display: none; }
 @media (max-width: 760px) { .editor-side .grip { display: block; } }
-@media (max-width: 760px) { .topbar .crumbs b { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; } }
 @media (max-width: 760px) { .bubble { max-width: calc(100vw - 16px); overflow-x: auto; } }
 .seg-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg-row .btn[aria-checked='true'] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
@@ -533,4 +545,32 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (hover: none) and (pointer: coarse) {
   :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea),
   .input:not(.code-input), .select, .textarea, .chip-edit, .chip-add input, .node-figure .cap { font-size: 16px; }
+}
+
+/* topics picker (entry editor) */
+.prop-topics { align-items: start; }
+.prop-topics > span:first-child { padding-top: 7px; }
+.tp { position: relative; min-width: 0; }
+.tp-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 32px; }
+.tp-chip { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px 0 11px; border-radius: 999px; background: var(--accent-bg); border: 1px solid var(--accent-line); color: var(--accent); font: 500 13.5px var(--sans); }
+.tp-chip.stale { background: var(--card); border-style: dashed; border-color: var(--field-line-h); color: var(--faint); }
+.tp-x { width: 24px; height: 24px; border: 0; border-radius: 50%; background: none; color: inherit; display: grid; place-items: center; cursor: pointer; opacity: .75; }
+.tp-x:hover { opacity: 1; background: var(--card); }
+.tp-add { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--field-line-h); background: transparent; color: var(--faint); font: 500 13.5px var(--sans); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.tp-add:hover, .tp-add[aria-expanded='true'] { color: var(--ink); border-color: var(--ink-2); }
+.tp-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: 260px; max-width: calc(100vw - 32px); background: var(--card); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: 0 16px 36px -14px var(--shadow); padding: 6px; }
+.tp-head { font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); padding: 6px 9px 4px; }
+.tp-list { max-height: 264px; overflow-y: auto; overscroll-behavior: contain; }
+.tp-opt { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 9px; border-radius: 7px; font-size: 13.5px; cursor: pointer; }
+.tp-opt:hover, .tp-opt:focus-within { background: var(--line-2); }
+.tp-opt input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0; }
+.tp-opt.off { color: var(--faint); cursor: not-allowed; }
+.tp-empty, .tp-note { margin: 0; padding: 6px 9px 8px; font-size: 12.5px; color: var(--faint); }
+.tp-foot { border-top: 1px solid var(--line-2); margin-top: 4px; padding: 8px 9px 4px; font-size: 12.5px; }
+.tp-foot .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: 500 12.5px var(--sans); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 760px) {
+  .tp-chip, .tp-add { height: 36px; }
+  .tp-x { width: 30px; height: 30px; }
+  .tp-pop { width: min(300px, calc(100vw - 32px)); left: auto; right: 0; }
+  .tp-opt { min-height: 44px; }
 }

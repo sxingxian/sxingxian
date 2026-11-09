@@ -117,8 +117,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
   const mapDirty = JSON.stringify(map) !== savedMap;
 
   return (
-    <Page title="WordPress" sub={`Synced from ${wpBaseUrl.replace('https://', '')}`}
-      crumbs={<><span>Site</span><span>/</span><b>WordPress</b></>}
+    <Page title="WordPress" section="wordpress" sub={`Synced from ${wpBaseUrl.replace('https://', '')}`}
       actions={<a className="btn" href={wpAdminUrl} target="_blank" rel="noopener noreferrer">WordPress admin ↗</a>}>
       {err && <p className="err-text" role="alert">{err}</p>}
 

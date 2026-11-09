@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
-import { ToggleRow } from '../components/kit';
+import { ToggleRow, TopBar } from '../components/kit';
 import Editor from '../editor/Editor';
 import MediaPicker, { type PickerAccept } from '../components/MediaPicker';
 import { useToast } from '../components/ui';
@@ -118,15 +118,12 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
 
   return (
     <>
-      <div className="topbar">
-        <div className="crumbs"><span>Pages</span><span>/</span><b>{label}</b></div>
-        <div className="actions">
+      <TopBar section={slug} actions={<>
           <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
           <a className="btn" href={`/${slug}`} target="_blank" rel="noopener">Preview ↗</a>
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Page…</button>
           <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
-        </div>
-      </div>
+        </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">

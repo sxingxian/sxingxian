@@ -1,35 +1,49 @@
 ---
 // Grid listing for work, photo galleries and films. Hidden (404) when its
-// section is switched off in Admin → Settings → Sections.
+// section is switched off in Admin → Settings → Home. Topic filter chips come
+// from that section's list in Admin → Settings → Topics (none while it's empty).
 import Site from '../layouts/Site.astro';
 import Thumb from './Thumb.astro';
 import NotFound from './NotFound.astro';
-import { getSetting, listPublicEntries } from '../lib/server/repo';
-import { KIND_PATH, type EntryKind, type SectionsSetting } from '../lib/shared/types';
+import { getSettings, listPublicEntries } from '../lib/server/repo';
+import { KIND_PATH, topicLabel, type EntryKind, type TopicsSetting } from '../lib/shared/types';
 
 interface Props {
   kind: EntryKind;
-  section: keyof SectionsSetting;
+  section: keyof TopicsSetting;
   title: string;
   intro: string;
 }
 const { kind, section, title, intro } = Astro.props;
-const sections = await getSetting('sections');
+const { sections, topics: lists } = await getSettings(['sections', 'topics']);
 const enabled = sections[section];
 if (!enabled) Astro.response.status = 404;
-const items = enabled ? await listPublicEntries(kind, { limit: 100 }) : [];
+const topics = lists[section] ?? [];
+const raw = Astro.url.searchParams.get('topic') ?? '';
+const topic = topics.includes(raw) ? raw : '';
+const items = enabled ? await listPublicEntries(kind, { limit: 100, topic }) : [];
+const base = KIND_PATH[kind];
 ---
 {enabled ? (
-  <Site title={title} description={intro}>
+  <Site title={topic ? `${topic} · ${title}` : title} description={intro}>
     <section class="wrap">
       <header class="page-head"><h1>{title}</h1><p>{intro}</p></header>
+      {topics.length > 0 && (
+        <nav class="topics listing-topics" aria-label="Filter by topic">
+          <a class="topic" href={base} aria-current={topic === '' ? 'true' : undefined}>All</a>
+          {topics.map((t) => (
+            <a class="topic" href={`${base}?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
+          ))}
+        </nav>
+      )}
       {items.length === 0 ? (
-        <p class="empty">Nothing published here yet.</p>
+        <p class="empty">{topic ? `Nothing under ${topic} yet.` : 'Nothing published here yet.'}</p>
       ) : (
         <div class="tiles">
           {items.map((e) => (
-            <a class="tile" href={`${KIND_PATH[kind]}/${e.slug}`}>
+            <a class="tile" href={`${base}/${e.slug}`}>
               <span class="th"><Thumb image={e.cover_media_id ? { kind: 'media', id: e.cover_media_id } : null} alt="" /></span>
+              {e.topics.length > 0 && <span class="lbl accent">{topicLabel(e.topics)}</span>}
               <b>{e.title}</b>
               {e.dek && <span>{e.dek}</span>}
             </a>

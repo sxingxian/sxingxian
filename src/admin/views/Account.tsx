@@ -31,7 +31,7 @@ export default function Account({ mustChangePassword, onPasswordChanged }: { mus
   useEffect(load, [load]);
 
   return (
-    <Page title="Account" width="narrow" sub={data ? `${data.profile.email} · ${data.profile.role}` : undefined}>
+    <Page title="Account" section="account" width="narrow" sub={data ? `${data.profile.email} · ${data.profile.role}` : undefined}>
       {mustChangePassword && <div className="alert warn">Set your own password to continue.</div>}
       {welcome && !mustChangePassword && <div className="alert ok">Account ready. Turn on 2-step below, then delete the setup token in Cloudflare.</div>}
       {err && <div className="alert err" role="alert">{err}</div>}

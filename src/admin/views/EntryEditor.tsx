@@ -5,9 +5,11 @@ import DateTimePicker from '../components/DateTimePicker';
 import Editor from '../editor/Editor';
 import MediaPicker, { type PickerAccept } from '../components/MediaPicker';
 import { useToast } from '../components/ui';
-import { Field, Segmented, ToggleRow } from '../components/kit';
+import { Field, Segmented, ToggleRow, TopBar } from '../components/kit';
+import { KIND_SECTION } from '../nav';
 import { slugify } from '../../lib/shared/safe';
-import { KIND_LABELS, KIND_PATH, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting } from '../../lib/shared/types';
+import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
+import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
 
@@ -18,7 +20,7 @@ interface Draft {
   title: string;
   slug: string;
   dek: string;
-  topic: string;
+  topics: string[];
   body: DocNode;
   cover_media_id: string | null;
   video_url: string;
@@ -37,6 +39,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
   const [pickerAccept, setPickerAccept] = useState<PickerAccept>('images');
   const [site, setSite] = useState<SiteSetting | null>(null);
+  const [lists, setLists] = useState<TopicsSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
   const [sheet, setSheet] = useState(false);
   const slugTouched = useRef(!!id);
@@ -44,16 +47,17 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 
   useEffect(() => {
     api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => setSite(r.value)).catch(() => {});
+    api.get<{ value: TopicsSetting }>('/api/admin/settings/topics').then((r) => setLists(r.value)).catch(() => {});
     api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
     if (id) {
       api.get<{ entry: Entry }>(`/api/admin/entries/${id}`)
         .then(({ entry: e }) => setDraft({
-          kind: e.kind, title: e.title, slug: e.slug, dek: e.dek, topic: e.topic, body: e.body, cover_media_id: e.cover_media_id,
+          kind: e.kind, title: e.title, slug: e.slug, dek: e.dek, topics: e.topics ?? (e.topic ? [e.topic] : []), body: e.body, cover_media_id: e.cover_media_id,
           video_url: e.video_url, meta: e.meta as Draft['meta'], status: e.status, is_public: e.is_public, published_at: e.published_at,
         }))
         .catch((e) => setErr(errorText(e)));
     } else {
-      setDraft({ kind: newKind, title: '', slug: '', dek: '', topic: '', body: EMPTY, cover_media_id: null, video_url: '', meta: {}, status: 'draft', is_public: false, published_at: null });
+      setDraft({ kind: newKind, title: '', slug: '', dek: '', topics: [], body: EMPTY, cover_media_id: null, video_url: '', meta: {}, status: 'draft', is_public: false, published_at: null });
     }
   }, [id, newKind]);
 
@@ -64,7 +68,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   // Autosave: the snapshot is the whole draft; a new entry is created on its first save.
   const persist = useCallback(async (snap: string) => {
     const d = JSON.parse(snap) as Draft;
-    const payload = { ...d, title: d.title.trim() || 'Untitled', slug: d.slug || slugify(d.title || 'untitled') };
+    const payload = { ...d, topic: d.topics[0] ?? '', title: d.title.trim() || 'Untitled', slug: d.slug || slugify(d.title || 'untitled') };
     const current = entryIdRef.current;
     const res = current
       ? await api.put<{ entry: Entry }>(`/api/admin/entries/${current}`, payload)
@@ -138,15 +142,12 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 
   return (
     <>
-      <div className="topbar">
-        <div className="crumbs"><span>{KIND_LABELS[draft.kind]}</span><span>/</span><b>{draft.title || 'Untitled'}</b></div>
-        <div className="actions">
+      <TopBar section={KIND_SECTION[draft.kind]} here={draft.title.trim() || 'Untitled'} actions={<>
           <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
           {entryId && draft.status === 'published' && draft.is_public && <a className="btn" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Publish…</button>
           <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
-        </div>
-      </div>
+        </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
@@ -158,16 +159,12 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
               onChange={(e) => patch({ dek: e.target.value })}
               onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
             <div className="props">
-              <label className="prop"><span>Topic</span>
-                {draft.kind === 'post' && site ? (
-                  <select className="select" value={draft.topic} onChange={(e) => patch({ topic: e.target.value })}>
-                    <option value="">None</option>
-                    {site.topics.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                ) : (
-                  <input className="input" value={draft.topic} maxLength={40} onChange={(e) => patch({ topic: e.target.value })} placeholder="Topic" />
-                )}
-              </label>
+              <div className="prop prop-topics"><span>Topics</span>
+                <TopicsPicker value={draft.topics} listName={TOPIC_LIST_LABEL[TOPIC_LIST[draft.kind]]}
+                  options={TOPIC_LIST[draft.kind] === 'stories' ? (site?.topics ?? null) : (lists ? lists[TOPIC_LIST[draft.kind] as keyof TopicsSetting] : null)}
+                  onChange={(topics) => patch({ topics })}
+                  onManage={() => go('/admin/settings#topics')} />
+              </div>
               <div className="prop"><span>Cover image</span>
                 <span className="cover-pick">
                   {draft.cover_media_id && <SafeImg src={`/media/${draft.cover_media_id}`} alt="" />}

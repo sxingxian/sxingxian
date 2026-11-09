@@ -38,7 +38,7 @@ export default function MediaLibrary() {
   const shown = (items ?? []).filter((m) => filter === 'all' || kindOf(m) === filter);
 
   return (
-    <Page title="Media" width="wide" sub={items ? `${items.length} items · ${photos.length} photos · ${items.filter((m) => isDocMime(m.mime)).length} files` : undefined}
+    <Page title="Media" section="media" width="wide" sub={items ? `${items.length} items · ${photos.length} photos · ${items.filter((m) => isDocMime(m.mime)).length} files` : undefined}
       actions={<button type="button" className="btn primary" onClick={() => setOpen(true)}>Upload</button>}>
       {err && <div className="alert err" role="alert">{err}</div>}
       <Panel title="Library" desc="Click a photo to view it, or a file to download it."

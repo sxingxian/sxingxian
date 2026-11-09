@@ -1,6 +1,7 @@
 // SERVER-ONLY data access. Every function uses parameterised SQL.
 import { sql } from './db';
 import {
+  cleanTopics,
   DEFAULT_SETTINGS,
   type Entry,
   type EntryKind,
@@ -44,17 +45,40 @@ export async function putSetting<K extends SettingKey>(key: K, value: SettingsMa
 
 // ---------------- entries ----------------
 
-const ENTRY_COLS = `id, kind, title, slug, dek, topic, body, cover_media_id, video_url, meta, read_minutes,
+// topics falls back to [topic] for a row written by the previous release after the migration ran.
+const TOPICS_COL = `CASE WHEN cardinality(topics) = 0 AND topic <> '' THEN ARRAY[topic] ELSE topics END AS topics`;
+const ENTRY_COLS = `id, kind, title, slug, dek, topic, ${TOPICS_COL}, body, cover_media_id, video_url, meta, read_minutes,
   status, is_public, published_at, created_at, updated_at`;
+
+// Code goes live a few minutes before migrations run. Until 0007 adds the topics column, reads fall back
+// to the old single topic so public pages keep working. Writes simply fail and the admin's autosave
+// retries until the column exists.
+const LEGACY_TOPICS_COL = `CASE WHEN topic <> '' THEN ARRAY[topic] ELSE '{}'::text[] END AS topics`;
+function isMissingTopics(e: unknown): boolean {
+  return (e as { code?: string })?.code === '42703' && /topics/.test(String((e as Error)?.message ?? ''));
+}
+async function readEntries(text: string, params: unknown[]): Promise<unknown[]> {
+  try {
+    return await sql().query(text, params);
+  } catch (e) {
+    if (!isMissingTopics(e)) throw e;
+    return sql().query(text.replaceAll(TOPICS_COL, LEGACY_TOPICS_COL).replace('$2 = ANY(topics) OR ', ''), params);
+  }
+}
+
+/** Topics to store for an entry: cleaned topics[], or the legacy single topic from older clients. */
+function inputTopics(input: EntryInput): string[] {
+  return cleanTopics(input.topics ?? (input.topic ? [input.topic] : []));
+}
 
 export async function listPublicEntries(kind: EntryKind, opts: { limit?: number; offset?: number; topic?: string } = {}): Promise<Entry[]> {
   const limit = Math.min(opts.limit ?? 20, 100);
   const offset = Math.max(opts.offset ?? 0, 0);
   const topic = opts.topic ?? '';
-  const rows = await sql().query(
+  const rows = await readEntries(
     `SELECT ${ENTRY_COLS} FROM entries
      WHERE kind = $1 AND status = 'published' AND is_public = true AND published_at <= now()
-       AND ($2 = '' OR topic = $2)
+       AND ($2 = '' OR $2 = ANY(topics) OR topic = $2)
      ORDER BY published_at DESC LIMIT $3 OFFSET $4`,
     [kind, topic, limit, offset],
   );
@@ -62,7 +86,7 @@ export async function listPublicEntries(kind: EntryKind, opts: { limit?: number;
 }
 
 export async function getPublicEntry(kind: EntryKind, slug: string): Promise<Entry | null> {
-  const rows = await sql().query(
+  const rows = await readEntries(
     `SELECT ${ENTRY_COLS} FROM entries
      WHERE kind = $1 AND slug = $2 AND status = 'published' AND is_public = true AND published_at <= now()`,
     [kind, slug],
@@ -71,7 +95,7 @@ export async function getPublicEntry(kind: EntryKind, slug: string): Promise<Ent
 }
 
 export async function getPublicEntryById(id: string): Promise<Entry | null> {
-  const rows = await sql().query(
+  const rows = await readEntries(
     `SELECT ${ENTRY_COLS} FROM entries
      WHERE id = $1 AND status = 'published' AND is_public = true AND published_at <= now()`,
     [id],
@@ -80,8 +104,8 @@ export async function getPublicEntryById(id: string): Promise<Entry | null> {
 }
 
 export async function adminListEntries(kind?: EntryKind): Promise<Omit<Entry, 'body'>[]> {
-  const rows = await sql().query(
-    `SELECT id, kind, title, slug, dek, topic, cover_media_id, video_url, meta, read_minutes, status, is_public,
+  const rows = await readEntries(
+    `SELECT id, kind, title, slug, dek, topic, ${TOPICS_COL}, cover_media_id, video_url, meta, read_minutes, status, is_public,
             published_at, created_at, updated_at
      FROM entries WHERE ($1::text IS NULL OR kind = $1) ORDER BY updated_at DESC LIMIT 500`,
     [kind ?? null],
@@ -90,18 +114,19 @@ export async function adminListEntries(kind?: EntryKind): Promise<Omit<Entry, 'b
 }
 
 export async function adminGetEntry(id: string): Promise<Entry | null> {
-  const rows = await sql().query(`SELECT ${ENTRY_COLS} FROM entries WHERE id = $1`, [id]);
+  const rows = await readEntries(`SELECT ${ENTRY_COLS} FROM entries WHERE id = $1`, [id]);
   return (rows[0] as Entry) ?? null;
 }
 
 export async function createEntry(input: EntryInput): Promise<Entry> {
   const publishedAt = input.status === 'published' ? input.published_at ?? new Date().toISOString() : input.published_at;
+  const topics = inputTopics(input);
   const rows = await sql().query(
-    `INSERT INTO entries (kind, title, slug, dek, topic, body, cover_media_id, video_url, meta, read_minutes, status, is_public, published_at)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb,$10,$11,$12,$13)
+    `INSERT INTO entries (kind, title, slug, dek, topic, topics, body, cover_media_id, video_url, meta, read_minutes, status, is_public, published_at)
+     VALUES ($1,$2,$3,$4,$5,$6::text[],$7::jsonb,$8,$9,$10::jsonb,$11,$12,$13,$14)
      RETURNING ${ENTRY_COLS}`,
     [
-      input.kind, input.title, input.slug, input.dek, input.topic, JSON.stringify(input.body),
+      input.kind, input.title, input.slug, input.dek, topics[0] ?? '', topics, JSON.stringify(input.body),
       input.cover_media_id, input.video_url, JSON.stringify(input.meta), readMinutes(input.body),
       input.status, input.is_public, publishedAt,
     ],
@@ -111,12 +136,13 @@ export async function createEntry(input: EntryInput): Promise<Entry> {
 
 export async function updateEntry(id: string, input: EntryInput): Promise<Entry | null> {
   const publishedAt = input.status === 'published' ? input.published_at ?? new Date().toISOString() : input.published_at;
+  const topics = inputTopics(input);
   const rows = await sql().query(
-    `UPDATE entries SET kind=$2, title=$3, slug=$4, dek=$5, topic=$6, body=$7::jsonb, cover_media_id=$8, video_url=$9,
-       meta=$10::jsonb, read_minutes=$11, status=$12, is_public=$13, published_at=$14, updated_at=now()
+    `UPDATE entries SET kind=$2, title=$3, slug=$4, dek=$5, topic=$6, topics=$7::text[], body=$8::jsonb, cover_media_id=$9, video_url=$10,
+       meta=$11::jsonb, read_minutes=$12, status=$13, is_public=$14, published_at=$15, updated_at=now()
      WHERE id = $1 RETURNING ${ENTRY_COLS}`,
     [
-      id, input.kind, input.title, input.slug, input.dek, input.topic, JSON.stringify(input.body),
+      id, input.kind, input.title, input.slug, input.dek, topics[0] ?? '', topics, JSON.stringify(input.body),
       input.cover_media_id, input.video_url, JSON.stringify(input.meta), readMinutes(input.body),
       input.status, input.is_public, publishedAt,
     ],

@@ -1,19 +1,62 @@
 // The admin's building blocks. Every screen is made from these so layout, spacing, labels,
 // controls and saving behave the same everywhere:
-//   <Page> topbar + heading · <Panel> titled card · <Row> label/hint + control
+//   <TopBar> breadcrumb + actions · <Page> topbar + heading · <Panel> titled card · <Row> label/hint + control
 //   <ToggleRow> label/hint + switch · <Segmented> one-of choice · <SaveBar> dirty state + save
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Switch } from './ui';
+import { SECTIONS, useGo, type SectionKey } from '../nav';
 
-export function Page({ title, crumbs, actions, sub, width = 'normal', children }: {
-  title: string; crumbs?: ReactNode; actions?: ReactNode; sub?: ReactNode; width?: 'narrow' | 'normal' | 'wide'; children: ReactNode;
+/**
+ * The bar at the top of every admin screen: breadcrumb on the left, actions on the right.
+ * Trail = Group / Section / here. The section is a link only when there is a "here" below it
+ * (an item in the editor, a tab in Settings); onSection replaces the link's default navigation.
+ * Phones show a single "‹ Section" back link on deeper screens, or just the section name.
+ */
+export function TopBar({ section, here, onSection, actions }: {
+  section: SectionKey; here?: string; onSection?: () => void; actions?: ReactNode;
+}) {
+  const go = useGo();
+  const s = SECTIONS[section];
+  const deep = here !== undefined && here !== '';
+  const open = (e: MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // let the browser open a new tab
+    e.preventDefault();
+    if (onSection) onSection();
+    else go(s.path);
+  };
+  return (
+    <div className="topbar">
+      <nav className={`crumbs${deep ? ' has-back' : ''}`} aria-label="Breadcrumb">
+        <ol>
+          <li className="crumb-group">{s.group}</li>
+          {deep ? (
+            <>
+              <li><a href={s.path} onClick={open}>{s.label}</a></li>
+              <li className="crumb-here" aria-current="page" title={here}><span>{here}</span></li>
+            </>
+          ) : (
+            <li className="crumb-here" aria-current="page">{s.label}</li>
+          )}
+        </ol>
+        {deep && (
+          <a className="crumb-back" href={s.path} onClick={open} aria-label={`Back to ${s.label}`}>
+            <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6.5 1.5L2 6l4.5 4.5" /></svg>
+            {s.label}
+          </a>
+        )}
+      </nav>
+      {actions && <div className="actions">{actions}</div>}
+    </div>
+  );
+}
+
+export function Page({ title, section, here, onSection, actions, sub, width = 'normal', children }: {
+  title: string; section: SectionKey; here?: string; onSection?: () => void;
+  actions?: ReactNode; sub?: ReactNode; width?: 'narrow' | 'normal' | 'wide'; children: ReactNode;
 }) {
   return (
     <>
-      <div className="topbar">
-        <div className="crumbs">{crumbs ?? <b>{title}</b>}</div>
-        {actions && <div className="actions">{actions}</div>}
-      </div>
+      <TopBar section={section} here={here} onSection={onSection} actions={actions} />
       <div className={`page page-${width}`}>
         <header className="page-head">
           <h1>{title}</h1>

@@ -67,7 +67,7 @@ export default function Users({ meId }: { meId: string }) {
   };
 
   return (
-    <Page title="Users" width="narrow" sub="Who can sign in to the admin. Owners also manage users."
+    <Page title="Users" section="users" width="narrow" sub="Who can sign in to the admin. Owners also manage users."
       actions={!adding && <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add user</button>}>
       {err && <div className="alert err" role="alert">{err}</div>}
       {temp && <TempPassword email={temp.email} password={temp.password} onClose={() => setTemp(null)} />}

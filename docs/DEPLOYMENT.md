@@ -171,6 +171,12 @@ Then go to Admin → Settings → **Photos**:
 
 `WP_BASE_URL` in `wrangler.jsonc` is the starting address. If WordPress moves, change it in **Admin → WordPress → Site address**: the admin checks that the new address answers as WordPress, saves it, and re-syncs so links and images update. The saved address wins over `WP_BASE_URL`.
 
+## 7e. Topics
+
+- **Lists:** Admin → Settings → **Topics** has one list per section: Stories (home page and `/story` filters), Work, Photos and Film (filters on `/work`, `/photos`, `/film`; hidden while a list is empty). Up to 12 each. Click a topic to rename it (entries follow), × to remove it (asks first, then takes it off those entries).
+- **Entries:** the editor's **Topics** picker adds up to 3 from that section's list, in the order shown publicly ("Travel · Photography"). A topic no longer in the list shows dashed until removed.
+- **Release (migration `0007_topics.sql`):** adds `entries.topics` and seeds the Work/Photos/Film lists from topics already on those entries. Run **Deploy Neon** after merging (or let `AUTO_DEPLOY_NEON` do it). Until it runs, public pages keep working on the old single topic and editor saves retry automatically.
+
 ## 7b. Google AdSense (optional)
 
 1. Write the **Privacy** page first: Admin → Pages → **Privacy** comes with a draft. Fill in the [placeholders], check it, and save. It then appears in the footer. AdSense requires one.

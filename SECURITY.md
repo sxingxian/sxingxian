@@ -100,6 +100,7 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
   There is no raw-HTML block.
 - **WordPress content:** titles and excerpts are reduced to plain text, then escaped when rendered. Only `https://` image URLs are stored.
 - **Validation:** every write is checked with Zod on the server, with body-size caps (1.2 MB for documents, 50 KB for settings).
+- **Topics:** entry topics (max 3 × 30 chars) and section lists (max 12 each) are validated, trimmed and de-duplicated on the server; renames run as one parameterised `UPDATE` per change, scoped to that section's kind. Public topic filters accept only values in the saved list.
 
 ### Content Security Policy and headers
 - A per-request nonce is set by middleware and stamped on every `<script>` with `HTMLRewriter`:

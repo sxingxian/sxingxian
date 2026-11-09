@@ -1,9 +1,7 @@
-// Story topics as chips: add (Enter or comma; pasting a list works), rename (click), reorder
+// A topic list as chips (Settings → Topics): add (Enter or comma; pasting a list works), rename (click), reorder
 // (drag, or Alt+←/→), remove (×). Shows how many posts use each topic.
-import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
-
-export const MAX_TOPICS = 12;
-export const MAX_TOPIC_LEN = 30;
+import { useId, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { MAX_LIST_TOPICS as MAX_TOPICS, MAX_TOPIC_LEN } from '../../lib/shared/types';
 
 export interface TopicChange { from: string; to: string }
 
@@ -12,11 +10,16 @@ interface Props {
   counts: Record<string, number>;
   onChange: (topics: string[], change?: TopicChange) => void;
   onRemove: (topic: string) => void;
+  /** Accessible name of the list, e.g. "Story topics". */
+  label?: string;
+  /** What the counts are, e.g. "posts", "entries". */
+  noun?: string;
 }
 
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ').slice(0, MAX_TOPIC_LEN);
 
-export default function TopicsEditor({ topics, counts, onChange, onRemove }: Props) {
+export default function TopicsEditor({ topics, counts, onChange, onRemove, label = 'Topics', noun = 'posts' }: Props) {
+  const helpId = useId();
   const [draft, setDraft] = useState('');
   const [note, setNote] = useState('');
   const [editing, setEditing] = useState<number | null>(null);
@@ -88,7 +91,7 @@ export default function TopicsEditor({ topics, counts, onChange, onRemove }: Pro
 
   return (
     <div className="topics-ed">
-      <ul className="chips" aria-label="Topics">
+      <ul className="chips" aria-label={label}>
         {topics.map((t, i) => (
           <li key={t} className={`chip${dragFrom === i ? ' dragging' : ''}${dragOver === i && dragFrom !== i ? ' over' : ''}`}
             draggable={editing !== i}
@@ -109,7 +112,7 @@ export default function TopicsEditor({ topics, counts, onChange, onRemove }: Pro
             ) : (
               <button type="button" className="chip-label" ref={(el) => { chipRefs.current[i] = el; }}
                 onClick={() => startEdit(i)} onKeyDown={onChipKey(i)}
-                aria-label={`${t}, ${counts[t] ?? 0} posts. Click to rename, Alt+arrows to move, Delete to remove`}>
+                aria-label={`${t}, ${counts[t] ?? 0} ${noun}. Click to rename, Alt+arrows to move, Delete to remove`}>
                 {t}
               </button>
             )}
@@ -122,13 +125,13 @@ export default function TopicsEditor({ topics, counts, onChange, onRemove }: Pro
         <li className="chip-add">
           <input ref={addRef} value={draft} disabled={full} maxLength={MAX_TOPIC_LEN * 4}
             placeholder={full ? `${MAX_TOPICS} topics max` : topics.length ? 'Add topic' : 'Add your first topic'}
-            aria-label="Add topic" aria-describedby="topics-help"
+            aria-label="Add topic" aria-describedby={helpId}
             onChange={(e) => { if (e.target.value.includes(',')) add(e.target.value); else { setDraft(e.target.value); setNote(''); } }}
             onKeyDown={onAddKey}
             onBlur={() => draft.trim() && add(draft)} />
         </li>
       </ul>
-      <div className="topics-foot" id="topics-help">
+      <div className="topics-foot" id={helpId}>
         <span>{note || 'Enter to add · click to rename · drag to reorder'}</span>
         <span className="mono">{topics.length}/{MAX_TOPICS}</span>
       </div>
