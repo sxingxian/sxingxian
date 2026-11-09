@@ -17,6 +17,7 @@ try {
 } catch {
   closedMessage = 'The database isn’t reachable yet. Check DATABASE_URL in the Worker settings and that the migrations have run.';
 }
+import Favicons from '../../components/Favicons.astro';
 ---
 <!doctype html>
 <html lang="en">
@@ -25,7 +26,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Set up · sxingxian</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <Favicons />
     <meta name="color-scheme" content="light dark" />
     <script is:inline>(function(){try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   </head>

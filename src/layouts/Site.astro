@@ -42,6 +42,7 @@ const ads = await adsFor(path);
 const showPrivacy = await hasPrivacyPage().catch(() => false);
 const protect = (await getSetting('protection').catch(() => null))?.blockSave ?? true;
 const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ? '\u00a0' : ch, cls: `l l${Math.min(i + 1, 12)}` }));
+import Favicons from '../components/Favicons.astro';
 ---
 <!doctype html>
 <html lang="en" data-protect={protect ? '' : undefined}>
@@ -57,7 +58,7 @@ const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ?
     <meta property="og:type" content="website" />
     {image && <meta property="og:image" content={image} />}
     <link rel="alternate" type="application/rss+xml" title={`${site.title} — RSS`} href="/rss.xml" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <Favicons />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#fcfcfa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
