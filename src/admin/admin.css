@@ -503,3 +503,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (min-width: 861px) {
   .editor-side { position: sticky; top: 56px; align-self: flex-start; height: calc(100vh - 56px); height: calc(100dvh - 56px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 }
+
+/* phone: no bottom tab bar while typing (see useKeyboardOpen in App.tsx) */
+@media (max-width: 760px) {
+  .kb-open .tabbar { display: none; }
+  .kb-open .content { padding-bottom: 24px; }
+}
