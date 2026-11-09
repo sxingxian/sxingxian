@@ -65,6 +65,9 @@ const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ?
     {ads && (
       <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ads.client}`} crossorigin="anonymous" is:inline></script>
     )}
+    {/* Broken images: swap in the site's placeholder. Registered before any <img> so it catches every failure
+         (error events don't bubble, so it listens in the capture phase). No inline onerror: the CSP forbids it. */}
+    <script is:inline>(function(){function ph(img){var alt=img.getAttribute('alt')||'';var n=document.createElement('div');n.className='placeholder-cover is-broken';n.textContent='sxingxian';if(alt){n.setAttribute('role','img');n.setAttribute('aria-label',alt);}else{n.setAttribute('aria-hidden','true');}return n;}document.addEventListener('error',function(e){var img=e.target;if(!img||img.tagName!=='IMG'||img.hasAttribute('data-ph'))return;if(img.classList.contains('lb-img')){var st=img.parentNode;if(st&&img.getAttribute('src')){st.classList.add('is-broken');img.addEventListener('load',function(){st.classList.remove('is-broken');},{once:true});}return;}img.setAttribute('data-ph','');var lb=img.closest('.lb');if(lb){lb.removeAttribute('data-lightbox');lb.setAttribute('data-broken','');lb.disabled=true;lb.setAttribute('aria-label','Photo unavailable');}img.replaceWith(ph(img));},true);})();</script>
     <script is:inline>(function(){var d=document.documentElement;d.classList.add('js');try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
     {/* Before first paint: hide reveal targets and decide on the intro. The first home visit in a session gets the
          intro (unless reduced motion); later visits are 'returning'. Fails open after 3 s if the page script never ran. */}
@@ -252,6 +255,8 @@ const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ?
       }
       function show(i) {
         if (!box) build();
+        items = items.filter(function (t) { return !t.hasAttribute('data-broken'); });
+        if (!items.length) { hide(); return; }
         idx = (i + items.length) % items.length;
         var t = items[idx], src = t.querySelector('img');
         img.src = src ? src.currentSrc || src.src : '';
@@ -263,7 +268,7 @@ const curtainLetters = Array.from(site.title).map((ch, i) => ({ ch: ch === ' ' ?
       function open(i, from) { opener = from; show(i); box.hidden = false; document.body.style.overflow = 'hidden'; box.querySelector('.lb-close').focus(); }
       function hide() { if (!box) return; box.hidden = true; document.body.style.overflow = ''; img.removeAttribute('src'); if (opener) opener.focus(); }
       function go(step) { show(idx + step); }
-      items.forEach(function (t, i) { t.addEventListener('click', function () { open(i, t); }); });
+      items.forEach(function (t) { t.addEventListener('click', function () { if (t.hasAttribute('data-broken')) return; open(Math.max(0, items.indexOf(t)), t); }); });
       document.addEventListener('keydown', function (e) {
         if (!box || box.hidden) return;
         if (e.key === 'Escape') hide();

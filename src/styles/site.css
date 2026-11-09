@@ -302,6 +302,12 @@ html[data-theme='dark'] .i-moon { display: none; }
 #main { flex: 1 0 auto; padding-bottom: 80px; }
 /* small thumbnails: no placeholder text */
 .mini .placeholder-cover, .photo-grid .placeholder-cover { font-size: 0; }
+/* a broken image swapped for the placeholder: keep a sensible shape where the image set the height */
+.lb .placeholder-cover.is-broken, .prose .placeholder-cover.is-broken { aspect-ratio: 3 / 2; height: auto; border-radius: inherit; }
+.article .hero .placeholder-cover.is-broken { aspect-ratio: 16 / 9; }
+.lb[data-broken] { cursor: default; }
+.lb-stage.is-broken .lb-img { display: none; }
+.lb-stage.is-broken::after { content: 'Photo unavailable'; width: min(80vw, 640px); aspect-ratio: 3 / 2; display: grid; place-items: center; border-radius: 12px; background: linear-gradient(135deg, #2a2926, #1f1e1c); color: #9c9890; font: 13px var(--mono); }
 
 /* Google AdSense units: labelled, separated from content, space reserved to limit layout shift */
 .ad { margin: 40px 0 0; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }

@@ -8,6 +8,7 @@ import { useToast } from '../components/ui';
 import { Field, Segmented, ToggleRow } from '../components/kit';
 import { slugify } from '../../lib/shared/safe';
 import { KIND_LABELS, KIND_PATH, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting } from '../../lib/shared/types';
+import SafeImg from '../components/SafeImg';
 
 const EMPTY: DocNode = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -169,7 +170,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
               </label>
               <div className="prop"><span>Cover image</span>
                 <span className="cover-pick">
-                  {draft.cover_media_id && <img src={`/media/${draft.cover_media_id}`} alt="" />}
+                  {draft.cover_media_id && <SafeImg src={`/media/${draft.cover_media_id}`} alt="" />}
                   <button type="button" className="btn small" onClick={async () => { const m = await pickMedia(); if (m) patch({ cover_media_id: m.id }); }}>{draft.cover_media_id ? 'Change' : 'Choose'}</button>
                   {draft.cover_media_id && <button type="button" className="btn small danger" onClick={() => patch({ cover_media_id: null })}>Remove</button>}
                 </span>

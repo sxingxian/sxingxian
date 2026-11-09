@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { embedSrc, isTikTokShortLink, osmEmbedSrc, parseMapInput, parseVideoUrl, validMapPoint, type VideoProvider } from '../../lib/shared/safe';
 import { api, errorText } from '../api';
+import SafeImg from '../components/SafeImg';
 
 type PickMedia = () => Promise<{ id: string; alt: string } | null>;
 function picker(editor: NodeViewProps['editor']): PickMedia | null {
@@ -20,7 +21,7 @@ export function FigureView({ node, updateAttributes, selected, editor, deleteNod
   };
   return (
     <NodeViewWrapper className={`node-figure${selected ? ' selected' : ''}`} data-drag-handle="">
-      {mediaId ? <img src={`/media/${mediaId}`} alt={alt} draggable={false} /> : <div className="drop">No image selected</div>}
+      {mediaId ? <SafeImg src={`/media/${mediaId}`} alt={alt} draggable={false} /> : <div className="drop">No image selected</div>}
       <input className="cap" placeholder="Add a caption…" value={caption} onChange={(e) => updateAttributes({ caption: e.target.value })} />
       {selected && editor.isEditable && (
         <div className="tools" contentEditable={false}>

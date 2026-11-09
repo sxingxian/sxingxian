@@ -6,6 +6,7 @@ import { useDialog } from '../components/dialog';
 import Lightbox from '../components/Lightbox';
 import { Page, Panel, Segmented, Empty } from '../components/kit';
 import type { MediaItem } from '../../lib/shared/types';
+import SafeImg from '../components/SafeImg';
 
 export default function MediaLibrary() {
   const [items, setItems] = useState<MediaItem[] | null>(null);
@@ -46,7 +47,7 @@ export default function MediaLibrary() {
               <div key={m.id} className="tile">
                 {m.mime.startsWith('image/') ? (
                   <button type="button" className="lib-open" aria-label={`View ${m.alt || m.filename}`} onClick={() => setView(photos.findIndex((x) => x.id === m.id))}>
-                    <img src={`/media/${m.id}`} alt={m.alt} loading="lazy" />
+                    <SafeImg src={`/media/${m.id}`} alt={m.alt} loading="lazy" />
                   </button>
                 ) : <div className="drop" style={{ aspectRatio: '4/3', display: 'grid', placeItems: 'center' }}>{m.provider === 'youtube' || m.provider === 'vimeo' ? `${m.provider} · ${m.embed_id}` : m.mime}</div>}
                 <div className="cap"><span>{m.provider.toUpperCase()} · {relTime(m.created_at)}</span><button type="button" className="btn small danger" onClick={() => remove(m)} aria-label={`Delete ${m.filename}`}>✕</button></div>

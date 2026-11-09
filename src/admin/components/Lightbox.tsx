@@ -1,5 +1,6 @@
 // Full-screen photo viewer for the admin media library: arrows / swipe / Esc, focus kept inside.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import SafeImg from './SafeImg';
 
 export interface LightboxItem { src: string; alt: string; caption: string }
 
@@ -34,7 +35,7 @@ export default function Lightbox({ items, start, onClose }: { items: LightboxIte
       onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
       onTouchEnd={(e) => { const dx = e.changedTouches[0].clientX - touchX.current; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); }}>
       <div className="lb-stage" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <img className="lb-img" src={item.src} alt={item.alt} draggable={false} />
+        <SafeImg className="lb-img" src={item.src} alt={item.alt} draggable={false} />
       </div>
       <div className="lb-foot"><span>{item.caption}</span><span className="lb-count">{items.length > 1 ? `${i + 1} / ${items.length}` : ''}</span></div>
       {items.length > 1 && <button type="button" className="lb-nav lb-prev" aria-label="Previous photo" onClick={() => go(-1)}>‹</button>}

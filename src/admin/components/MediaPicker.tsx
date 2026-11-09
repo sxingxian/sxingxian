@@ -6,6 +6,7 @@ import { api, errorText } from '../api';
 import { watermarkAfterUpload } from '../watermark';
 import { Field, Segmented, ToggleRow } from './kit';
 import type { MediaItem, MediaProvider } from '../../lib/shared/types';
+import SafeImg from './SafeImg';
 
 type Host = 'r2' | 'nas' | 'b2' | 'youtube';
 const HOSTS: { id: Host; name: string; desc: string }[] = [
@@ -150,7 +151,7 @@ export default function MediaPicker({ onPick, onClose, imagesOnly = true }: Prop
               {libItems.length === 0 && <div className="empty">No media yet.</div>}
               {libItems.map((m) => (
                 <button key={m.id} type="button" onClick={() => onPick(m)} aria-label={`Use ${m.alt || m.filename}`}>
-                  {m.mime.startsWith('image/') ? <img src={`/media/${m.id}`} alt="" loading="lazy" /> : <div className="drop" style={{ aspectRatio: '4/3' }}>{m.provider}</div>}
+                  {m.mime.startsWith('image/') ? <SafeImg src={`/media/${m.id}`} alt="" loading="lazy" /> : <div className="drop" style={{ aspectRatio: '4/3' }}>{m.provider}</div>}
                   <span className="cap"><span>{(m.provider as MediaProvider).toUpperCase()}</span><span>{m.filename.slice(0, 18)}</span></span>
                 </button>
               ))}
