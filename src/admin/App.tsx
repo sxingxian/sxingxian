@@ -1,4 +1,5 @@
 // Admin single-page app for sxingxian.com/admin.
+import { NavContext } from './nav';
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import './admin.css';
 import { api } from './api';
@@ -139,6 +140,7 @@ export default function App() {
   );
 
   return (
+    <NavContext.Provider value={go}>
     <ToastProvider>
       <DialogProvider>
       <div className="shell">
@@ -203,5 +205,6 @@ export default function App() {
       </div>
       </DialogProvider>
     </ToastProvider>
+    </NavContext.Provider>
   );
 }

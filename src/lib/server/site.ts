@@ -9,7 +9,7 @@ export interface FeedItem {
   source: 'native' | 'wordpress';
   title: string;
   dek: string;
-  topic: string;
+  topics: string[];
   url: string;
   external: boolean;
   date: string;
@@ -35,7 +35,7 @@ export function entryToFeed(e: Entry): FeedItem {
     source: 'native',
     title: e.title,
     dek: e.dek,
-    topic: e.topic,
+    topics: e.topics ?? (e.topic ? [e.topic] : []),
     url: `${KIND_PATH[e.kind]}/${e.slug}`,
     external: false,
     date: String(e.published_at ?? e.created_at),
@@ -59,7 +59,7 @@ export async function getFeed(opts: { topic?: string; limit?: number; excludeId?
       source: 'wordpress',
       title: p.title,
       dek: p.excerpt,
-      topic: p.topic,
+      topics: p.topic ? [p.topic] : [],
       url: p.url,
       external: true,
       date: String(p.published_at),

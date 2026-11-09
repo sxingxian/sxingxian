@@ -2,6 +2,7 @@
 // The admin uses the same schemas for instant feedback, but the server is the
 // authority — client-side checks are a convenience, not a control.
 import { z } from 'zod';
+import { MAX_ENTRY_TOPICS, MAX_LIST_TOPICS, MAX_TOPIC_LEN } from './types';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref, SLUG_RE, UUID_RE } from './safe';
 
 const MAX_DOC_BYTES = 1_000_000;
@@ -17,7 +18,9 @@ export const entryInputSchema = z.object({
   title: z.string().trim().min(1).max(200),
   slug: z.string().max(80, { abort: true }).regex(SLUG_RE, 'Use lowercase letters, numbers and dashes'),
   dek: z.string().max(400).default(''),
+  /** Ignored when topics is sent; the server derives it from topics[0]. Accepted for older clients. */
   topic: z.string().max(40).default(''),
+  topics: z.array(z.string().trim().min(1).max(MAX_TOPIC_LEN)).max(MAX_ENTRY_TOPICS).optional(),
   body: docSchema,
   cover_media_id: z.string().regex(UUID_RE).nullable().default(null),
   video_url: z
@@ -37,6 +40,8 @@ export const pageInputSchema = z.object({
   body: docSchema,
   noindex: z.boolean().default(false),
 });
+
+const topicList = z.array(z.string().trim().min(1).max(MAX_TOPIC_LEN)).max(MAX_LIST_TOPICS);
 
 const safeUrl = z.string().max(2048).refine(isSafeHref, 'Use https://…, a page on this site (/cv) or mailto:');
 
@@ -61,8 +66,9 @@ export const settingsSchemas = {
   site: z.object({
     title: z.string().trim().min(1).max(60),
     tagline: z.string().max(60),
-    topics: z.array(z.string().trim().min(1).max(30)).max(12),
+    topics: topicList,
   }),
+  topics: z.object({ work: topicList, photos: topicList, film: topicList }),
   sections: z.object({
     work: z.boolean(),
     photos: z.boolean(),

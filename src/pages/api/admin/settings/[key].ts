@@ -3,7 +3,7 @@ import { getSetting, putSetting } from '../../../../lib/server/repo';
 import { error, json, readBody } from '../../../../lib/server/http';
 import { settingsSchemas } from '../../../../lib/shared/schemas';
 import { watermarkHasContent } from '../../../../lib/shared/watermark';
-import type { SettingKey, SettingsMap } from '../../../../lib/shared/types';
+import { cleanTopics, MAX_LIST_TOPICS, type SettingKey, type SettingsMap } from '../../../../lib/shared/types';
 
 function isKey(k: string): k is SettingKey {
   return Object.prototype.hasOwnProperty.call(settingsSchemas, k);
@@ -24,6 +24,14 @@ export const PUT: APIRoute = async ({ params, request }) => {
   if (key === 'wordpress') {
     // The address changes only through the WordPress address action (which checks it first).
     value = { ...(value as SettingsMap['wordpress']), baseUrl: (await getSetting('wordpress')).baseUrl ?? '' } as SettingsMap[typeof key];
+  }
+  if (key === 'site') {
+    const v = value as SettingsMap['site'];
+    value = { ...v, topics: cleanTopics(v.topics, MAX_LIST_TOPICS) } as SettingsMap[typeof key];
+  }
+  if (key === 'topics') {
+    const v = value as SettingsMap['topics'];
+    value = { work: cleanTopics(v.work, MAX_LIST_TOPICS), photos: cleanTopics(v.photos, MAX_LIST_TOPICS), film: cleanTopics(v.film, MAX_LIST_TOPICS) } as SettingsMap[typeof key];
   }
   if (key === 'protection') {
     // logoHash belongs to the logo endpoint; keep whatever is stored.

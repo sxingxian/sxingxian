@@ -2,6 +2,7 @@
 import Thumb from './Thumb.astro';
 import type { FeedItem } from '../lib/server/site';
 import { formatDate } from '../lib/server/text';
+import { topicLabel } from '../lib/shared/types';
 interface Props {
   item: FeedItem;
   reveal?: boolean;
@@ -14,7 +15,7 @@ const vtName = item.source === 'native' && item.image ? `c-${item.key.slice(2).r
   <span class="thumb" style={vtName ? `view-transition-name:${vtName}` : undefined}><Thumb image={item.image} /></span>
   <span class="body">
     <span class="row-meta">
-      {item.topic && <span class="lbl accent">{item.topic}</span>}
+      {item.topics.length > 0 && <span class="lbl accent">{topicLabel(item.topics)}</span>}
       <span class="meta">{formatDate(item.date, { day: 'numeric', month: 'short' })} · {item.readMinutes} min</span>
       <span class="src">{item.external ? <><span aria-hidden="true">↗</span><span class="sr-only">(on hey.sxingxian.com)</span></> : ''}</span>
     </span>

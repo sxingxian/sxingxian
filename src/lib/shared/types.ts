@@ -19,7 +19,10 @@ export interface Entry {
   title: string;
   slug: string;
   dek: string;
+  /** First topic, kept for the previous release and rollbacks. Always equal to topics[0] ?? ''. */
   topic: string;
+  /** Up to MAX_ENTRY_TOPICS topics, in the order the owner picked them. */
+  topics: string[];
   body: DocNode;
   cover_media_id: string | null;
   video_url: string;
@@ -111,7 +114,57 @@ export interface WordPressSetting {
 export interface SiteSetting {
   title: string;
   tagline: string;
+  /** Story topics (home page and /story filters). */
   topics: string[];
+}
+
+/** Topic lists for the other sections. Story topics live in SiteSetting.topics. */
+export interface TopicsSetting {
+  work: string[];
+  photos: string[];
+  film: string[];
+}
+
+export const MAX_ENTRY_TOPICS = 3;
+export const MAX_LIST_TOPICS = 12;
+export const MAX_TOPIC_LEN = 30;
+
+/** Which Settings → Topics list an entry kind uses ('stories' = SiteSetting.topics). */
+export const TOPIC_LIST: Record<EntryKind, 'stories' | keyof TopicsSetting> = {
+  post: 'stories',
+  project: 'work',
+  gallery: 'photos',
+  film: 'film',
+};
+
+/** Names for the lists in the admin: 'Story topics', 'Photo topics', … */
+export const TOPIC_LIST_LABEL: Record<'stories' | keyof TopicsSetting, string> = {
+  stories: 'Story',
+  work: 'Work',
+  photos: 'Photo',
+  film: 'Film',
+};
+
+/** Public label for an entry's topics: 'Travel · Photography'. */
+export function topicLabel(topics: readonly string[] | null | undefined): string {
+  return (topics ?? []).filter(Boolean).join(' · ');
+}
+
+/** Clean a list of topics: trimmed, non-empty, capped in length, de-duplicated (case-insensitive), capped in count. */
+export function cleanTopics(raw: unknown, max: number = MAX_ENTRY_TOPICS): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    const t = v.trim().replace(/\s+/g, ' ').slice(0, MAX_TOPIC_LEN);
+    const k = t.toLowerCase();
+    if (!t || seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 /** Google AdSense. Ads only run when enabled with a valid publisher ID, never in the admin or on CV, About and Privacy. */
@@ -140,6 +193,7 @@ export interface ProtectionSetting {
 
 export interface SettingsMap {
   site: SiteSetting;
+  topics: TopicsSetting;
   sections: SectionsSetting;
   featured: FeaturedSetting;
   footer: FooterSetting;
@@ -155,6 +209,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     tagline: 'stories',
     topics: ['Engineering', 'Homelab', 'Photography', 'Essays', 'Notes'],
   },
+  topics: { work: [], photos: [], film: [] },
   sections: { work: true, photos: true, film: true, cv: true, about: true },
   featured: { mode: 'latest', entryId: null },
   footer: {

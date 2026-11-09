@@ -6,6 +6,7 @@ import AdSlot from '../components/AdSlot.astro';
 import { getFeatured, getFeed } from '../lib/server/site';
 import { getSettings, listPublicEntries } from '../lib/server/repo';
 import { formatDate } from '../lib/server/text';
+import { topicLabel } from '../lib/shared/types';
 
 const { site, sections } = await getSettings(['site', 'sections']);
 const rawTopic = Astro.url.searchParams.get('topic') ?? '';
@@ -31,7 +32,7 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
         </a>
         <div class="stack">
           <span class="row-meta rv" data-rv="fmeta">
-            <span class="lbl accent">Featured{featured.topic ? ` · ${featured.topic}` : ''}</span>
+            <span class="lbl accent">Featured{featured.topics.length ? ` · ${topicLabel(featured.topics)}` : ''}</span>
             <span class="meta">{formatDate(featured.published_at)} · {featured.read_minutes} min</span>
           </span>
           <h1 class="title rv" data-rv="ftitle"><a href={`/story/${featured.slug}`}>{words.map((w, i) => (<><span class={`w w${Math.min(i + 1, 14)}`}><span>{w}</span></span>{i < words.length - 1 ? ' ' : ''}</>))}</a></h1>

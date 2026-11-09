@@ -1,4 +1,4 @@
-// Settings, in five tabs. Every tab uses the same pattern: titled panels of labelled rows,
+// Settings, in six tabs. Every tab uses the same pattern: titled panels of labelled rows,
 // switches that save at once, and a save bar for edits that need confirming.
 import { useEffect, useRef, useState } from 'react';
 import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImage } from '../watermark';
@@ -9,10 +9,10 @@ import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
 import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../components/kit';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
-import { SECTION_LABELS, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
+import { SECTION_LABELS, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
-type Tab = 'home' | 'site' | 'footer' | 'photos' | 'ads';
-const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['footer', 'Footer'], ['photos', 'Photos'], ['ads', 'Ads']];
+type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'ads';
+const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['ads', 'Ads']];
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>(() => {
@@ -21,12 +21,13 @@ export default function Settings() {
   });
   const pick = (t: Tab) => { setTab(t); window.history.replaceState(null, '', `#${t}`); };
   return (
-    <Page title="Settings" width="narrow">
+    <Page title="Settings" section="settings" here={tab === 'home' ? undefined : TABS.find(([t]) => t === tab)?.[1]} onSection={() => pick('home')} width="narrow">
       <div className="tabs" role="tablist" aria-label="Settings sections">
         {TABS.map(([t, l]) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => pick(t)}>{l}</button>)}
       </div>
       {tab === 'home' && <HomeSettings />}
       {tab === 'site' && <SiteSettings />}
+      {tab === 'topics' && <TopicSettings />}
       {tab === 'footer' && <FooterSettings />}
       {tab === 'photos' && <PhotoSettings />}
       {tab === 'ads' && <AdsSettings />}
@@ -104,49 +105,24 @@ function HomeSettings() {
 function SiteSettings() {
   const [saved, setSaved] = useState<SiteSetting | null>(null);
   const [s, setS] = useState<SiteSetting | null>(null);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [changes, setChanges] = useState<TopicChange[]>([]);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-  const dialog = useDialog();
 
   useEffect(() => {
     api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); }).catch(() => {});
-    api.get<{ counts: Record<string, number> }>('/api/admin/topics').then((r) => setCounts(r.counts)).catch(() => {});
   }, []);
   if (!s || !saved) return <Loading />;
 
-  const dirty = JSON.stringify(s) !== JSON.stringify(saved) || changes.length > 0;
-  const shown: Record<string, number> = { ...counts };
-  for (const c of changes) if (c.to) shown[c.to] = (shown[c.to] ?? 0) + (counts[c.from] ?? 0);
-
-  const record = (c: TopicChange) => {
-    const prior = changes.find((x) => x.to === c.from);
-    setChanges(prior ? changes.map((x) => (x === prior ? { from: x.from, to: c.to } : x)) : [...changes, c]);
-  };
-
-  const remove = async (t: string) => {
-    const origin = changes.find((x) => x.to === t)?.from ?? t;
-    const n = counts[origin] ?? 0;
-    if (n > 0) {
-      const ok = await dialog.confirm({ title: `Remove “${t}”?`, body: `${n} post${n === 1 ? '' : 's'} will have no topic.`, confirmLabel: 'Remove', danger: true });
-      if (!ok) return;
-    }
-    setS({ ...s, topics: s.topics.filter((x) => x !== t) });
-    if (n > 0) record({ from: t, to: '' });
-  };
+  const dirty = s.title !== saved.title || s.tagline !== saved.tagline;
 
   const save = async () => {
     setBusy(true);
     try {
-      const effective = changes.filter((c) => c.from !== c.to);
-      if (effective.length) await api.post('/api/admin/topics', { changes: effective });
-      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', s);
+      // Re-read so story topics edited on the Topics tab since this tab opened aren't overwritten.
+      const fresh = await api.get<{ value: SiteSetting }>('/api/admin/settings/site');
+      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', { ...fresh.value, title: s.title, tagline: s.tagline });
       setS(r.value);
       setSaved(r.value);
-      setChanges([]);
-      const fresh = await api.get<{ counts: Record<string, number> }>('/api/admin/topics').catch(() => null);
-      if (fresh) setCounts(fresh.counts);
       toast('Saved');
     } catch (e) {
       toast(errorText(e));
@@ -155,7 +131,7 @@ function SiteSettings() {
   };
 
   return (
-    <Panel title="Site" desc="Name, tagline and story topics.">
+    <Panel title="Site" desc="Name and tagline. Topics have their own tab.">
       <Row label="Site name" hint="Header, tab title, RSS" htmlFor="site-name">
         <input id="site-name" className="input" value={s.title} maxLength={60} onChange={(e) => setS({ ...s, title: e.target.value })} />
       </Row>
@@ -163,11 +139,114 @@ function SiteSettings() {
         <input id="site-tagline" className="input" value={s.tagline} maxLength={60} placeholder="stories, photos, cv…" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
         <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'stories'}</i></span>
       </Row>
-      <Row label="Story topics" hint="Filters on the home page">
-        <TopicsEditor topics={s.topics} counts={shown} onRemove={(t) => void remove(t)}
-          onChange={(topics, change) => { setS({ ...s, topics }); if (change) record(change); }} />
-      </Row>
-      <SaveBar dirty={dirty} busy={busy} onSave={save} disabled={!s.title.trim()} note={changes.some((c) => c.to) ? 'Renamed topics update their posts.' : undefined} />
+      <SaveBar dirty={dirty} busy={busy} onSave={save} disabled={!s.title.trim()} />
+    </Panel>
+  );
+}
+
+// ------------------------------------------------------------------ Topics
+
+type ListKey = 'stories' | keyof TopicsSetting;
+type Lists = Record<ListKey, string[]>;
+type Counts = Record<'post' | 'project' | 'gallery' | 'film', Record<string, number>>;
+const LISTS: { key: ListKey; kind: keyof Counts; label: string; hint: string; noun: string }[] = [
+  { key: 'stories', kind: 'post', label: 'Stories', hint: 'Filters on the home page and /story', noun: 'posts' },
+  { key: 'work', kind: 'project', label: 'Work', hint: 'Filters on /work', noun: 'entries' },
+  { key: 'photos', kind: 'gallery', label: 'Photos', hint: 'Filters on /photos', noun: 'galleries' },
+  { key: 'film', kind: 'film', label: 'Film', hint: 'Filters on /film', noun: 'films' },
+];
+const NO_CHANGES: Record<ListKey, TopicChange[]> = { stories: [], work: [], photos: [], film: [] };
+
+function TopicSettings() {
+  const [saved, setSaved] = useState<Lists | null>(null);
+  const [lists, setLists] = useState<Lists | null>(null);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [changes, setChanges] = useState<Record<ListKey, TopicChange[]>>(NO_CHANGES);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const toast = useToast();
+  const dialog = useDialog();
+
+  const load = async () => {
+    const [site, topics, c] = await Promise.all([
+      api.get<{ value: SiteSetting }>('/api/admin/settings/site'),
+      api.get<{ value: TopicsSetting }>('/api/admin/settings/topics'),
+      api.get<{ counts: Counts }>('/api/admin/topics'),
+    ]);
+    const next: Lists = { stories: site.value.topics, work: topics.value.work, photos: topics.value.photos, film: topics.value.film };
+    setLists(next);
+    setSaved(next);
+    setCounts(c.counts);
+  };
+  useEffect(() => { load().catch((e) => setErr(errorText(e))); }, []);
+  if (!lists || !saved || !counts) return <Loading error={err} />;
+
+  const listDirty = (k: ListKey) => JSON.stringify(lists[k]) !== JSON.stringify(saved[k]) || changes[k].length > 0;
+  const dirty = LISTS.some(({ key }) => listDirty(key));
+
+  // Counts shown while editing: a renamed topic carries its entries with it.
+  const shown = (k: ListKey, kind: keyof Counts) => {
+    const base = counts[kind] ?? {};
+    const out: Record<string, number> = { ...base };
+    for (const c of changes[k]) if (c.to) out[c.to] = (out[c.to] ?? 0) + (base[c.from] ?? 0);
+    return out;
+  };
+
+  const record = (k: ListKey, c: TopicChange) => {
+    setChanges((all) => {
+      const list = all[k];
+      const prior = list.find((x) => x.to === c.from);
+      return { ...all, [k]: prior ? list.map((x) => (x === prior ? { from: x.from, to: c.to } : x)) : [...list, c] };
+    });
+  };
+
+  const remove = async (k: ListKey, kind: keyof Counts, noun: string, t: string) => {
+    const origin = changes[k].find((x) => x.to === t)?.from ?? t;
+    const n = counts[kind]?.[origin] ?? 0;
+    if (n > 0) {
+      const one = noun.replace(/(ies|s)$/, (m) => (m === 'ies' ? 'y' : ''));
+      const ok = await dialog.confirm({ title: `Remove “${t}”?`, body: `It will be taken off ${n} ${n === 1 ? one : noun}.`, confirmLabel: 'Remove', danger: true });
+      if (!ok) return;
+    }
+    setLists((l) => (l ? { ...l, [k]: l[k].filter((x) => x !== t) } : l));
+    if (n > 0) record(k, { from: t, to: '' });
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      for (const { key, kind } of LISTS) {
+        const effective = changes[key].filter((c) => c.from !== c.to);
+        if (effective.length) await api.post('/api/admin/topics', { kind, changes: effective });
+      }
+      if (listDirty('stories')) {
+        const site = await api.get<{ value: SiteSetting }>('/api/admin/settings/site');
+        await api.put('/api/admin/settings/site', { ...site.value, topics: lists.stories });
+      }
+      if (listDirty('work') || listDirty('photos') || listDirty('film')) {
+        await api.put('/api/admin/settings/topics', { work: lists.work, photos: lists.photos, film: lists.film });
+      }
+      setChanges(NO_CHANGES);
+      await load();
+      toast('Saved');
+    } catch (e) {
+      toast(errorText(e));
+    }
+    setBusy(false);
+  };
+
+  const renamed = LISTS.some(({ key }) => changes[key].some((c) => c.to));
+
+  return (
+    <Panel title="Topics" desc="One list per section. Entries pick up to 3 from their section’s list.">
+      {LISTS.map(({ key, kind, label, hint, noun }) => (
+        <Row key={key} label={label} hint={key === 'stories' ? hint : `${hint}${lists[key].length ? '' : ' · hidden while empty'}`}>
+          <TopicsEditor topics={lists[key]} counts={shown(key, kind)} label={`${label} topics`} noun={noun}
+            onRemove={(t) => void remove(key, kind, noun, t)}
+            onChange={(topics, change) => { setLists((l) => (l ? { ...l, [key]: topics } : l)); if (change) record(key, change); }} />
+        </Row>
+      ))}
+      <SaveBar dirty={dirty} busy={busy} onSave={save} note={renamed ? 'Renamed topics update their entries.' : undefined} />
     </Panel>
   );
 }

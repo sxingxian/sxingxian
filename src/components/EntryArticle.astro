@@ -5,7 +5,7 @@ import Site from '../layouts/Site.astro';
 import { renderDoc } from '../lib/server/render';
 import { formatDate } from '../lib/server/text';
 import { embedSrc, parseVideoUrl } from '../lib/shared/safe';
-import type { Entry } from '../lib/shared/types';
+import { topicLabel, type Entry } from '../lib/shared/types';
 
 interface Props {
   entry: Entry;
@@ -22,7 +22,7 @@ import PdfViewer from './PdfViewer.astro';
 <Site title={entry.title} description={entry.dek} image={ogImage}>
   <article class="article">
     <div class="kicker">
-      <span class="lbl accent">{kicker}{entry.topic ? ` · ${entry.topic}` : ''}</span>
+      <span class="lbl accent">{kicker}{entry.topics.length ? ` · ${topicLabel(entry.topics)}` : ''}</span>
       <span class="meta">{formatDate(entry.published_at)} · {entry.read_minutes} min</span>
     </div>
     <h1>{entry.title}</h1>

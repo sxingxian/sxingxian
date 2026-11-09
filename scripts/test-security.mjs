@@ -23,7 +23,9 @@ await build({
                export { checkPng } from './src/lib/server/png.ts';
                export { sniffDocument, contentDisposition } from './src/lib/server/filetypes.ts';
                export { cleanFileName } from './src/lib/shared/files.ts';
-               export { normalizeWpBase } from './src/lib/shared/safe.ts';`,
+               export { normalizeWpBase } from './src/lib/shared/safe.ts';
+               export { cleanTopics, topicLabel } from './src/lib/shared/types.ts';
+               export { entryInputSchema } from './src/lib/shared/schemas.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -39,7 +41,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -413,6 +415,28 @@ t('sign-in and user-update payloads are bounded', () => {
   assert.equal(loginSchema.safeParse({ email: 'a@b.co', password: 'x'.repeat(257) }).success, false);
   assert.equal(userPatchSchema.safeParse({ role: 'superuser' }).success, false);
   assert.equal(userPatchSchema.safeParse({ resetPassword: false }).success, false);
+});
+
+t('entry topics: cleaned, de-duplicated, capped; payload bounded', () => {
+  assert.deepEqual(cleanTopics(['  Travel ', 'travel', 'Photo  graphy', '', 7, 'A', 'B']), ['Travel', 'Photo graphy', 'A']);
+  assert.deepEqual(cleanTopics('Travel'), []);
+  assert.equal(cleanTopics(['x'.repeat(80)])[0].length, 30);
+  assert.deepEqual(cleanTopics(Array.from({ length: 20 }, (_, i) => `t${i}`), 12).length, 12);
+  assert.equal(topicLabel(['Travel', 'Photography']), 'Travel · Photography');
+  assert.equal(topicLabel(undefined), '');
+  const base = { kind: 'post', title: 'T', slug: 't', body: { type: 'doc', content: [] }, status: 'draft', is_public: false };
+  assert.equal(entryInputSchema.safeParse({ ...base, topics: ['a', 'b', 'c'] }).success, true);
+  assert.equal(entryInputSchema.safeParse({ ...base, topics: ['a', 'b', 'c', 'd'] }).success, false);
+  assert.equal(entryInputSchema.safeParse({ ...base, topics: ['x'.repeat(31)] }).success, false);
+  assert.equal(entryInputSchema.safeParse({ ...base, topics: [''] }).success, false);
+  assert.equal(entryInputSchema.safeParse({ ...base, topic: 'Legacy' }).success, true);
+});
+t('section topic lists are bounded', () => {
+  const ok = { work: ['Web'], photos: [], film: [] };
+  assert.equal(settingsSchemas.topics.safeParse(ok).success, true);
+  assert.equal(settingsSchemas.topics.safeParse({ ...ok, work: Array.from({ length: 13 }, (_, i) => `t${i}`) }).success, false);
+  assert.equal(settingsSchemas.topics.safeParse({ ...ok, film: [{}] }).success, false);
+  assert.equal(settingsSchemas.topics.safeParse({ work: [] }).success, false);
 });
 
 console.log(`\n${passed} security tests passed.`);

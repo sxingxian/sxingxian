@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ site, url }) => {
       <link>${escXml(link)}</link>
       <guid isPermaLink="true">${escXml(link)}</guid>
       <pubDate>${new Date(i.date).toUTCString()}</pubDate>
-      ${i.topic ? `<category>${escXml(i.topic)}</category>` : ''}
+      ${i.topics.map((t) => `<category>${escXml(t)}</category>`).join('')}
       <description>${escXml(i.dek)}</description>
     </item>`;
     })

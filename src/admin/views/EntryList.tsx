@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
 import { Page, Panel, Segmented, Empty } from '../components/kit';
+import { KIND_SECTION, SECTIONS } from '../nav';
 import { KIND_LABELS, KIND_PATH, type Entry, type EntryKind, type FeaturedSetting } from '../../lib/shared/types';
 
 type Row = Omit<Entry, 'body'>;
@@ -31,13 +32,13 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
     }
   };
 
-  const title = kind === 'post' ? 'Stories' : KIND_LABELS[kind] === 'Work' ? 'Work' : kind === 'gallery' ? 'Photos' : 'Film';
+  const title = SECTIONS[KIND_SECTION[kind]].label;
   const needle = q.trim().toLowerCase();
-  const shown = (rows ?? []).filter((r) => (filter === 'all' || r.status === filter) && (!needle || r.title.toLowerCase().includes(needle) || (r.topic ?? '').toLowerCase().includes(needle)));
+  const shown = (rows ?? []).filter((r) => (filter === 'all' || r.status === filter) && (!needle || r.title.toLowerCase().includes(needle) || (r.topics ?? []).some((t) => t.toLowerCase().includes(needle))));
   const drafts = (rows ?? []).filter((r) => r.status !== 'published').length;
 
   return (
-    <Page title={title} width="wide" sub={rows ? `${rows.length} total · ${drafts} ${drafts === 1 ? 'draft' : 'drafts'}` : undefined}
+    <Page title={title} section={KIND_SECTION[kind]} width="wide" sub={rows ? `${rows.length} total · ${drafts} ${drafts === 1 ? 'draft' : 'drafts'}` : undefined}
       actions={<button type="button" className="btn primary" onClick={() => go(`/admin/edit/new?kind=${kind}`)}>+ New {KIND_LABELS[kind].toLowerCase()}</button>}>
       {err && <div className="alert err" role="alert">{err}</div>}
       <Panel flush title="Entries"
@@ -54,7 +55,7 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
         ) : (
           <div className="table-box flat">
             <table>
-              <thead><tr><th>Title</th><th>Topic</th><th>Status</th><th>Updated</th><th style={{ textAlign: 'right' }}>Show publicly</th></tr></thead>
+              <thead><tr><th>Title</th><th>Topics</th><th>Status</th><th>Updated</th><th style={{ textAlign: 'right' }}>Show publicly</th></tr></thead>
               <tbody>
                 {shown.map((r) => {
                   const isFeatured = featured?.mode === 'manual' && featured.entryId === r.id;
@@ -65,7 +66,7 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
                         {isFeatured && <span className="pill ok" style={{ marginLeft: 8 }}>featured</span>}
                         <div className="status">{KIND_PATH[r.kind]}/{r.slug}</div>
                       </td>
-                      <td className="c-topic">{r.topic || '—'}</td>
+                      <td className="c-topic">{r.topics?.length ? r.topics.join(', ') : '—'}</td>
                       <td className="c-status"><span className={`pill${r.status === 'published' ? ' ok' : ''}`}>{r.status === 'published' ? 'Published' : 'Draft'}</span></td>
                       <td className="status c-upd">{relTime(r.updated_at)}</td>
                       <td className="c-pub" style={{ textAlign: 'right' }}>
