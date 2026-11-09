@@ -5,6 +5,7 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/newsreader';
 import '@fontsource-variable/jetbrains-mono';
 import AdminApp from '../../admin/App';
+import Favicons from '../../components/Favicons.astro';
 ---
 <!doctype html>
 <html lang="en">
@@ -13,7 +14,7 @@ import AdminApp from '../../admin/App';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Admin · sxingxian</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <Favicons />
     <meta name="color-scheme" content="light dark" />
     <script is:inline>(function(){try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   </head>
