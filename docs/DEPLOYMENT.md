@@ -5,7 +5,7 @@ The site runs on free tiers: **Neon** (Postgres) for the database and the admin 
 | Host | Serves | Where it runs |
 | --- | --- | --- |
 | `sxingxian.com` | Public site, plus the admin portal at `/admin` | Cloudflare Worker `sxingxian` |
-| `hey.sxingxian.com` | WordPress journal (its own admin at `/admin`) | Your existing WordPress host, unchanged |
+| `hey.sxingxian.com` | WordPress site (its own admin at `/admin`) | Your existing WordPress host, unchanged |
 
 How changes reach production:
 
@@ -113,7 +113,7 @@ GitHub app → the repository → **Actions** → **Deploy Neon** → **Run work
 1. Tick **dry run** first. The run should list `0001_init.sql` as pending. This confirms GitHub can reach Neon.
 2. Run it again without dry run. It takes a backup branch, applies the migration, and the summary shows the result.
 
-Then open `https://sxingxian.com`. The journal is empty until you write a post or WordPress syncs.
+Then open `https://sxingxian.com`. Stories is empty until you write a post or WordPress syncs.
 
 ## 7. First admin account
 
@@ -150,7 +150,7 @@ The command-line fixes need only the Neon connection string, so you can always g
 
 ## 7a. Photo protection
 
-After a deploy that adds `migrations/0004_media_watermark.sql` or `migrations/0005_watermark_logo.sql`, run **Deploy Neon** once.
+After a deploy that adds a migration (`0004_media_watermark.sql`, `0005_watermark_logo.sql`, `0006_stories_rename.sql`), run **Deploy Neon** once.
 
 Then go to Admin → Settings → **Photos**:
 - **Watermark photos:** set the text, position, size and opacity (the preview updates live), then press **Apply to N photos** for photos already uploaded. Keep the tab open until it finishes. New uploads are watermarked automatically.
@@ -173,7 +173,7 @@ Then go to Admin → Settings → **Photos**:
 - [ ] `https://sxingxian.com` loads; `https://sxingxian.com/rss.xml` is valid.
 - [ ] `https://sxingxian.com/admin` sends you to the sign-in page. You can sign in with password + authenticator code; a wrong password is refused; **Account → Signed-in devices** shows this browser.
 - [ ] Sign out, then check `https://sxingxian.com/admin/setup` says setup is closed.
-- [ ] Admin → **WordPress** → **Sync now**. Recent WordPress posts appear in the journal. Map WordPress categories to topics, and choose whether new WordPress posts show automatically.
+- [ ] Admin → **WordPress** → **Sync now**. Recent WordPress posts appear in Stories. Map WordPress categories to topics, and choose whether new WordPress posts show automatically.
 - [ ] Publish or edit a test post on `hey.sxingxian.com`; it updates on `sxingxian.com` within a few seconds (webhook). The admin's WordPress page shows the sync log.
 - [ ] Admin → **Settings**: site title, sections on/off (Work, Photos, Film, CV, About), featured post (pinned or latest), footer text and links.
 - [ ] Upload an image to R2 in the media library, insert it in a post, publish, and check it shows on the public page.

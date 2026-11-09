@@ -1,4 +1,4 @@
-// Journal topics as chips: add (Enter or comma; pasting a list works), rename (click), reorder
+// Story topics as chips: add (Enter or comma; pasting a list works), rename (click), reorder
 // (drag, or Alt+←/→), remove (×). Shows how many posts use each topic.
 import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 

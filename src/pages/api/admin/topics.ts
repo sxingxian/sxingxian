@@ -1,4 +1,4 @@
-// Journal topics (admin only).
+// Story topics (admin only).
 //   GET  /api/admin/topics → { counts: { [topic]: number } } posts per topic
 //   POST /api/admin/topics { changes: [{ from, to }] } → renames topics on posts (to = '' clears),
 //        and in the WordPress category → topic mapping, so a rename doesn't orphan anything.

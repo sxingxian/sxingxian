@@ -111,7 +111,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     try {
       await api.del(`/api/admin/entries/${entryId}`);
       setDirty(false);
-      go(`/admin/${draft?.kind === 'post' ? 'journal' : draft?.kind === 'project' ? 'work' : draft?.kind === 'gallery' ? 'photos' : 'film'}`);
+      go(`/admin/${draft?.kind === 'post' ? 'stories' : draft?.kind === 'project' ? 'work' : draft?.kind === 'gallery' ? 'photos' : 'film'}`);
     } catch (e) {
       setErr(errorText(e));
     }

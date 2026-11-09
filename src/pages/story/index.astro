@@ -14,16 +14,16 @@ for (const item of feed) {
   byYear.set(y, [...(byYear.get(y) ?? []), item]);
 }
 ---
-<Site title="All posts" description="Every journal post, newest first.">
+<Site title="All stories" description="Every story, newest first.">
   <section class="wrap">
     <header class="page-head">
       <h1>{topic || 'All posts'}</h1>
-      <p>Posts written here and on the journal, newest first.</p>
+      <p>Stories written here and on hey.sxingxian.com, newest first.</p>
     </header>
     <nav class="topics" aria-label="Filter by topic" style="margin-top:16px">
-      <a class="topic" href="/journal" aria-current={topic === '' ? 'true' : undefined}>All</a>
+      <a class="topic" href="/story" aria-current={topic === '' ? 'true' : undefined}>All</a>
       {site.topics.map((t) => (
-        <a class="topic" href={`/journal?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
+        <a class="topic" href={`/story?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
       ))}
     </nav>
     <div style="max-width:820px">

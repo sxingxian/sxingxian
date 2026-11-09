@@ -110,11 +110,11 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl }: { wpBaseUrl: string
           <ToggleRow label="Hide while down" hint="2 failed checks hide, 2 good ones show" checked={rules.hideWhenDown} onChange={(v) => saveRules({ ...rules, hideWhenDown: v })} />
           <ToggleRow label="Show new posts automatically" hint="Otherwise switch each one on below" checked={rules.autoShow} onChange={(v) => saveRules({ ...rules, autoShow: v })} />
           <ToggleRow label="Include in RSS" checked={rules.includeInRss} onChange={(v) => saveRules({ ...rules, includeInRss: v })} />
-          <Row label="Category → topic" hint="WordPress category to journal topic">
+          <Row label="Category → topic" hint="WordPress category to story topic">
             {map.map(([k, v], i) => (
               <div key={i} className="input-row">
                 <input className="input" aria-label="WordPress category" placeholder="WordPress category" value={k} onChange={(e) => setMap(map.map((m, j) => (j === i ? [e.target.value, m[1]] : m)))} />
-                <select className="select" aria-label="Journal topic" value={v} onChange={(e) => setMap(map.map((m, j) => (j === i ? [m[0], e.target.value] : m)))}>
+                <select className="select" aria-label="Story topic" value={v} onChange={(e) => setMap(map.map((m, j) => (j === i ? [m[0], e.target.value] : m)))}>
                   <option value="">Topic…</option>
                   {[...new Set([...topics, ...(v ? [v] : [])])].map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>

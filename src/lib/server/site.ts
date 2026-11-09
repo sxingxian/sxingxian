@@ -44,7 +44,7 @@ export function entryToFeed(e: Entry): FeedItem {
   };
 }
 
-/** Journal feed: native posts + visible WordPress posts, newest first. */
+/** Stories feed: native posts + visible WordPress posts, newest first. */
 export async function getFeed(opts: { topic?: string; limit?: number; excludeId?: string } = {}): Promise<FeedItem[]> {
   const limit = opts.limit ?? 12;
   const [native, wpVisible] = await Promise.all([
@@ -88,7 +88,7 @@ export interface NavItem {
 }
 
 export function navItems(sections: SectionsSetting): NavItem[] {
-  const items: NavItem[] = [{ href: '/', label: 'Journal' }];
+  const items: NavItem[] = [{ href: '/', label: 'Stories' }];
   const map: [keyof SectionsSetting, string][] = [
     ['work', '/work'],
     ['photos', '/photos'],

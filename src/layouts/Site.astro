@@ -24,10 +24,10 @@ const { title, description, noindex = false, image, motion = false, intro = fals
 const { site, sections, footer } = await getSettings(['site', 'sections', 'footer']);
 const nav = navItems(sections);
 const path = Astro.url.pathname;
-const isCurrent = (href: string) => (href === '/' ? path === '/' || path.startsWith('/journal') : path.startsWith(href));
+const isCurrent = (href: string) => (href === '/' ? path === '/' || path.startsWith('/story') : path.startsWith(href));
 // Tagline next to the name: the one set in Settings, or else the current section's name.
 const sectionName = (() => {
-  if (path === '/' || path.startsWith('/journal')) return 'journal';
+  if (path === '/' || path.startsWith('/story')) return 'stories';
   const hit = nav.find((n) => n.href !== '/' && path.startsWith(n.href));
   return hit ? hit.label.toLowerCase() : '';
 })();

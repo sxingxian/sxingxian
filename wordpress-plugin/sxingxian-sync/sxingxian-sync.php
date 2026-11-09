@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: sxingxian sync
- * Description: Notifies sxingxian.com when a post is published, updated, unpublished or deleted, so the main journal stays in sync. Sends only the post ID — sxingxian.com fetches the post back from the public REST API.
+ * Description: Notifies sxingxian.com when a post is published, updated, unpublished or deleted, so the main site stays in sync. Sends only the post ID — sxingxian.com fetches the post back from the public REST API.
  * Version: 1.0.0
  * Author: sxingxian
  * License: MIT

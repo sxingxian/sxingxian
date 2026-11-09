@@ -155,15 +155,15 @@ function SiteSettings() {
   };
 
   return (
-    <Panel title="Site" desc="Name, tagline and journal topics.">
+    <Panel title="Site" desc="Name, tagline and story topics.">
       <Row label="Site name" hint="Header, tab title, RSS" htmlFor="site-name">
         <input id="site-name" className="input" value={s.title} maxLength={60} onChange={(e) => setS({ ...s, title: e.target.value })} />
       </Row>
       <Row label="Tagline" hint="Empty = section name" htmlFor="site-tagline">
-        <input id="site-tagline" className="input" value={s.tagline} maxLength={60} placeholder="journal, photos, cv…" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
-        <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'journal'}</i></span>
+        <input id="site-tagline" className="input" value={s.tagline} maxLength={60} placeholder="stories, photos, cv…" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
+        <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'stories'}</i></span>
       </Row>
-      <Row label="Journal topics" hint="Filters on the home page">
+      <Row label="Story topics" hint="Filters on the home page">
         <TopicsEditor topics={s.topics} counts={shown} onRemove={(t) => void remove(t)}
           onChange={(topics, change) => { setS({ ...s, topics }); if (change) record(change); }} />
       </Row>

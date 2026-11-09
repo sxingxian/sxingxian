@@ -31,7 +31,7 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
     }
   };
 
-  const title = kind === 'post' ? 'Journal' : KIND_LABELS[kind] === 'Work' ? 'Work' : kind === 'gallery' ? 'Photos' : 'Film';
+  const title = kind === 'post' ? 'Stories' : KIND_LABELS[kind] === 'Work' ? 'Work' : kind === 'gallery' ? 'Photos' : 'Film';
   const needle = q.trim().toLowerCase();
   const shown = (rows ?? []).filter((r) => (filter === 'all' || r.status === filter) && (!needle || r.title.toLowerCase().includes(needle) || (r.topic ?? '').toLowerCase().includes(needle)));
   const drafts = (rows ?? []).filter((r) => r.status !== 'published').length;

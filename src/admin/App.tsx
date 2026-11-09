@@ -20,7 +20,7 @@ interface Me {
   email: string; wpBaseUrl: string; wpAdminUrl: string;
 }
 
-const LIST_ROUTES: Record<string, EntryKind> = { journal: 'post', work: 'project', photos: 'gallery', film: 'film' };
+const LIST_ROUTES: Record<string, EntryKind> = { stories: 'post', journal: 'post', work: 'project', photos: 'gallery', film: 'film' };
 const KINDS = new Set<EntryKind>(['post', 'project', 'gallery', 'film']);
 const MORE_SECTIONS = new Set(['photos', 'film', 'pages', 'wordpress', 'account', 'users']);
 
@@ -28,7 +28,7 @@ const svg = (d: ReactNode) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">{d}</svg>
 );
 const ICONS = {
-  journal: svg(<><path d="M5 4h11l3 3v13H5z" /><path d="M9 10h7M9 14h7" /></>),
+  stories: svg(<><path d="M5 4h11l3 3v13H5z" /><path d="M9 10h7M9 14h7" /></>),
   work: svg(<><rect x="3.5" y="6" width="17" height="13" rx="2" /><path d="M9 6V4h6v2" /></>),
   media: svg(<><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.8" /><path d="M20.5 16l-5-5-8 8.5" /></>),
   site: svg(<><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></>),
@@ -63,7 +63,7 @@ export default function App() {
 
   const url = new URL(loc, window.location.origin);
   const parts = url.pathname.replace(/^\/admin\/?/, '').split('/').filter(Boolean);
-  const section = parts[0] ?? 'journal';
+  const section = parts[0] === 'journal' ? 'stories' : (parts[0] ?? 'stories');
 
   const mustChange = me?.user.mustChangePassword ?? false;
   const [more, setMore] = useState(false);
@@ -117,7 +117,7 @@ export default function App() {
           <div className="brand"><b>sxingxian<span style={{ color: '#e0532f' }}>.</span></b><small>Studio · admin</small></div>
           <nav aria-label="Admin">
             <span className="group">Content</span>
-            {link('/admin/journal', 'Journal', 'journal')}
+            {link('/admin/stories', 'Stories', 'stories')}
             {link('/admin/work', 'Work', 'work')}
             {link('/admin/photos', 'Photos', 'photos')}
             {link('/admin/film', 'Film', 'film')}
@@ -142,7 +142,7 @@ export default function App() {
         <div className="content">{view}</div>
 
         <nav className="tabbar" aria-label="Admin">
-          {tab('/admin/journal', 'Journal', section === 'journal', ICONS.journal)}
+          {tab('/admin/stories', 'Stories', section === 'stories', ICONS.stories)}
           {tab('/admin/work', 'Work', section === 'work', ICONS.work)}
           {tab('/admin/media', 'Media', section === 'media', ICONS.media)}
           {tab('/admin/settings', 'Site', section === 'settings', ICONS.site)}

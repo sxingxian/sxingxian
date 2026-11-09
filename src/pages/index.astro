@@ -26,7 +26,7 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
   {featured && (
     <section class="wrap">
       <article class="featured">
-        <a class="cover rv-cover" data-rv="fcover" href={`/journal/${featured.slug}`} tabindex="-1" aria-hidden="true" style={coverName}>
+        <a class="cover rv-cover" data-rv="fcover" href={`/story/${featured.slug}`} tabindex="-1" aria-hidden="true" style={coverName}>
           <span class="par"><Thumb image={featured.cover_media_id ? { kind: 'media', id: featured.cover_media_id } : null} eager /></span>
         </a>
         <div class="stack">
@@ -34,9 +34,9 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
             <span class="lbl accent">Featured{featured.topic ? ` · ${featured.topic}` : ''}</span>
             <span class="meta">{formatDate(featured.published_at)} · {featured.read_minutes} min</span>
           </span>
-          <h1 class="title rv" data-rv="ftitle"><a href={`/journal/${featured.slug}`}>{words.map((w, i) => (<><span class={`w w${Math.min(i + 1, 14)}`}><span>{w}</span></span>{i < words.length - 1 ? ' ' : ''}</>))}</a></h1>
+          <h1 class="title rv" data-rv="ftitle"><a href={`/story/${featured.slug}`}>{words.map((w, i) => (<><span class={`w w${Math.min(i + 1, 14)}`}><span>{w}</span></span>{i < words.length - 1 ? ' ' : ''}</>))}</a></h1>
           {featured.dek && <p class="rv" data-rv="fdek">{featured.dek}</p>}
-          <a class="read rv" data-rv="fread" href={`/journal/${featured.slug}`}>Read <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="read rv" data-rv="fread" href={`/story/${featured.slug}`}>Read <span class="arrow" aria-hidden="true">→</span></a>
         </div>
       </article>
     </section>
@@ -60,14 +60,14 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
           feed.map((item) => <PostRow item={item} reveal />)
         )}
       </div>
-      <div class="pager rv" data-rv="pager"><span></span><a href={topic ? `/journal?topic=${encodeURIComponent(topic)}` : '/journal'}>All posts <span class="arrow" aria-hidden="true">→</span></a></div>
+      <div class="pager rv" data-rv="pager"><span></span><a href={topic ? `/story?topic=${encodeURIComponent(topic)}` : '/story'}>All stories <span class="arrow" aria-hidden="true">→</span></a></div>
       <AdSlot slot="home" />
     </div>
 
     <aside class="side" aria-label="More from sxingxian">
       <div class="card rv" data-rv="side">
         <span class="lbl">Follow along</span>
-        <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Every post, here and on the journal, in one feed for your reader.</p>
+        <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Every story, from here and from hey.sxingxian.com, in one feed for your reader.</p>
         <div class="rss-url"><code>sxingxian.com/rss.xml</code><a href="/rss.xml">Open</a></div>
       </div>
 

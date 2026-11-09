@@ -150,7 +150,7 @@ export type SettingKey = keyof SettingsMap;
 export const DEFAULT_SETTINGS: SettingsMap = {
   site: {
     title: 'sxingxian',
-    tagline: 'journal',
+    tagline: 'stories',
     topics: ['Engineering', 'Homelab', 'Photography', 'Essays', 'Notes'],
   },
   sections: { work: true, photos: true, film: true, cv: true, about: true },
@@ -158,7 +158,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   footer: {
     about: 'Engineer and photographer in Singapore, writing about building things and noticing things.',
     columns: [
-      { heading: 'Archive', links: [{ label: 'All posts', url: '/journal' }] },
+      { heading: 'Archive', links: [{ label: 'All stories', url: '/story' }] },
       {
         heading: 'Elsewhere',
         links: [
@@ -186,14 +186,14 @@ export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {
 };
 
 export const KIND_LABELS: Record<EntryKind, string> = {
-  post: 'Journal post',
+  post: 'Story',
   project: 'Work',
   gallery: 'Photo gallery',
   film: 'Film',
 };
 
 export const KIND_PATH: Record<EntryKind, string> = {
-  post: '/journal',
+  post: '/story',
   project: '/work',
   gallery: '/photos',
   film: '/film',

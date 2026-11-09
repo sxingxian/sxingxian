@@ -1,4 +1,4 @@
-// RSS 2.0 feed: native journal posts + visible WordPress posts.
+// RSS 2.0 feed: native stories + visible WordPress posts.
 import type { APIRoute } from 'astro';
 import { getFeed } from '../lib/server/site';
 import { getSettings } from '../lib/server/repo';

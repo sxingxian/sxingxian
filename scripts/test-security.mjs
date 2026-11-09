@@ -167,8 +167,8 @@ t('map input parsing: coordinates and map links', () => {
 
 console.log('AdSense');
 t('ads never run in the admin, API, CV, About, Privacy or feeds', () => {
-  for (const p of ['/admin', '/admin/journal', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt']) assert.equal(adsAllowedOn(p), false, p);
-  for (const p of ['/', '/journal', '/journal/a-post', '/photos', '/aboutme']) assert.equal(adsAllowedOn(p), true, p);
+  for (const p of ['/admin', '/admin/stories', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt']) assert.equal(adsAllowedOn(p), false, p);
+  for (const p of ['/', '/story', '/story/a-post', '/photos', '/aboutme']) assert.equal(adsAllowedOn(p), true, p);
 });
 t('ads need a valid publisher ID and the switch on', () => {
   assert.equal(adsLive({ enabled: true, client: 'ca-pub-1234567890123456', homeSlot: '', articleSlot: '' }), true);
@@ -347,7 +347,7 @@ t('session cookie is __Host-, HttpOnly, Secure, SameSite=Strict, Path=/', () => 
 });
 t('post-login redirect only goes to admin pages on this site', () => {
   for (const bad of ['https://evil.com', '//evil.com', '/\\evil.com', '/admin.evil.com', 'javascript:alert(1)', '/admin/login', '/admin/../x', '/admin\n']) assert.equal(safeNext(bad), '/admin', bad);
-  assert.equal(safeNext('/admin/journal'), '/admin/journal');
+  assert.equal(safeNext('/admin/stories'), '/admin/stories');
   assert.equal(safeNext('/admin/edit/new?kind=post'), '/admin/edit/new?kind=post');
 });
 t('sign-in and user-update payloads are bounded', () => {

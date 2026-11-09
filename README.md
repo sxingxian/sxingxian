@@ -1,10 +1,10 @@
 # sxingxian.com
 
-A journal-first personal site with a Notion-style CMS. Posts you write here and posts from the WordPress journal at **hey.sxingxian.com** appear in one feed. Work, photos, film, a CV page and an About page sit alongside, and each can be switched on or off.
+A stories-first personal site with a Notion-style CMS. Posts you write here and posts from the WordPress site at **hey.sxingxian.com** appear in one feed. Work, photos, film, a CV page and an About page sit alongside, and each can be switched on or off.
 
 - **Public site:** `https://sxingxian.com`
 - **Admin:** `https://sxingxian.com/admin` (own sign-in; accounts stored in Neon)
-- **WordPress journal:** `https://hey.sxingxian.com` (its own admin: `https://hey.sxingxian.com/admin`)
+- **WordPress site:** `https://hey.sxingxian.com` (its own admin: `https://hey.sxingxian.com/admin`)
 
 ## Stack
 
@@ -23,8 +23,8 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 
 ## Features
 
-- **Journal home:** a featured post, latest posts (native + WordPress) with topic filters, RSS, and sidebar cards for Work, Photos and Film.
-- **Tagline:** shown next to the site name; leave it empty in Settings to show the current section's name instead (journal, work, photos, cv…).
+- **Stories home (`/`, all at `/story`):** a featured post, latest posts (native + WordPress) with topic filters, RSS, and sidebar cards for Work, Photos and Film.
+- **Tagline:** shown next to the site name; leave it empty in Settings to show the current section's name instead (stories, work, photos, cv…).
 - **Featured post:** pin a post in the admin (Settings → Sections & featured post, or the "Feature on home page" switch in the editor), or leave it on *Always show the latest post*.
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**

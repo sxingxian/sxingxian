@@ -1,4 +1,4 @@
-// SERVER-ONLY. Sync public posts from the WordPress journal (hey.sxingxian.com)
+// SERVER-ONLY. Sync public posts from the WordPress site (hey.sxingxian.com)
 // into external_posts, and track its health.
 //
 //  • Webhook   — the WP plugin pings us with a post ID; we fetch that post back

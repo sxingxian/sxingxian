@@ -16,7 +16,7 @@ const vtName = item.source === 'native' && item.image ? `c-${item.key.slice(2).r
     <span class="row-meta">
       {item.topic && <span class="lbl accent">{item.topic}</span>}
       <span class="meta">{formatDate(item.date, { day: 'numeric', month: 'short' })} · {item.readMinutes} min</span>
-      <span class="src">{item.external ? '↗ journal' : ''}</span>
+      <span class="src">{item.external ? <><span aria-hidden="true">↗</span><span class="sr-only">(on hey.sxingxian.com)</span></> : ''}</span>
     </span>
     <span class="t"><span class="uline">{item.title}</span></span>
     {item.dek && <span class="d">{item.dek}</span>}
