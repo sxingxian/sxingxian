@@ -50,8 +50,44 @@ function useRoute() {
   return { loc, go };
 }
 
+// Phones: hide the bottom tab bar while the on-screen keyboard is up. iOS/Android keep fixed bars attached
+// to the layout viewport, so once you scroll with the keyboard open the bar floats up over the text.
+// "Keyboard up" = an editable field has focus and the visual viewport has shrunk (or focus just landed,
+// while the keyboard is still sliding in). A hardware keyboard never shrinks the viewport, so the bar returns.
+function useKeyboardOpen() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    let focusAt = 0;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const editable = (el: Element | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
+      return el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color', 'image'].includes(el.type);
+    };
+    const update = () => {
+      const focused = editable(document.activeElement);
+      const shrunk = vv ? vv.height < window.innerHeight - 100 : true;
+      root.classList.toggle('kb-open', focused && (shrunk || Date.now() - focusAt < 900));
+    };
+    const onFocusIn = () => { focusAt = Date.now(); update(); clearTimeout(t); t = setTimeout(update, 950); };
+    const onFocusOut = () => { clearTimeout(t); t = setTimeout(update, 60); };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    vv?.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      vv?.removeEventListener('resize', update);
+      clearTimeout(t);
+      root.classList.remove('kb-open');
+    };
+  }, []);
+}
+
 export default function App() {
   const { loc, go } = useRoute();
+  useKeyboardOpen();
   const [me, setMe] = useState<Me | null>(null);
   const loadMe = useCallback(() => { api.get<Me>('/api/admin/me').then(setMe).catch(() => {}); }, []);
   useEffect(loadMe, [loadMe]);
