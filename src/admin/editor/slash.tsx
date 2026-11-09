@@ -121,14 +121,43 @@ const Menu = forwardRef<MenuRef, SuggestionProps<Item>>(function Menu(props, ref
   );
 });
 
+const MENU_W = 300;
+const MENU_MAX_H = 340;
+const MENU_MIN_H = 132; // about two items; below this, flip to the roomier side
+const GAP = 6;
+const EDGE = 8;
+
+/**
+ * Place the menu next to the caret, inside the part of the page the user can actually see.
+ * On phones the on-screen keyboard covers the bottom of the layout viewport and pinch-zoom
+ * shifts the visible area, so window.innerHeight is the wrong box. visualViewport gives the
+ * visible rectangle in the same coordinates that getBoundingClientRect and position:fixed use.
+ */
 function place(el: HTMLElement, rect: (() => DOMRect | null) | null | undefined) {
   const r = rect?.();
   if (!r) return;
+  const vv = window.visualViewport;
+  const top = vv ? vv.offsetTop : 0;
+  const left = vv ? vv.offsetLeft : 0;
+  const width = vv ? vv.width : window.innerWidth;
+  const height = vv ? vv.height : window.innerHeight;
+  const bottom = top + height;
+
+  const w = Math.min(MENU_W, width - EDGE * 2);
+  const spaceBelow = bottom - r.bottom - GAP - EDGE;
+  const spaceAbove = r.top - top - GAP - EDGE;
+  const below = spaceBelow >= Math.min(MENU_MAX_H, MENU_MIN_H * 2) || spaceBelow >= spaceAbove;
+  const maxH = Math.max(MENU_MIN_H, Math.min(MENU_MAX_H, below ? spaceBelow : spaceAbove));
+
   el.style.position = 'fixed';
   el.style.zIndex = '1000';
-  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 316))}px`;
-  const below = r.bottom + 6;
-  el.style.top = below + 340 > window.innerHeight ? `${Math.max(8, r.top - 346)}px` : `${below}px`;
+  el.style.setProperty('--menu-w', `${w}px`);
+  el.style.setProperty('--menu-max', `${maxH}px`);
+  el.style.left = `${Math.max(left + EDGE, Math.min(r.left, left + width - w - EDGE))}px`;
+  // Above the caret: pin the wrapper's top to the caret and lift it by its own height, so the
+  // menu's bottom edge stays next to the caret however short the filtered list is.
+  el.style.top = `${below ? r.bottom + GAP : r.top - GAP}px`;
+  el.style.transform = below ? '' : 'translateY(-100%)';
 }
 
 export const SlashCommand = Extension.create({
@@ -150,15 +179,35 @@ export const SlashCommand = Extension.create({
         command: ({ editor, range, props }) => props.run(editor, range),
         render: () => {
           let comp: ReactRenderer<MenuRef, SuggestionProps<Item>> | null = null;
+          let rect: SuggestionProps<Item>['clientRect'] = null;
+          // The keyboard sliding up, iOS scrolling the caret into view, and pinch-zoom all move the
+          // visible area after the menu opens; follow them (once per frame) so it stays by the caret.
+          let frame = 0;
+          const follow = () => {
+            if (frame) return;
+            frame = requestAnimationFrame(() => {
+              frame = 0;
+              if (comp) place(comp.element as HTMLElement, rect);
+            });
+          };
+          const listen = (on: boolean) => {
+            const m = on ? 'addEventListener' : 'removeEventListener';
+            window.visualViewport?.[m]('resize', follow);
+            window.visualViewport?.[m]('scroll', follow);
+            window[m]('scroll', follow, true);
+          };
           return {
             onStart: (props) => {
               comp = new ReactRenderer(Menu, { props, editor: props.editor });
+              rect = props.clientRect;
               document.body.appendChild(comp.element);
-              place(comp.element as HTMLElement, props.clientRect);
+              place(comp.element as HTMLElement, rect);
+              listen(true);
             },
             onUpdate: (props) => {
               comp?.updateProps(props);
-              if (comp) place(comp.element as HTMLElement, props.clientRect);
+              rect = props.clientRect;
+              if (comp) place(comp.element as HTMLElement, rect);
             },
             onKeyDown: (props) => {
               if (props.event.key === 'Escape') {
@@ -168,6 +217,9 @@ export const SlashCommand = Extension.create({
               return comp?.ref?.onKeyDown(props) ?? false;
             },
             onExit: () => {
+              listen(false);
+              if (frame) cancelAnimationFrame(frame);
+              frame = 0;
               comp?.element.remove();
               comp?.destroy();
               comp = null;
