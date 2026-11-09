@@ -5,6 +5,7 @@ import Editor from '../editor/Editor';
 import MediaPicker from '../components/MediaPicker';
 import { useToast } from '../components/ui';
 import type { DocNode, MediaItem, Page, SectionsSetting } from '../../lib/shared/types';
+import { useAutosave } from '../autosave';
 
 const CV_TEMPLATE: DocNode = {
   type: 'doc',
@@ -55,8 +56,6 @@ const LABELS = { cv: 'CV', about: 'About', privacy: 'Privacy' } as const;
 export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' }) {
   const [page, setPage] = useState<Page | null>(null);
   const [sections, setSections] = useState<SectionsSetting | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
   const [sheet, setSheet] = useState(false);
@@ -73,26 +72,18 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
     api.get<{ value: SectionsSetting }>('/api/admin/settings/sections').then((r) => setSections(r.value)).catch(() => {});
   }, [slug]);
 
-  const save = useCallback(async () => {
-    if (!page) return;
-    setSaving(true);
-    setErr('');
-    try {
-      await api.put(`/api/admin/pages/${slug}`, { title: page.title, body: page.body, noindex: page.noindex });
-      setDirty(false);
-      toast('Saved');
-    } catch (e) {
-      setErr(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  }, [page, slug, toast]);
+  // Autosave. A starter template shown on an empty page is the baseline, so it's only saved once you edit it.
+  const persist = useCallback(async (snap: string) => {
+    await api.put(`/api/admin/pages/${slug}`, JSON.parse(snap) as Pick<Page, 'title' | 'body' | 'noindex'>);
+  }, [slug]);
+  const auto = useAutosave(page ? JSON.stringify({ title: page.title, body: page.body, noindex: page.noindex }) : null, persist);
+  const { saveNow } = auto;
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } };
+    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [save]);
+  }, [saveNow]);
 
   const pickMedia = useCallback(
     () => new Promise<{ id: string; alt: string } | null>((resolve) => {
@@ -121,20 +112,20 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
       <div className="topbar">
         <div className="crumbs"><span>Pages</span><span>/</span><b>{label}</b></div>
         <div className="actions">
-          <span className={`status${err ? ' err' : ''}`}>{err ? 'Not saved' : saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
+          <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
           <a className="btn" href={`/${slug}`} target="_blank" rel="noopener">Preview ↗</a>
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Page…</button>
-          <button type="button" className="btn primary" onClick={save} disabled={saving}>Save</button>
+          <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
         </div>
       </div>
-      {err && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err}</div></div>}
+      {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
           <div className={`doc${slug === 'cv' ? ' sheet' : ''}`}>
             {(slug === 'about' || slug === 'privacy') && (
-              <input className="title-input" value={page.title} placeholder={label} aria-label="Page title" onChange={(e) => { setPage({ ...page, title: e.target.value }); setDirty(true); }} />
+              <input className="title-input" value={page.title} placeholder={label} aria-label="Page title" onChange={(e) => setPage({ ...page, title: e.target.value })} />
             )}
-            <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} onChange={(body) => { setPage((p) => (p ? { ...p, body } : p)); setDirty(true); }} />
+            <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} onChange={(body) => setPage((p) => (p ? { ...p, body } : p))} />
           </div>
         </div>
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close page settings" onClick={() => setSheet(false)} />}
@@ -146,7 +137,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
           </div>
           <div className="side-toggles">
             {sections && slug !== 'privacy' && <ToggleRow label="Show on the site" hint="Adds it to the menu" checked={sections[slug]} onChange={(v) => void toggleSection(v)} />}
-            <ToggleRow label="Hide from search engines" hint={slug === 'cv' ? 'Public page: leave out phone and address.' : undefined} checked={page.noindex} onChange={(v) => { setPage({ ...page, noindex: v }); setDirty(true); }} />
+            <ToggleRow label="Hide from search engines" hint={slug === 'cv' ? 'Public page: leave out phone and address.' : undefined} checked={page.noindex} onChange={(v) => { setPage({ ...page, noindex: v }); saveNow(); }} />
           </div>
           {slug === 'cv' && <p className="field-hint">Type “/2 columns” or “/3 columns” in the page for layouts.</p>}
         </aside>
