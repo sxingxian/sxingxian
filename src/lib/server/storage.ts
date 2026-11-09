@@ -45,6 +45,15 @@ function objectUrl(c: S3Config, key: string): string {
   return `${base}/${encodeURIComponent(c.bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+/**
+ * Optional Cloudflare Access service token for the NAS (when its S3 address sits behind Cloudflare Access).
+ * Sent alongside the S3 signature, so even a leaked key can't be used from anywhere but this site.
+ */
+function accessHeaders(provider: 'nas' | 'b2'): Record<string, string> {
+  if (provider !== 'nas' || !env.NAS_ACCESS_CLIENT_ID || !env.NAS_ACCESS_CLIENT_SECRET) return {};
+  return { 'CF-Access-Client-Id': env.NAS_ACCESS_CLIENT_ID, 'CF-Access-Client-Secret': env.NAS_ACCESS_CLIENT_SECRET };
+}
+
 function client(c: S3Config): AwsClient {
   return new AwsClient({ accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey, service: 's3', region: c.region });
 }
@@ -59,7 +68,7 @@ export async function putObject(provider: StorageProvider, key: string, body: Ar
   const res = await client(c).fetch(objectUrl(c, key), {
     method: 'PUT',
     body,
-    headers: { 'content-type': contentType },
+    headers: { 'content-type': contentType, ...accessHeaders(provider) },
   });
   if (!res.ok) throw new Error(`${provider} upload failed (${res.status})`);
 }
@@ -76,7 +85,7 @@ export async function getObject(provider: StorageProvider, key: string, request:
   }
   const c = s3Config(provider);
   if (!c) return null;
-  const res = await client(c).fetch(objectUrl(c, key), { method: 'GET' });
+  const res = await client(c).fetch(objectUrl(c, key), { method: 'GET', headers: accessHeaders(provider) });
   if (!res.ok || !res.body) return null;
   return new Response(res.body, { headers: { 'content-type': res.headers.get('content-type') ?? 'application/octet-stream' } });
 }
@@ -88,5 +97,5 @@ export async function deleteObject(provider: StorageProvider, key: string): Prom
   }
   const c = s3Config(provider);
   if (!c) return;
-  await client(c).fetch(objectUrl(c, key), { method: 'DELETE' });
+  await client(c).fetch(objectUrl(c, key), { method: 'DELETE', headers: accessHeaders(provider) });
 }

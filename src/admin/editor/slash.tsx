@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { Extension, type Editor, type Range } from '@tiptap/core';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from '@tiptap/suggestion';
-import { columnsContent, type PickedMedia } from './nodes';
+import { columnsContent, type FileKind, type PickedFile, type PickedMedia } from './nodes';
 
 interface Item {
   group: string;
@@ -17,6 +17,11 @@ interface Item {
 function pickMedia(editor: Editor): Promise<PickedMedia | null> {
   const fn = (editor.storage as unknown as { sx?: { pickMedia: (() => Promise<PickedMedia | null>) | null } }).sx?.pickMedia;
   return fn ? fn() : Promise.resolve(null);
+}
+
+function pickFile(editor: Editor, kind: FileKind): Promise<PickedFile | null> {
+  const fn = (editor.storage as unknown as { sx?: { pickFile: ((k: FileKind) => Promise<PickedFile | null>) | null } }).sx?.pickFile;
+  return fn ? fn(kind) : Promise.resolve(null);
 }
 
 const ITEMS: Item[] = [
@@ -42,6 +47,33 @@ const ITEMS: Item[] = [
   { group: 'Media', title: 'YouTube Short', hint: 'Vertical video', icon: '▯', keywords: 'shorts youtube short vertical reel', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed', attrs: { portrait: true } }).run() },
   { group: 'Media', title: 'TikTok', hint: 'TikTok video', icon: '♪', keywords: 'tiktok tik tok vertical reel', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'embed', attrs: { portrait: true } }).run() },
   { group: 'Media', title: 'Map', hint: 'Place or coordinates', icon: '⌖', keywords: 'map location place address pin osm google', run: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'map' }).run() },
+  {
+    group: 'Files', title: 'PDF preview', hint: 'Pages readable on the page', icon: 'PDF', keywords: 'pdf file document preview pages viewer',
+    run: (e, r) => {
+      e.chain().focus().deleteRange(r).run();
+      void pickFile(e, 'pdf').then((f) => {
+        if (f) e.chain().focus().insertContent({ type: 'pdf', attrs: { mediaId: f.id, name: f.name, bytes: f.bytes, download: false } }).run();
+      });
+    },
+  },
+  {
+    group: 'Files', title: 'File attachment', hint: 'Doc, sheet, text, calendar…', icon: '⎙', keywords: 'file attachment download document doc docx xlsx pptx txt md markdown csv ics calendar pdf',
+    run: (e, r) => {
+      e.chain().focus().deleteRange(r).run();
+      void pickFile(e, 'file').then((f) => {
+        if (f) e.chain().focus().insertContent({ type: 'file', attrs: { mediaId: f.id, name: f.name, mime: f.mime, bytes: f.bytes } }).run();
+      });
+    },
+  },
+  {
+    group: 'Files', title: 'File link in text', hint: 'Inside the sentence', icon: '↓', keywords: 'file link inline download attachment',
+    run: (e, r) => {
+      e.chain().focus().deleteRange(r).run();
+      void pickFile(e, 'file').then((f) => {
+        if (f) e.chain().focus().insertContent([{ type: 'fileLink', attrs: { mediaId: f.id, name: f.name, mime: f.mime, bytes: f.bytes } }, { type: 'text', text: ' ' }]).run();
+      });
+    },
+  },
   { group: 'Layout', title: '2 columns', hint: 'Resizable', icon: '▥', keywords: 'columns two 2 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(2)).run() },
   { group: 'Layout', title: '3 columns', hint: 'Resizable', icon: '▦', keywords: 'columns three 3 layout grid', run: (e, r) => e.chain().focus().deleteRange(r).insertContent(columnsContent(3)).run() },
 ];

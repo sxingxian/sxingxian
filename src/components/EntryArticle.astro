@@ -17,6 +17,7 @@ const video = entry.kind === 'film' && entry.video_url ? parseVideoUrl(entry.vid
 const videoSrc = video ? embedSrc(video.provider, video.id) : null;
 const site = Astro.site ?? Astro.url;
 const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`, site).toString() : undefined;
+import PdfViewer from './PdfViewer.astro';
 ---
 <Site title={entry.title} description={entry.dek} image={ogImage}>
   <article class="article">
@@ -36,6 +37,7 @@ const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`,
       <div class="hero" style={`view-transition-name:c-${entry.id.replace(/[^a-zA-Z0-9-]/g, '')}`}><button type="button" class="lb" data-lightbox data-caption={entry.title} aria-label={`View photo: ${entry.title}`}><img src={`/media/${entry.cover_media_id}`} alt="" decoding="async" draggable="false" /></button></div>
     ) : null}
     <div class="prose" set:html={html} />
+    {html.includes('data-pdf=') && <PdfViewer />}
     <AdSlot slot="article" />
   </article>
 </Site>

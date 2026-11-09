@@ -11,6 +11,8 @@ import { getMedia, getSetting } from '../../lib/server/repo';
 import { getObject } from '../../lib/server/storage';
 import { UUID_RE } from '../../lib/shared/safe';
 import { watermarkSig, watermarkable } from '../../lib/shared/watermark';
+import { isDocMime } from '../../lib/shared/files';
+import { contentDisposition } from '../../lib/server/filetypes';
 
 const SAFE_TYPES = /^(image\/(jpeg|png|webp|gif|avif)|video\/(mp4|webm))$/;
 
@@ -29,8 +31,10 @@ export const GET: APIRoute = async ({ params, request }) => {
     return new Response('Not found', { status: 404 });
   }
 
+  // Documents (PDF, Office, text, calendar…) are always delivered as downloads, never rendered as a page here.
+  const isDoc = isDocMime(item.mime);
   const protection = await getSetting('protection');
-  if (protection.blockSave) {
+  if (protection.blockSave && !isDoc) {
     const dest = request.headers.get('Sec-Fetch-Dest');
     const site = request.headers.get('Sec-Fetch-Site');
     if (dest === 'document' || dest === 'iframe' || site === 'cross-site') return refused();
@@ -48,10 +52,11 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const headers = new Headers(res.headers);
   // Always serve the type recorded at upload (validated then), never a sniffed one.
-  headers.set('content-type', SAFE_TYPES.test(mime) ? mime : 'application/octet-stream');
+  if (isDoc) headers.set('content-type', mime.startsWith('text/') ? `${mime}; charset=utf-8` : mime);
+  else headers.set('content-type', SAFE_TYPES.test(mime) ? mime : 'application/octet-stream');
   headers.set('x-content-type-options', 'nosniff');
   headers.set('content-security-policy', "default-src 'none'; sandbox");
-  headers.set('content-disposition', 'inline');
+  headers.set('content-disposition', isDoc ? contentDisposition('attachment', item.filename || 'file') : 'inline');
   // Short cache: switching the watermark on or off must reach visitors within the hour.
   headers.set('cache-control', 'public, max-age=3600');
   headers.set('vary', 'Sec-Fetch-Dest, Sec-Fetch-Site');

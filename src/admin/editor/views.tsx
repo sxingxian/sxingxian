@@ -4,6 +4,7 @@ import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/re
 import { embedSrc, isTikTokShortLink, osmEmbedSrc, parseMapInput, parseVideoUrl, validMapPoint, type VideoProvider } from '../../lib/shared/safe';
 import { api, errorText } from '../api';
 import SafeImg from '../components/SafeImg';
+import { docTypeFor, formatBytes } from '../../lib/shared/files';
 
 type PickMedia = () => Promise<{ id: string; alt: string } | null>;
 function picker(editor: NodeViewProps['editor']): PickMedia | null {
@@ -36,6 +37,63 @@ export function FigureView({ node, updateAttributes, selected, editor, deleteNod
           <button type="button" className="btn small danger" onClick={deleteNode}>Remove</button>
         </div>
       )}
+    </NodeViewWrapper>
+  );
+}
+
+// ---------------- files: PDF preview and file card ----------------
+
+type PickFile = (kind: 'pdf' | 'file') => Promise<{ id: string; name: string; mime: string; bytes: number } | null>;
+function filePicker(editor: NodeViewProps['editor']): PickFile | null {
+  return ((editor.storage as unknown as { sx?: { pickFile: PickFile | null } }).sx?.pickFile) ?? null;
+}
+
+function FileBadge({ mime, name }: { mime: string; name: string }) {
+  const t = docTypeFor(mime, name);
+  return <span className="file-badge" style={{ background: t.color }} aria-hidden="true">{t.badge}</span>;
+}
+
+export function PdfView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
+  const { mediaId, name, bytes, download } = node.attrs as { mediaId: string | null; name: string; bytes: number; download: boolean };
+  const replace = async () => {
+    const pick = filePicker(editor);
+    const f = pick ? await pick('pdf') : null;
+    if (f) updateAttributes({ mediaId: f.id, name: f.name, bytes: f.bytes });
+  };
+  return (
+    <NodeViewWrapper className={`nv-file${selected ? ' selected' : ''}`} data-drag-handle="">
+      <div className="file-row" contentEditable={false}>
+        <FileBadge mime="application/pdf" name={name} />
+        <span className="file-text"><b>{name || 'PDF'}</b><span>PDF preview{bytes ? ` · ${formatBytes(bytes)}` : ''} · {download ? 'Download allowed' : 'View only'}</span></span>
+        <span className="file-actions">
+          <label className="check-pill"><input type="checkbox" checked={!!download} onChange={(e) => updateAttributes({ download: e.target.checked })} /> Allow download</label>
+          <button type="button" className="btn small" onClick={replace}>Replace</button>
+          <button type="button" className="btn small danger" onClick={deleteNode} aria-label="Remove PDF">Remove</button>
+        </span>
+      </div>
+      {!mediaId && <div className="drop">No PDF selected</div>}
+    </NodeViewWrapper>
+  );
+}
+
+export function FileView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
+  const { name, mime, bytes } = node.attrs as { mediaId: string | null; name: string; mime: string; bytes: number };
+  const t = docTypeFor(mime, name);
+  const replace = async () => {
+    const pick = filePicker(editor);
+    const f = pick ? await pick('file') : null;
+    if (f) updateAttributes({ mediaId: f.id, name: f.name, mime: f.mime, bytes: f.bytes });
+  };
+  return (
+    <NodeViewWrapper className={`nv-file${selected ? ' selected' : ''}`} data-drag-handle="">
+      <div className="file-row" contentEditable={false}>
+        <FileBadge mime={mime} name={name} />
+        <span className="file-text"><b>{name || 'File'}</b><span>File · {t.label}{bytes ? ` · ${formatBytes(bytes)}` : ''}</span></span>
+        <span className="file-actions">
+          <button type="button" className="btn small" onClick={replace}>Replace</button>
+          <button type="button" className="btn small danger" onClick={deleteNode} aria-label="Remove file">Remove</button>
+        </span>
+      </div>
     </NodeViewWrapper>
   );
 }

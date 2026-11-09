@@ -104,6 +104,8 @@ export interface WordPressSetting {
   includeInRss: boolean;
   hideWhenDown: boolean;
   categoryMap: Record<string, string>;
+  /** WordPress site address (https, public). Empty = the WP_BASE_URL set in Cloudflare. Set only via the address action. */
+  baseUrl?: string;
 }
 
 export interface SiteSetting {

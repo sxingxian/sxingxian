@@ -7,6 +7,7 @@ import { env } from 'cloudflare:workers';
 import { sessionFromRequest } from './lib/server/users';
 import { maintenanceOnRequest } from './lib/server/maintenance';
 import { adsFor } from './lib/server/ads';
+import { wpBase } from './lib/server/wordpress';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -52,6 +53,7 @@ function buildAdsCsp(nonce: string): string {
     "font-src 'self' https:",
     "connect-src 'self' https:",
     "media-src 'self' blob: https:",
+    "worker-src 'self'",
     'frame-src https:',
     "object-src 'none'",
     "base-uri 'none'",
@@ -61,8 +63,8 @@ function buildAdsCsp(nonce: string): string {
   ].join('; ');
 }
 
-function buildCsp(nonce: string): string {
-  const wp = originOf(env.WP_BASE_URL);
+function buildCsp(nonce: string, wpAddress: string): string {
+  const wp = originOf(wpAddress);
   return [
     "default-src 'self'",
     `script-src 'nonce-${nonce}' 'strict-dynamic' 'self'`,
@@ -71,6 +73,7 @@ function buildCsp(nonce: string): string {
     "font-src 'self'",
     "connect-src 'self'",
     "media-src 'self' blob:",
+    "worker-src 'self'",
     'frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.tiktok.com https://www.openstreetmap.org',
     "object-src 'none'",
     "base-uri 'self'",
@@ -153,7 +156,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   const ads = !admin && request.method === 'GET' ? await adsFor(path) : null;
-  headers.set('Content-Security-Policy', ads ? buildAdsCsp(nonce) : buildCsp(nonce));
+  let wpAddress = env.WP_BASE_URL;
+  if (!ads) {
+    try { wpAddress = await wpBase(); } catch { /* fall back to the Cloudflare value */ }
+  }
+  headers.set('Content-Security-Policy', ads ? buildAdsCsp(nonce) : buildCsp(nonce, wpAddress));
   // Ad clicks open the advertiser in a new tab; keep that working on ad pages.
   if (ads) headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   headers.delete('content-length');

@@ -9,6 +9,7 @@ const sections = await getSetting('sections');
 const page = sections.cv ? await getPage('cv') : null;
 if (!page) Astro.response.status = 404;
 const html = page ? renderDoc(page.body) : '';
+import PdfViewer from '../components/PdfViewer.astro';
 ---
 {page ? (
   <Site title={page.title || 'CV'} noindex={page.noindex}>
@@ -18,6 +19,7 @@ const html = page ? renderDoc(page.body) : '';
         <span class="meta">Use your browser's Print → Save as PDF for a copy</span>
       </div>
       <article class="sheet"><div class="prose" set:html={html} /></article>
+      {html.includes('data-pdf=') && <PdfViewer />}
     </div>
   </Site>
 ) : (

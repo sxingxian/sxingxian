@@ -20,7 +20,10 @@ await build({
                export { loginSchema, userPatchSchema, settingsSchemas } from './src/lib/shared/schemas.ts';
                export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';
                export { watermarkSig, watermarkable, watermarkHasContent } from './src/lib/shared/watermark.ts';
-               export { checkPng } from './src/lib/server/png.ts';`,
+               export { checkPng } from './src/lib/server/png.ts';
+               export { sniffDocument, contentDisposition } from './src/lib/server/filetypes.ts';
+               export { cleanFileName } from './src/lib/shared/files.ts';
+               export { normalizeWpBase } from './src/lib/shared/safe.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -36,7 +39,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -226,6 +229,62 @@ t('watermark logo upload accepts only complete, bounded PNGs', () => {
   const jpeg = new Uint8Array(64); jpeg.set([0xff, 0xd8, 0xff]);
   assert.equal(checkPng(jpeg).ok, false, 'JPEG');
   assert.equal(checkPng(new Uint8Array(300 * 1024)).ok, false, 'over 256 KB');
+});
+t('documents are accepted only when their contents match an allowed type', () => {
+  const enc = (t) => new TextEncoder().encode(t);
+  const zip = (names) => enc('PK\u0003\u0004' + '\u0000'.repeat(26) + names.join('\u0000') + '\u0000');
+  assert.deepEqual(sniffDocument(enc('%PDF-1.7\n…'), 'a.pdf'), { ok: true, ext: 'pdf', mime: 'application/pdf' });
+  assert.equal(sniffDocument(enc('<html><script>alert(1)</script>'), 'a.pdf').ok, false, 'HTML named .pdf');
+  assert.equal(sniffDocument(enc('%PDF-1.7'), 'a.html').ok, false, 'html extension not allowed');
+  assert.equal(sniffDocument(enc('<svg onload=alert(1)>'), 'a.svg').ok, false, 'svg not allowed');
+  assert.equal(sniffDocument(zip(['[Content_Types].xml', 'word/document.xml']), 'a.docx').ok, true);
+  assert.equal(sniffDocument(zip(['[Content_Types].xml', 'word/document.xml', 'word/vbaProject.bin']), 'a.docx').ok, false, 'macros');
+  assert.equal(sniffDocument(zip(['[Content_Types].xml', 'xl/workbook.xml']), 'a.docx').ok, false, 'xlsx named docx');
+  assert.equal(sniffDocument(zip(['anything']), 'a.zip').ok, false, 'zip not allowed');
+  const odt = new Uint8Array([...enc('PK\u0003\u0004'), ...new Uint8Array(26), ...enc('mimetypeapplication/vnd.oasis.opendocument.text')]);
+  assert.equal(sniffDocument(odt, 'a.odt').ok, true);
+  assert.equal(sniffDocument(odt, 'a.ods').ok, false);
+  assert.equal(sniffDocument(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0]), 'a.doc').ok, true);
+  assert.equal(sniffDocument(enc('{\\rtf1 hello}'), 'a.rtf').ok, true);
+  assert.equal(sniffDocument(enc('# Packing list\n- socks'), 'a.md').ok, true);
+  assert.equal(sniffDocument(new Uint8Array([0x23, 0x00, 0x41]), 'a.md').ok, false, 'binary in text');
+  assert.equal(sniffDocument(new Uint8Array([0xff, 0xfe, 0x41]), 'a.txt').ok, false, 'not UTF-8');
+  assert.equal(sniffDocument(enc('BEGIN:VCALENDAR\r\nEND:VCALENDAR'), 'a.ics').ok, true);
+  assert.equal(sniffDocument(enc('<html>'), 'a.ics').ok, false);
+});
+t('file names are cleaned and downloads are always attachments', () => {
+  assert.equal(cleanFileName('../../etc/passwd', 'txt'), 'passwd.txt');
+  assert.equal(cleanFileName('C:\\Users\\x\\Trip "notes".docx', 'docx'), 'Trip notes.docx');
+  assert.equal(cleanFileName('evil.html', 'pdf'), 'evil.pdf', 'extension forced to the real type');
+  assert.equal(cleanFileName('\u0000\u001f', 'md'), 'file.md');
+  const cd = contentDisposition('attachment', 'Ring Road "plan" (v2).pdf');
+  assert.ok(cd.startsWith('attachment; filename="Ring Road _plan_ (v2).pdf"'));
+  assert.ok(cd.includes("filename*=UTF-8''Ring%20Road%20%22plan%22%20%28v2%29.pdf"));
+  assert.ok(!/[\r\n]/.test(contentDisposition('attachment', 'a\r\nSet-Cookie: x=1.txt')), 'no header injection');
+});
+t('WordPress address must be a public https site', () => {
+  assert.equal(normalizeWpBase('https://hey.sxingxian.com/'), 'https://hey.sxingxian.com');
+  assert.equal(normalizeWpBase('https://Example.org/blog/'), 'https://example.org/blog');
+  assert.equal(normalizeWpBase('https://hey.sxingxian.com/a/../b'), 'https://hey.sxingxian.com/b', 'dot segments resolved by the URL parser');
+  for (const bad of ['http://hey.sxingxian.com', 'https://localhost', 'https://127.0.0.1', 'https://[::1]', 'https://10.0.0.5', 'https://nas.local', 'https://u:p@hey.sxingxian.com', 'https://hey.sxingxian.com:8443', 'https://hey.sxingxian.com/?x=1', 'https://intranet', 'javascript:alert(1)', 'https://a.internal']) {
+    assert.equal(normalizeWpBase(bad), null, bad);
+  }
+});
+t('file blocks render escaped, with download links only to our media route', () => {
+  const id = '11111111-2222-4333-8444-555555555555';
+  const html = renderDoc({ type: 'doc', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: 'See ' }, { type: 'fileLink', attrs: { mediaId: id, name: '<img src=x onerror=alert(1)>.md', mime: 'text/markdown', bytes: 2048 } }] },
+    { type: 'file', attrs: { mediaId: id, name: 'Dates.ics', mime: 'text/calendar', bytes: 4000 } },
+    { type: 'file', attrs: { mediaId: 'javascript:alert(1)', name: 'x' } },
+    { type: 'pdf', attrs: { mediaId: id, name: 'Plan.pdf', bytes: 1900000, download: false } },
+    { type: 'pdf', attrs: { mediaId: id, name: 'Plan.pdf', download: 'yes' } },
+  ] });
+  assert.ok(!html.includes('<img'), 'name escaped');
+  assert.ok(!html.includes('javascript:'), 'bad id dropped');
+  assert.equal((html.match(/href="\/media\/11111111-2222-4333-8444-555555555555" download/g) ?? []).length, 2, 'link + card are downloads');
+  assert.ok(html.includes('Add to calendar'));
+  assert.ok(!html.includes('pdf-dl'), 'no download button unless download === true');
+  assert.equal((html.match(/data-download="0"/g) ?? []).length, 2);
 });
 t('animated GIFs and video are never watermarked (would break them)', () => {
   for (const m of ['image/jpeg', 'image/png', 'image/webp', 'image/avif']) assert.ok(watermarkable(m), m);

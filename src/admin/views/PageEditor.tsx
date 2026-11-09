@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import { ToggleRow } from '../components/kit';
 import Editor from '../editor/Editor';
-import MediaPicker from '../components/MediaPicker';
+import MediaPicker, { type PickerAccept } from '../components/MediaPicker';
 import { useToast } from '../components/ui';
 import type { DocNode, MediaItem, Page, SectionsSetting } from '../../lib/shared/types';
 import { useAutosave } from '../autosave';
@@ -58,6 +58,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
   const [sections, setSections] = useState<SectionsSetting | null>(null);
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
+  const [pickerAccept, setPickerAccept] = useState<PickerAccept>('images');
   const [sheet, setSheet] = useState(false);
   const toast = useToast();
 
@@ -87,7 +88,15 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
 
   const pickMedia = useCallback(
     () => new Promise<{ id: string; alt: string } | null>((resolve) => {
+      setPickerAccept('images');
       setPicker(() => (m: MediaItem | null) => { setPicker(null); resolve(m ? { id: m.id, alt: m.alt } : null); });
+    }),
+    [],
+  );
+  const pickFile = useCallback(
+    (kind: 'pdf' | 'file') => new Promise<{ id: string; name: string; mime: string; bytes: number } | null>((resolve) => {
+      setPickerAccept(kind === 'pdf' ? 'pdf' : 'files');
+      setPicker(() => (m: MediaItem | null) => { setPicker(null); resolve(m ? { id: m.id, name: m.filename, mime: m.mime, bytes: Number(m.bytes) || 0 } : null); });
     }),
     [],
   );
@@ -125,7 +134,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
             {(slug === 'about' || slug === 'privacy') && (
               <input className="title-input" value={page.title} placeholder={label} aria-label="Page title" onChange={(e) => setPage({ ...page, title: e.target.value })} />
             )}
-            <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} onChange={(body) => setPage((p) => (p ? { ...p, body } : p))} />
+            <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} pickFile={pickFile} onChange={(body) => setPage((p) => (p ? { ...p, body } : p))} />
           </div>
         </div>
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close page settings" onClick={() => setSheet(false)} />}
@@ -142,7 +151,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
           {slug === 'cv' && <p className="field-hint">Type “/2 columns” or “/3 columns” in the page for layouts.</p>}
         </aside>
       </div>
-      {picker && <MediaPicker onPick={(m) => picker(m)} onClose={() => picker(null)} />}
+      {picker && <MediaPicker accept={pickerAccept} onPick={(m) => picker(m)} onClose={() => picker(null)} />}
     </>
   );
 }

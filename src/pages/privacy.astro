@@ -8,12 +8,14 @@ const page = await getPage('privacy');
 const hasContent = !!page && Array.isArray(page.body?.content) && page.body.content.length > 0;
 if (!hasContent) Astro.response.status = 404;
 const html = hasContent && page ? renderDoc(page.body) : '';
+import PdfViewer from '../components/PdfViewer.astro';
 ---
 {hasContent && page ? (
   <Site title={page.title || 'Privacy'} noindex={page.noindex}>
     <article class="article">
       <h1>{page.title || 'Privacy'}</h1>
       <div class="prose" set:html={html} />
+      {html.includes('data-pdf=') && <PdfViewer />}
     </article>
   </Site>
 ) : (
