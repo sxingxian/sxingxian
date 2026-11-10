@@ -27,7 +27,7 @@ await build({
                export { cleanTopics, topicLabel } from './src/lib/shared/types.ts';
                export { entryInputSchema } from './src/lib/shared/schemas.ts';
                export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';
-               export { topicFor } from './src/lib/server/wptopic.ts';`,
+               export { topicFor, pickImage, safeImageUrl } from './src/lib/server/wptopic.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -43,7 +43,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -469,6 +469,20 @@ t('WordPress category → topic mapping', () => {
   assert.equal(topicFor(['constructor', '__proto__'], {}), 'constructor'); // no prototype lookups
   assert.equal(topicFor(['Tech'], { Tech: '  ' }), 'Tech'); // blank mapping ignored
   assert.equal(topicFor(['x'.repeat(50)], {}).length, 30);
+});
+
+t('WordPress featured image: best size, https only', () => {
+  const sizes = (o) => ({ source_url: 'https://hey.example.com/full.jpg', media_details: { sizes: o } });
+  assert.equal(pickImage(sizes({ medium_large: { source_url: 'https://hey.example.com/ml.jpg' }, large: { source_url: 'https://hey.example.com/l.jpg' } })), 'https://hey.example.com/ml.jpg');
+  assert.equal(pickImage(sizes({ large: { source_url: 'https://hey.example.com/l.jpg' } })), 'https://hey.example.com/l.jpg');
+  assert.equal(pickImage(sizes({})), 'https://hey.example.com/full.jpg');
+  assert.equal(pickImage({ source_url: 'http://hey.example.com/a.jpg' }), 'https://hey.example.com/a.jpg'); // upgraded, not dropped
+  assert.equal(pickImage(undefined), '');
+  assert.equal(safeImageUrl('javascript:alert(1)'), '');
+  assert.equal(safeImageUrl('data:image/png;base64,AAAA'), '');
+  assert.equal(safeImageUrl('https://user:pw@hey.example.com/a.jpg'), '');
+  assert.equal(safeImageUrl('//hey.example.com/a.jpg'), '');
+  assert.equal(safeImageUrl('https://hey.example.com/a b.jpg'), 'https://hey.example.com/a%20b.jpg');
 });
 
 console.log(`\n${passed} security tests passed.`);

@@ -48,7 +48,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
       const r = await api.post<{ remapped?: number | null }>('/api/admin/wordpress', { action });
       if (action === 'sync') {
         const n = r.remapped;
-        toast(n == null ? 'Synced · couldn’t re-apply the mapping' : n ? `Synced · topics updated on ${n} post${n === 1 ? '' : 's'}` : 'Synced · topics match the mapping');
+        toast(n == null ? 'Synced · couldn’t refresh topics and images' : n ? `Synced · ${n} post${n === 1 ? '' : 's'} updated (topics or images)` : 'Synced · everything up to date');
       } else {
         toast(action === 'check' ? 'Checked' : 'Full check done');
       }
@@ -75,7 +75,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
       // Re-apply the mapping to posts already synced, not just future ones.
       try {
         const m = await api.post<{ checked: number; updated: number }>('/api/admin/wordpress', { action: 'remap' });
-        toast(m.updated ? `Saved · topics updated on ${m.updated} post${m.updated === 1 ? '' : 's'}` : 'Saved · existing posts already match');
+        toast(m.updated ? `Saved · ${m.updated} post${m.updated === 1 ? '' : 's'} updated` : 'Saved · existing posts already match');
         load();
       } catch (e) {
         toast(`Saved, but ${errorText(e)}`);

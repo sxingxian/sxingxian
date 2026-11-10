@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { sql } from '../../../../lib/server/db';
 import { adminListExternalPosts, setExternalVisibility } from '../../../../lib/server/repo';
-import { healthCheck, probeWordPress, reconcile, remapTopics, resyncAfterAddressChange, syncIncremental, wpBase } from '../../../../lib/server/wordpress';
+import { healthCheck, probeWordPress, reconcile, refreshSyncedPosts, resyncAfterAddressChange, syncIncremental, wpBase } from '../../../../lib/server/wordpress';
 import { getSetting, putSetting } from '../../../../lib/server/repo';
 import { normalizeWpBase } from '../../../../lib/shared/safe';
 import { error, json, readBody } from '../../../../lib/server/http';
@@ -32,11 +32,11 @@ export const POST: APIRoute = async ({ request }) => {
   const a = body.data;
   switch (a.action) {
     case 'sync': {
-      // Pull recent changes, then re-apply the category → topic mapping to every synced post,
-      // so posts synced before a mapping change pick it up too.
+      // Pull recent changes, then refresh every synced post's topic and featured image, so changes
+      // WordPress didn't flag as edits (featured image, mapping) are picked up too.
       await syncIncremental('Manual sync');
       try {
-        const { updated } = await remapTopics();
+        const { updated } = await refreshSyncedPosts('Manual sync: topics and images');
         return json({ ok: true, remapped: updated });
       } catch {
         return json({ ok: true, remapped: null });
@@ -50,7 +50,7 @@ export const POST: APIRoute = async ({ request }) => {
       break;
     case 'remap':
       try {
-        return json({ ok: true, ...(await remapTopics()) });
+        return json({ ok: true, ...(await refreshSyncedPosts('Category mapping applied')) });
       } catch {
         return error(502, 'couldn’t reach WordPress to update existing posts. Save again once it’s back.');
       }
