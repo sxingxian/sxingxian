@@ -173,6 +173,8 @@ Then go to Admin → Settings → **Photos**:
 
 ## 7e. Topics
 
+- **WordPress posts:** one topic each, from Admin → WordPress → **Category → topic**. Matching ignores capitals, spaces and HTML entities; the first of a post's categories with a mapping wins, otherwise its first category name (not "Uncategorized"), otherwise "Notes". Saving the mapping re-applies it to every synced post straight away; renaming or removing a story topic updates WordPress posts too.
+
 - **Lists:** Admin → Settings → **Topics** has one list per section: Stories (home page and `/story` filters), Work, Photos and Film (filters on `/work`, `/photos`, `/film`; hidden while a list is empty). Up to 12 each. Click a topic to rename it (entries follow), × to remove it (asks first, then takes it off those entries).
 - **Entries:** the editor's **Topics** picker adds up to 3 from that section's list, in the order shown publicly ("Travel · Photography"). A topic no longer in the list shows dashed until removed.
 - **Release (migration `0007_topics.sql`):** adds `entries.topics` and seeds the Work/Photos/Film lists from topics already on those entries. Run **Deploy Neon** after merging (or let `AUTO_DEPLOY_NEON` do it). Until it runs, public pages keep working on the old single topic and editor saves retry automatically.

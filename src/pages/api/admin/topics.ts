@@ -1,14 +1,15 @@
 // Topics across sections (admin only).
 //   GET  /api/admin/topics → { counts: { post|project|gallery|film: { [topic]: number } } } entries per topic
 //   POST /api/admin/topics { kind, changes: [{ from, to }] } → renames a topic on that kind's entries
-//        (to = '' removes it). For stories, the WordPress category → topic mapping follows too,
-//        so a rename doesn't orphan anything.
+//        (to = '' removes it). For stories, synced WordPress posts and the category → topic
+//        mapping follow too, so a rename doesn't orphan anything.
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { sql } from '../../../lib/server/db';
 import { getSetting, putSetting } from '../../../lib/server/repo';
 import { error, json, readBody } from '../../../lib/server/http';
 import { MAX_TOPIC_LEN, type EntryKind } from '../../../lib/shared/types';
+import { FALLBACK_TOPIC } from '../../../lib/server/wptopic';
 
 const KINDS = ['post', 'project', 'gallery', 'film'] as const;
 const topic = z.string().trim().max(MAX_TOPIC_LEN);
@@ -61,6 +62,12 @@ export const POST: APIRoute = async ({ request }) => {
     updated += r.length;
   }
   if (kind === 'post') {
+    // WordPress posts carry a single topic: follow renames; a removed topic falls back to "Notes"
+    // until the next sync or mapping save works it out again from the post's categories.
+    for (const { from, to } of changes) {
+      if (from === to) continue;
+      await sql().query(`UPDATE external_posts SET topic = $2 WHERE topic = $1`, [from, to || FALLBACK_TOPIC]);
+    }
     const wp = await getSetting('wordpress');
     const map = { ...wp.categoryMap };
     let mapChanged = false;

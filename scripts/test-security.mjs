@@ -26,7 +26,8 @@ await build({
                export { normalizeWpBase } from './src/lib/shared/safe.ts';
                export { cleanTopics, topicLabel } from './src/lib/shared/types.ts';
                export { entryInputSchema } from './src/lib/shared/schemas.ts';
-               export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';`,
+               export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';
+               export { topicFor } from './src/lib/server/wptopic.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -42,7 +43,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -453,6 +454,21 @@ t('malformed or deeply encoded paths are refused', () => {
   assert.equal(canonicalPath('/%E0%A4%A'), null);
   assert.equal(canonicalPath('/a%00b'), null);
   assert.equal(canonicalPath('/%252525252561dmin'), null);
+});
+
+t('WordPress category → topic mapping', () => {
+  const map = { Tech: 'Technology', Horror: 'Horror Series', Generic: 'Random Life', 'Tech & Life': 'Essays', __proto__x: 'X' };
+  assert.equal(topicFor(['Tech'], map), 'Technology');
+  assert.equal(topicFor(['tech '], map), 'Technology'); // case and spaces
+  assert.equal(topicFor(['Tech &amp; Life'], map), 'Essays'); // WordPress sends entities
+  assert.equal(topicFor(['Uncategorized', 'Horror'], map), 'Horror Series'); // any category, not just the first
+  assert.equal(topicFor(['Travel', 'Generic'], map), 'Random Life'); // a mapped one wins over an unmapped one
+  assert.equal(topicFor(['Travel'], map), 'Travel'); // unmapped keeps its name
+  assert.equal(topicFor(['Uncategorized'], map), 'Notes');
+  assert.equal(topicFor([], map), 'Notes');
+  assert.equal(topicFor(['constructor', '__proto__'], {}), 'constructor'); // no prototype lookups
+  assert.equal(topicFor(['Tech'], { Tech: '  ' }), 'Tech'); // blank mapping ignored
+  assert.equal(topicFor(['x'.repeat(50)], {}).length, 30);
 });
 
 console.log(`\n${passed} security tests passed.`);

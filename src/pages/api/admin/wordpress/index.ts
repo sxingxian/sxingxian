@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { sql } from '../../../../lib/server/db';
 import { adminListExternalPosts, setExternalVisibility } from '../../../../lib/server/repo';
-import { healthCheck, probeWordPress, reconcile, resyncAfterAddressChange, syncIncremental, wpBase } from '../../../../lib/server/wordpress';
+import { healthCheck, probeWordPress, reconcile, remapTopics, resyncAfterAddressChange, syncIncremental, wpBase } from '../../../../lib/server/wordpress';
 import { getSetting, putSetting } from '../../../../lib/server/repo';
 import { normalizeWpBase } from '../../../../lib/shared/safe';
 import { error, json, readBody } from '../../../../lib/server/http';
@@ -20,6 +20,7 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('sync') }),
   z.object({ action: z.literal('reconcile') }),
   z.object({ action: z.literal('check') }),
+  z.object({ action: z.literal('remap') }),
   z.object({ action: z.literal('probe'), url: z.string().max(200) }),
   z.object({ action: z.literal('address'), url: z.string().max(200) }),
   z.object({ action: z.literal('visibility'), wp_id: z.number().int().positive(), show: z.boolean() }),
@@ -39,6 +40,12 @@ export const POST: APIRoute = async ({ request }) => {
     case 'check':
       await healthCheck();
       break;
+    case 'remap':
+      try {
+        return json({ ok: true, ...(await remapTopics()) });
+      } catch {
+        return error(502, 'couldn’t reach WordPress to update existing posts. Save again once it’s back.');
+      }
     case 'probe':
       return json(await probeWordPress(a.url));
     case 'address': {
