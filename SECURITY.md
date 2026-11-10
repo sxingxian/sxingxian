@@ -85,6 +85,16 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
 - Astro's `security.checkOrigin` is also on, and the session cookie is `SameSite=Strict`.
 - After sign-in, `?next=` is accepted only if, after URL normalisation, it is an `/admin` path on this site (no other origins, `..`, backslashes or encoded dots).
 
+### Most read (`POST /api/views`)
+- The only public write endpoint besides the signed WordPress webhook. It accepts `{ item }` where item is `n:<story uuid>` or `w:<WordPress post number>` (strict pattern), 256 bytes max.
+- Refused unless `Origin` is this site (and `Sec-Fetch-Site`, when sent, is `same-origin`), so other sites can't inflate counts from visitors' browsers. Rate limited per address (`VIEW_LIMITER`, 20 a minute); extra reads are dropped quietly.
+- Counted only if the story is public (or the WordPress post is shown): the insert is conditional, so unknown ids never create rows.
+- Stores a daily total per item only. No cookies, IP addresses, user agents or visitor ids are written; the IP is seen only by Cloudflare's rate limiter. Totals older than about a year are deleted by the daily job.
+- The browser sends a read once per story per tab (sessionStorage), after 15 s of the page being visible.
+
+### Footer links in a new tab
+- `newTab` is a boolean in the footer setting. Such links render with `target="_blank" rel="noopener noreferrer"` and a screen-reader note; URLs are still allow-listed.
+
 ### Injection
 - **SQL:** every query uses Neon's tagged template or `$n` parameters. There is no string-built SQL.
 - **Stored content (XSS):** the editor's JSON becomes HTML **only** through the allow-list renderer in `src/lib/server/render.ts`. It:
@@ -99,6 +109,7 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
   - caps nesting depth.
 
   There is no raw-HTML block.
+- **Archive filters:** `/story?topic=&year=&page=` accept only a topic from the saved list, a year that has stories, and a page number in range; anything else falls back to the default. Years and pages go to SQL as parameters.
 - **WordPress content:** titles and excerpts are reduced to plain text, then escaped when rendered. Only `https://` image URLs are stored.
 - **Validation:** every write is checked with Zod on the server, with body-size caps (1.2 MB for documents, 50 KB for settings).
 - **Topics:** entry topics (max 3 × 30 chars) and section lists (max 12 each) are validated, trimmed and de-duplicated on the server; renames run as one parameterised `UPDATE` per change, scoped to that section's kind. Public topic filters accept only values in the saved list.

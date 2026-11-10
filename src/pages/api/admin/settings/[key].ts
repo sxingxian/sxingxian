@@ -39,6 +39,11 @@ export const PUT: APIRoute = async ({ params, request }) => {
     if (!watermarkHasContent(p)) return error(400, 'Add watermark text or a logo');
     value = p as SettingsMap[typeof key];
   }
+  if (key === 'featured') {
+    // Also write the previous release's fields, so a rollback still shows the first featured story.
+    const f = value as SettingsMap['featured'];
+    value = { entryIds: f.entryIds, order: f.order, mode: f.entryIds.length ? 'manual' : 'latest', entryId: f.entryIds[0] ?? null } as SettingsMap[typeof key];
+  }
   await putSetting(key, value);
   return json({ value: await getSetting(key) });
 };

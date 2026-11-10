@@ -142,7 +142,9 @@ import Favicons from '../components/Favicons.astro';
         {columns.map((c) => (
           <div class="col-links">
             <span class="lbl">{c.heading}</span>
-            {c.links.map((l) => (
+            {c.links.map((l) => l.newTab ? (
+              <a href={l.url} target="_blank" rel="noopener noreferrer">{l.label}{!l.label.includes('↗') && <span class="ext" aria-hidden="true">↗</span>}<span class="sr-only"> (opens in a new tab)</span></a>
+            ) : (
               <a href={l.url} rel={l.url.startsWith('https:') ? 'noopener noreferrer' : undefined}>{l.label}</a>
             ))}
           </div>
@@ -218,6 +220,34 @@ import Favicons from '../components/Favicons.astro';
       });
       window.addEventListener('resize', function () { if (menu && !menu.hidden && window.innerWidth > 760) openMenu(false); });
       sync();
+    })();
+    </script>
+
+    <!-- Most read: counts a read after 15 s of a story being on screen, or a click through to a WordPress post.
+         Sends only which story was read (no cookies, ids or fingerprints); once per story per tab. -->
+    <script is:inline>
+    (function () {
+      if (!navigator.sendBeacon) return;
+      function send(item) {
+        var k = 'sx-read:' + item;
+        try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) {}
+        navigator.sendBeacon('/api/views', new Blob([JSON.stringify({ item: item })], { type: 'text/plain' }));
+      }
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a[data-view]');
+        if (a) send(a.getAttribute('data-view'));
+      });
+      var art = document.querySelector('[data-read]');
+      if (!art) return;
+      var item = art.getAttribute('data-read'), seen = 0, last = Date.now(), t;
+      function tick() {
+        var now = Date.now();
+        if (!document.hidden) seen += now - last;
+        last = now;
+        if (seen >= 15000) { clearInterval(t); send(item); }
+      }
+      t = setInterval(tick, 1000);
+      document.addEventListener('visibilitychange', function () { last = Date.now(); });
     })();
     </script>
 

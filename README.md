@@ -23,9 +23,12 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 
 ## Features
 
-- **Stories home (`/`, all at `/story`):** a featured post, latest posts (native + WordPress) with topic filters, RSS, and sidebar cards for Work, Photos and Film.
+- **Stories home (`/`):** featured stories (a carousel), latest posts (native + WordPress) with topic filters, RSS, sidebar cards for Work, Photos, Film and **Most read**, and a **Series** row.
+- **All stories (`/story`):** every story newest first, 20 a page, with a **Years** sidebar (a row of chips on phones). Topic, year and page combine in the address (`/story?topic=Travel&year=2025&page=2`).
 - **Tagline:** shown next to the site name; leave it empty in Settings to show the current section's name instead (stories, work, photos, cv…).
-- **Featured post:** pin a post in the admin (Settings → Sections & featured post, or the "Feature on home page" switch in the editor), or leave it on *Always show the latest post*.
+- **Featured stories:** up to 8, chosen in Settings → **Home** or with "Feature on home page" in the editor. Newest first, or a custom order (drag or arrows). They rotate every 8 seconds and can be swiped or stepped with arrows; the carousel pauses on hover, keyboard focus or its pause button, and never moves by itself when the device asks for reduced motion. They stay at the top when a visitor picks a topic. None chosen = the latest story.
+- **Series:** Content → **Series** creates a series (title, address, short description, optional planned parts). A story joins one from its editor (Publishing → Series and Part). Stories in a series show "Part 2 of 5", a list of the parts and previous/next links; `/series` lists every series and `/series/<address>` shows its parts in order.
+- **Most read:** the top 5 stories over the last 30 days. A read counts after 15 seconds on a story, or a click through to a WordPress post, once per tab. Only daily totals per story are stored (no cookies, IP addresses or visitor ids).
 - **Topics:** a story can have up to 3 topics; Work, Photos and Film have their own topic lists (Settings → Topics) and filter chips on their pages.
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**
@@ -35,7 +38,7 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
   - **Editing:** a formatting bubble and drag handles.
   - **Picking many photos:** the gallery picker selects several at once by click, Shift-click, dragging a box (hold ⌘/Ctrl to remove) or, on a phone, press-and-hold then slide. Numbers show the order. Photos can also be uploaded straight into the gallery, and reordered by dragging (on a phone, by the ⠿ handle) or Alt+arrow keys.
 - **CV page** (`/cv`): built from column blocks, printable to PDF from the browser (print stylesheet included).
-- **Editable footer:** about text, up to 3 link columns, bottom line with `{year}`. Links are allow-listed.
+- **Editable footer:** about text, up to 3 link columns, bottom line with `{year}`. Links are allow-listed; each can open in a new tab (shown with ↗).
 - **WordPress sync** (see below), with automatic hiding when WordPress is down.
 - **Photos:**
   - tapping a photo opens a full-screen lightbox, in posts and galleries and in the admin's Media page (arrows, swipe, Esc). In a gallery block the arrows and counter stay within that gallery;

@@ -18,15 +18,25 @@ const videoSrc = video ? embedSrc(video.provider, video.id) : null;
 const site = Astro.site ?? Astro.url;
 const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`, site).toString() : undefined;
 import PdfViewer from './PdfViewer.astro';
+import { seriesForEntry } from '../lib/server/series';
+const inSeries = entry.kind === 'post' ? await seriesForEntry(entry.id) : null;
+const partIdx = inSeries ? inSeries.parts.findIndex((p) => p.id === entry.id) : -1;
+const prevPart = inSeries && partIdx > 0 ? inSeries.parts[partIdx - 1] : null;
+const nextPart = inSeries && partIdx >= 0 ? inSeries.parts[partIdx + 1] ?? null : null;
+const seriesTotal = inSeries ? Math.max(inSeries.series.planned_parts ?? inSeries.parts.length, inSeries.parts.length, inSeries.part) : 0;
+const morePlanned = inSeries ? Math.max(0, seriesTotal - Math.max(inSeries.parts.length, inSeries.part)) : 0;
 ---
 <Site title={entry.title} description={entry.dek} image={ogImage}>
-  <article class="article">
+  <article class="article" data-read={entry.kind === 'post' ? `n:${entry.id}` : undefined}>
     <div class="kicker">
       <span class="lbl accent">{kicker}{entry.topics.length ? ` · ${topicLabel(entry.topics)}` : ''}</span>
       <span class="meta">{formatDate(entry.published_at)} · {entry.read_minutes} min</span>
     </div>
     <h1>{entry.title}</h1>
     {entry.dek && <p class="dek">{entry.dek}</p>}
+    {inSeries && (
+      <p style="margin:12px 0 0"><a class="part-kicker" href="#series">Part {inSeries.part} of {seriesTotal} · {inSeries.series.title}</a></p>
+    )}
     {videoSrc ? (
       <div class="prose" style="padding-top:28px">
         <figure class={`embed${video?.portrait ? ' portrait' : ''}`} style="margin:0"><div class="embed-frame">
@@ -38,6 +48,26 @@ import PdfViewer from './PdfViewer.astro';
     ) : null}
     <div class="prose" set:html={html} />
     {html.includes('data-pdf=') && <PdfViewer />}
+    {inSeries && (
+      <section class="series-box" id="series" aria-label={`Series: ${inSeries.series.title}`}>
+        <div class="card-head"><span class="lbl accent">Series · {inSeries.parts.length} of {seriesTotal} parts out</span><a href={`/series/${inSeries.series.slug}`}>Series page <span class="arrow" aria-hidden="true">→</span></a></div>
+        <span class="series-t">{inSeries.series.title}</span>
+        <ol>
+          {inSeries.parts.map((p) => p.id === entry.id ? (
+            <li aria-current="page"><span class="pn">{String(p.part).padStart(2, '0')}</span><span>{p.title}</span><span class="meta">{p.read_minutes} min</span></li>
+          ) : (
+            <li><span class="pn">{String(p.part).padStart(2, '0')}</span><a href={`/story/${p.slug}`}>{p.title}</a><span class="meta">{p.read_minutes} min</span></li>
+          ))}
+          {morePlanned > 0 && <li class="planned"><span class="pn">··</span><span>{morePlanned === 1 ? 'One more part planned' : `${morePlanned} more parts planned`}</span><span></span></li>}
+        </ol>
+      </section>
+    )}
+    {(prevPart || nextPart) && (
+      <nav class="part-nav" aria-label="Series navigation">
+        {prevPart && <a href={`/story/${prevPart.slug}`} rel="prev"><span class="lbl">← Part {prevPart.part}</span><b>{prevPart.title}</b></a>}
+        {nextPart && <a class="next" href={`/story/${nextPart.slug}`} rel="next"><span class="lbl">Part {nextPart.part} →</span><b>{nextPart.title}</b></a>}
+      </nav>
+    )}
     <AdSlot slot="article" />
   </article>
 </Site>

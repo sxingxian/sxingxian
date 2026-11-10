@@ -54,7 +54,15 @@ export async function runMaintenance(): Promise<void> {
   await attempt('wp-reconcile', async () => {
     if (await wordpressUp()) await reconcile();
   });
-  await attempt('auth-purge', () => purgeAuthData());
+  await attempt('auth-purge', async () => {
+    await purgeAuthData();
+    // "Most read" only looks at 30 days; keep about a year of daily totals and no more.
+    try {
+      await sql()`DELETE FROM item_views WHERE day < current_date - 400`;
+    } catch {
+      // the table arrives with migration 0009
+    }
+  });
 }
 
 let lastLook = 0;

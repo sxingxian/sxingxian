@@ -1,0 +1,20 @@
+---
+// A series card: parts out of planned, title, description, progress bar. Home page and /series.
+import type { PublicSeries } from '../lib/server/series';
+interface Props {
+  series: PublicSeries;
+  reveal?: boolean;
+}
+const { series: s, reveal = false } = Astro.props;
+const total = Math.max(s.planned_parts ?? s.published, s.published);
+const label = total > s.published ? `${s.published} of ${total} parts` : `${s.published} ${s.published === 1 ? 'part' : 'parts'}`;
+const bars = Math.min(total, 24);
+---
+<a class:list={['card', 'series-card', { rv: reveal }]} data-rv={reveal ? 'side' : undefined} href={`/series/${s.slug}`}>
+  <span class="lbl accent">{label}</span>
+  <span class="series-t">{s.title}</span>
+  {s.description && <span class="series-d">{s.description}</span>}
+  <span class="series-bar" role="img" aria-label={label}>
+    {Array.from({ length: bars }, (_, i) => <span class:list={{ on: i < Math.min(s.published, bars) }}></span>)}
+  </span>
+</a>
