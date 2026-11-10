@@ -10,7 +10,7 @@ import { env } from 'cloudflare:workers';
 import { sql } from './db';
 import { getSetting } from './repo';
 import { htmlToText } from './text';
-import { pickImage, topicFor } from './wptopic';
+import { pickImage, safeImageUrl, topicFor } from './wptopic';
 import { normalizeWpBase } from '../shared/safe';
 
 const UA = 'sxingxian-sync/1.0 (+https://sxingxian.com)';
@@ -28,6 +28,8 @@ interface WpPost {
   excerpt?: { rendered?: string };
   content?: { rendered?: string };
   categories?: number[];
+  /** Featured image URL added by the sxingxian sync plugin (1.2+); works even when the image's own REST entry is hidden. */
+  sx_featured_image?: string;
   _embedded?: {
     'wp:featuredmedia'?: { source_url?: string; media_details?: { sizes?: Record<string, { source_url?: string }> } }[];
     'wp:term'?: { id: number; name: string; taxonomy: string }[][];
@@ -72,7 +74,7 @@ async function isSameSite(link: string): Promise<boolean> {
 async function upsert(p: WpPost, autoShow: boolean, categoryMap: Record<string, string>): Promise<'new' | 'updated'> {
   const terms = p._embedded?.['wp:term']?.flat() ?? [];
   const topic = topicFor(terms.filter((t) => t?.taxonomy === 'category').map((t) => t.name), categoryMap);
-  const image = pickImage(p._embedded?.['wp:featuredmedia']?.[0]);
+  const image = safeImageUrl(p.sx_featured_image ?? '') || pickImage(p._embedded?.['wp:featuredmedia']?.[0]);
   const words = htmlToText(p.content?.rendered ?? '').split(/\s+/).filter(Boolean).length;
   const url = (await isSameSite(p.link)) ? p.link : `${await wpBase()}/?p=${p.id}`;
 
@@ -164,24 +166,25 @@ export async function refreshSyncedPosts(reason = 'Topics and images refreshed')
     if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || cats.length === 0) break;
   }
 
-  const posts: { id: number; topic: string; media: number }[] = [];
+  const posts: { id: number; topic: string; media: number; direct: string }[] = [];
   for (let page = 1; page <= 50; page++) {
-    const res = await wpFetch(`/wp/v2/posts?status=publish&per_page=100&page=${page}&_fields=id,categories,featured_media`, 10000);
+    const res = await wpFetch(`/wp/v2/posts?status=publish&per_page=100&page=${page}&_fields=id,categories,featured_media,sx_featured_image`, 10000);
     if (res.status === 400 && page > 1) break;
     if (!res.ok) throw new Error(`posts fetch failed (${res.status})`);
-    const batch = (await res.json()) as { id: number; categories?: number[]; featured_media?: number }[];
+    const batch = (await res.json()) as { id: number; categories?: number[]; featured_media?: number; sx_featured_image?: string }[];
     for (const p of batch) {
       if (!Number.isInteger(p?.id)) continue;
       const cats = (Array.isArray(p.categories) ? p.categories : []).map((id) => names.get(id) ?? '').filter(Boolean);
       const media = Number.isInteger(p.featured_media) && (p.featured_media as number) > 0 ? (p.featured_media as number) : 0;
-      posts.push({ id: p.id, topic: topicFor(cats, categoryMap), media });
+      posts.push({ id: p.id, topic: topicFor(cats, categoryMap), media, direct: media ? safeImageUrl(p.sx_featured_image ?? '') : '' });
     }
     if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || batch.length === 0) break;
   }
 
   // Featured images, 100 at a time. Missing from the answer = unknown (private, deleted): keep ours.
   const images = new Map<number, string>();
-  const mediaIds = [...new Set(posts.map((p) => p.media).filter((m) => m > 0))];
+  // Posts whose address the plugin already gave us don't need a lookup.
+  const mediaIds = [...new Set(posts.filter((p) => !p.direct).map((p) => p.media).filter((m) => m > 0))];
   for (let i = 0; i < mediaIds.length; i += 100) {
     const ids = mediaIds.slice(i, i + 100);
     const res = await wpFetch(`/wp/v2/media?include=${ids.join(',')}&per_page=100&_fields=id,source_url,media_details`, 10000);
@@ -193,7 +196,7 @@ export async function refreshSyncedPosts(reason = 'Topics and images refreshed')
 
   const ids = posts.map((p) => p.id);
   const topics = posts.map((p) => p.topic);
-  const imgs = posts.map((p) => (p.media === 0 ? '' : images.has(p.media) ? (images.get(p.media) as string) : null));
+  const imgs = posts.map((p) => (p.media === 0 ? '' : p.direct || (images.has(p.media) ? (images.get(p.media) as string) : null)));
   const rows = ids.length
     ? await sql().query(
         `UPDATE external_posts e

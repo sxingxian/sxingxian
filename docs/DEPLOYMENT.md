@@ -88,7 +88,7 @@ To send `www.sxingxian.com` to the bare domain: add a proxied `CNAME www → sxi
    define( 'SXINGXIAN_WEBHOOK_URL', 'https://sxingxian.com/api/hooks/wordpress' );
    define( 'SXINGXIAN_WEBHOOK_SECRET', 'the-same-64-character-secret' );
    ```
-3. **Updating the plugin** (e.g. to 1.1.0, which waits for featured images and categories to be saved before notifying): in WordPress, **Plugins → Add New → Upload Plugin**, choose a zip of the `sxingxian-sync` folder and confirm **Replace current with uploaded**. Or overwrite the folder in `wp-content/plugins/` over SFTP. `wp-config.php` stays as it is. Needs WordPress 5.6 or later.
+3. **Updating the plugin** (1.2.0: waits for featured images and categories to be saved before notifying, and adds the featured image address to each post's public data so images attached to another, unpublished post still show): in WordPress, **Plugins → Add New → Upload Plugin**, choose a zip of the `sxingxian-sync` folder and confirm **Replace current with uploaded**. Or overwrite the folder in `wp-content/plugins/` over SFTP. `wp-config.php` stays as it is. Needs WordPress 5.6 or later.
 4. **Featured images and categories** also refresh from **Admin → WordPress → Sync now** and every night, so a missed change (or one made before the plugin update) corrects itself.
 5. If `hey.sxingxian.com` is proxied by Cloudflare with Bot Fight Mode, Super Bot Fight Mode or a WAF challenge, add a WAF **skip** rule for the path `/wp-json/` so the Worker's sync isn't challenged.
 
