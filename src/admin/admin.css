@@ -574,3 +574,30 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .tp-pop { width: min(300px, calc(100vw - 32px)); left: auto; right: 0; }
   .tp-opt { min-height: 44px; }
 }
+
+/* text-styled button (series titles, "Create one") */
+.linklike { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-align: left; }
+.list-row .title.linklike { color: var(--ink); }
+.list-row .title.linklike:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* footer link: label, URL, "New tab", remove */
+.input-row.link-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto; }
+.link-row .new-tab { font-size: 13px; white-space: nowrap; gap: 6px; min-height: 36px; }
+
+/* Settings → Home → Featured stories */
+.feat-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-2); }
+.feat-row { flex-wrap: nowrap; }
+.feat-row[draggable='true'] { cursor: grab; }
+.feat-row.dragging { opacity: .5; }
+.feat-grip { color: var(--faint); font-size: 16px; width: 14px; }
+.feat-n { font: 12px var(--mono, ui-monospace, monospace); color: var(--faint); width: 16px; text-align: right; }
+.feat-row .meta { display: block; }
+.feat-row .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feat-add { padding: 12px 20px 16px; border-top: 1px solid var(--line-2); }
+.feat-add .select { max-width: 100%; }
+@media (max-width: 760px) {
+  .input-row.link-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .input-row.link-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  .feat-add { padding: 12px 16px 16px; }
+  .feat-grip { display: none; }
+}

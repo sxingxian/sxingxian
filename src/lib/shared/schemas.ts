@@ -2,7 +2,7 @@
 // The admin uses the same schemas for instant feedback, but the server is the
 // authority — client-side checks are a convenience, not a control.
 import { z } from 'zod';
-import { MAX_ENTRY_TOPICS, MAX_LIST_TOPICS, MAX_TOPIC_LEN } from './types';
+import { MAX_ENTRY_TOPICS, MAX_FEATURED, MAX_LIST_TOPICS, MAX_SERIES_PART, MAX_TOPIC_LEN } from './types';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref, SLUG_RE, UUID_RE } from './safe';
 
 const MAX_DOC_BYTES = 1_000_000;
@@ -76,16 +76,17 @@ export const settingsSchemas = {
     cv: z.boolean(),
     about: z.boolean(),
   }),
-  featured: z
-    .object({ mode: z.enum(['latest', 'manual']), entryId: z.string().regex(UUID_RE).nullable() })
-    .refine((v) => v.mode === 'latest' || v.entryId !== null, 'Pick a post to feature'),
+  featured: z.object({
+    entryIds: z.array(z.string().regex(UUID_RE)).max(MAX_FEATURED, `Up to ${MAX_FEATURED} featured stories`).transform((ids) => [...new Set(ids)]),
+    order: z.enum(['date', 'custom']).default('date'),
+  }),
   footer: z.object({
     about: z.string().max(160),
     columns: z
       .array(
         z.object({
           heading: z.string().max(30),
-          links: z.array(z.object({ label: z.string().trim().min(1).max(40), url: safeUrl })).max(8),
+          links: z.array(z.object({ label: z.string().trim().min(1).max(40), url: safeUrl, newTab: z.boolean().optional() })).max(8),
         }),
       )
       .max(3),
@@ -106,6 +107,28 @@ export const mediaMetaSchema = z.object({
   alt: z.string().max(300).default(''),
   width: z.coerce.number().int().positive().max(20000).optional(),
   height: z.coerce.number().int().positive().max(20000).optional(),
+});
+
+// ------------------------------------------------------------- series
+
+export const seriesInputSchema = z.object({
+  title: z.string().trim().min(1, 'Add a title').max(120),
+  slug: z.string().max(80, { abort: true }).regex(SLUG_RE, 'Use lowercase letters, numbers and dashes'),
+  description: z.string().trim().max(300).default(''),
+  planned_parts: z.number().int().min(1).max(MAX_SERIES_PART).nullable().default(null),
+  is_public: z.boolean().default(true),
+});
+export type SeriesInput = z.infer<typeof seriesInputSchema>;
+
+/** Put a story in a series (or take it out with seriesId null). */
+export const entrySeriesSchema = z.object({
+  seriesId: z.string().regex(UUID_RE).nullable(),
+  part: z.number().int().min(1).max(MAX_SERIES_PART).nullable().default(null),
+});
+
+/** A read counted by the public site: n:<story id> or w:<WordPress post id>. */
+export const viewInputSchema = z.object({
+  item: z.string().max(40).regex(/^(n:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|w:[1-9][0-9]{0,11})$/),
 });
 
 export const embedInputSchema = z.object({ url: z.string().max(300), alt: z.string().max(300).default('') });

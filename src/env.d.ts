@@ -11,6 +11,7 @@ interface SxEnv {
   MEDIA: R2Bucket;
   WEBHOOK_LIMITER?: RateLimit;
   LOGIN_LIMITER?: RateLimit;
+  VIEW_LIMITER?: RateLimit;
 
   // vars (non-secret)
   SITE_URL: string;

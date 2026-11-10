@@ -14,6 +14,7 @@ import MediaLibrary from './views/MediaLibrary';
 import WordPress from './views/WordPress';
 import Account from './views/Account';
 import Users from './views/Users';
+import SeriesList from './views/SeriesList';
 import type { EntryKind } from '../lib/shared/types';
 
 interface Me {
@@ -23,7 +24,7 @@ interface Me {
 
 const LIST_ROUTES: Record<string, EntryKind> = { stories: 'post', journal: 'post', work: 'project', photos: 'gallery', film: 'film' };
 const KINDS = new Set<EntryKind>(['post', 'project', 'gallery', 'film']);
-const MORE_SECTIONS = new Set(['photos', 'film', 'pages', 'wordpress', 'account', 'users']);
+const MORE_SECTIONS = new Set(['series', 'photos', 'film', 'pages', 'wordpress', 'account', 'users']);
 
 const svg = (d: ReactNode) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">{d}</svg>
@@ -114,6 +115,8 @@ export default function App() {
     view = <Users meId={me.user.id} />;
   } else if (section in LIST_ROUTES) {
     view = <EntryList key={section} kind={LIST_ROUTES[section]} go={go} />;
+  } else if (section === 'series') {
+    view = <SeriesList />;
   } else if (section === 'edit') {
     const id = parts[1] && parts[1] !== 'new' ? parts[1] : null;
     const k = url.searchParams.get('kind') as EntryKind | null;
@@ -149,6 +152,7 @@ export default function App() {
           <nav aria-label="Admin">
             <span className="group">Content</span>
             {link('/admin/stories', 'Stories', 'stories')}
+            {link('/admin/series', 'Series', 'series')}
             {link('/admin/work', 'Work', 'work')}
             {link('/admin/photos', 'Photos', 'photos')}
             {link('/admin/film', 'Film', 'film')}
@@ -186,7 +190,7 @@ export default function App() {
             <div className="sheet-panel" role="dialog" aria-modal="true" aria-label="More">
               <span className="grip" aria-hidden="true" />
               <div className="sheet-list">
-                {[['/admin/photos', 'Photos', 'photos'], ['/admin/film', 'Film', 'film'], ['/admin/pages/cv', 'CV', 'cv'], ['/admin/pages/about', 'About', 'about'], ['/admin/pages/privacy', 'Privacy', 'privacy'],
+                {[['/admin/series', 'Series', 'series'], ['/admin/photos', 'Photos', 'photos'], ['/admin/film', 'Film', 'film'], ['/admin/pages/cv', 'CV', 'cv'], ['/admin/pages/about', 'About', 'about'], ['/admin/pages/privacy', 'Privacy', 'privacy'],
                   ['/admin/wordpress', 'WordPress', 'wordpress'], ['/admin/account', 'Account', 'account'], ...(me?.user.role === 'owner' ? [['/admin/users', 'Users', 'users']] : [])]
                   .map(([to, label, key]) => (
                     <a key={to} href={to} aria-current={section === key || (section === 'pages' && parts[1] === key) ? 'page' : undefined}

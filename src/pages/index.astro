@@ -3,43 +3,78 @@ import Site from '../layouts/Site.astro';
 import PostRow from '../components/PostRow.astro';
 import Thumb from '../components/Thumb.astro';
 import AdSlot from '../components/AdSlot.astro';
-import { getFeatured, getFeed } from '../lib/server/site';
+import SeriesCard from '../components/SeriesCard.astro';
+import { getFeaturedList, getFeed, mostRead } from '../lib/server/site';
+import { listPublicSeries } from '../lib/server/series';
 import { getSettings, listPublicEntries } from '../lib/server/repo';
 import { formatDate } from '../lib/server/text';
-import { topicLabel } from '../lib/shared/types';
+import { FEATURED_INTERVAL_S, topicLabel } from '../lib/shared/types';
 
 const { site, sections } = await getSettings(['site', 'sections']);
 const rawTopic = Astro.url.searchParams.get('topic') ?? '';
 const topic = site.topics.includes(rawTopic) ? rawTopic : '';
 
-const featured = topic ? null : await getFeatured();
-const [feed, work, galleries, films] = await Promise.all([
-  getFeed({ topic, limit: 10, excludeId: featured?.id }),
+// Featured stories stay at the top whichever topic is picked. "All" leaves them out of Latest
+// (they're right above); a topic list shows every story in that topic.
+const featured = await getFeaturedList();
+const [feed, work, galleries, films, popular, series] = await Promise.all([
+  getFeed({ topic, limit: 10, excludeIds: topic ? [] : featured.map((f) => f.id) }),
   sections.work ? listPublicEntries('project', { limit: 3 }) : Promise.resolve([]),
   sections.photos ? listPublicEntries('gallery', { limit: 6 }) : Promise.resolve([]),
   sections.film ? listPublicEntries('film', { limit: 1 }) : Promise.resolve([]),
+  mostRead(5),
+  listPublicSeries(3),
 ]);
 const latestFilm = films[0];
-const words = featured ? featured.title.trim().split(/\s+/) : [];
-const coverName = featured && featured.cover_media_id ? `view-transition-name:c-${featured.id.replace(/[^a-zA-Z0-9-]/g, '')}` : undefined;
+const many = featured.length > 1;
+const vt = (id: string) => `view-transition-name:c-${id.replace(/[^a-zA-Z0-9-]/g, '')}`;
+// 1–2 galleries fill the card instead of leaving empty cells: one wide photo, or two squares.
+const photoCols = Math.min(galleries.length, 3);
+const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.topics.length ? topicLabel(latestFilm.topics) : ''].filter(Boolean).join(' · ') : '';
 ---
 <Site motion intro={!topic}>
-  {featured && (
-    <section class="wrap">
-      <article class="featured">
-        <a class="cover rv-cover" data-rv="fcover" href={`/story/${featured.slug}`} tabindex="-1" aria-hidden="true" style={coverName}>
-          <span class="par"><Thumb image={featured.cover_media_id ? { kind: 'media', id: featured.cover_media_id } : null} eager /></span>
-        </a>
-        <div class="stack">
-          <span class="row-meta rv" data-rv="fmeta">
-            <span class="lbl accent">Featured{featured.topics.length ? ` · ${topicLabel(featured.topics)}` : ''}</span>
-            <span class="meta">{formatDate(featured.published_at)} · {featured.read_minutes} min</span>
-          </span>
-          <h1 class="title rv" data-rv="ftitle"><a href={`/story/${featured.slug}`}>{words.map((w, i) => (<><span class={`w w${Math.min(i + 1, 14)}`}><span>{w}</span></span>{i < words.length - 1 ? ' ' : ''}</>))}</a></h1>
-          {featured.dek && <p class="rv" data-rv="fdek">{featured.dek}</p>}
-          <a class="read rv" data-rv="fread" href={`/story/${featured.slug}`}>Read <span class="arrow" aria-hidden="true">→</span></a>
+  {featured.length > 0 && (
+    <section class="wrap feat" aria-roledescription={many ? 'carousel' : undefined} aria-label={many ? 'Featured stories' : undefined} data-carousel={many ? '' : undefined} style={`--feat-ms:${FEATURED_INTERVAL_S * 1000}ms`}>
+      <div class="feat-track" aria-live={many ? 'off' : undefined}>
+        {featured.map((f, i) => {
+          const first = i === 0;
+          const words = first ? f.title.trim().split(/\s+/) : [];
+          const Title = first ? 'h1' : 'h2';
+          return (
+            <article class="featured feat-slide" role={many ? 'group' : undefined} aria-roledescription={many ? 'slide' : undefined} aria-label={many ? `${i + 1} of ${featured.length}` : undefined}>
+              <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
+                <span class="par"><Thumb image={f.cover_media_id ? { kind: 'media', id: f.cover_media_id } : null} eager={first} /></span>
+              </a>
+              <div class="stack">
+                <span class:list={['row-meta', { rv: first }]} data-rv={first ? 'fmeta' : undefined}>
+                  <span class="lbl accent">Featured{f.topics.length ? ` · ${topicLabel(f.topics)}` : ''}</span>
+                  <span class="meta">{formatDate(f.published_at)} · {f.read_minutes} min</span>
+                </span>
+                <Title class:list={['feat-title', { title: first, rv: first }]} data-rv={first ? 'ftitle' : undefined}>
+                  <a href={`/story/${f.slug}`}>{first ? words.map((w, k) => (<><span class={`w w${Math.min(k + 1, 14)}`}><span>{w}</span></span>{k < words.length - 1 ? ' ' : ''}</>)) : f.title}</a>
+                </Title>
+                {f.dek && <p class:list={{ rv: first }} data-rv={first ? 'fdek' : undefined}>{f.dek}</p>}
+                <a class:list={['read', { rv: first }]} data-rv={first ? 'fread' : undefined} href={`/story/${f.slug}`}>Read <span class="arrow" aria-hidden="true">→</span><span class="sr-only">: {f.title}</span></a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {many && (
+        <div class="feat-bar">
+          <span></span>
+          <div class="feat-ctl">
+            <button type="button" class="feat-btn" data-feat="prev" aria-label="Previous featured story"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <button type="button" class="feat-btn" data-feat="next" aria-label="Next featured story"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <button type="button" class="feat-btn" data-feat="pause" aria-label="Pause featured stories">
+              <svg class="i-pause" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              <svg class="i-play" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5L19 12L8 18.5Z"/></svg>
+            </button>
+            <span class="feat-segs" aria-hidden="true">{featured.map(() => <span class="feat-seg"><i></i></span>)}</span>
+            <span class="feat-count meta" aria-hidden="true">1 / {featured.length}</span>
+          </div>
         </div>
-      </article>
+      )}
     </section>
   )}
 
@@ -67,18 +102,18 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
 
     <aside class="side" aria-label="More from sxingxian">
       <div class="card rv" data-rv="side">
-        <span class="lbl">Follow along</span>
-        <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Every story, from here and from hey.sxingxian.com, in one feed for your reader.</p>
+        <div class="card-head"><span class="lbl">Follow along</span></div>
+        <p class="card-text">Every story, from here and from hey.sxingxian.com, in one feed for your reader.</p>
         <div class="rss-url"><code>sxingxian.com/rss.xml</code><a href="/rss.xml">Open</a></div>
       </div>
 
       {sections.work && work.length > 0 && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All <span class="arrow" aria-hidden="true">→</span></a></div>
+          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All work <span class="arrow" aria-hidden="true">→</span></a></div>
           {work.map((w) => (
             <a class="mini" href={`/work/${w.slug}`}>
               <span class="th"><Thumb image={w.cover_media_id ? { kind: 'media', id: w.cover_media_id } : null} /></span>
-              <span><b>{w.title}</b><span>{w.dek}</span></span>
+              <span class="mini-text"><b>{w.title}</b>{w.dek && <span>{w.dek}</span>}</span>
             </a>
           ))}
         </div>
@@ -86,8 +121,8 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
 
       {sections.photos && galleries.length > 0 && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">Galleries <span class="arrow" aria-hidden="true">→</span></a></div>
-          <div class="photo-grid">
+          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">All photos <span class="arrow" aria-hidden="true">→</span></a></div>
+          <div class={`photo-grid pg-${photoCols}`}>
             {galleries.map((g) => (
               <a href={`/photos/${g.slug}`} aria-label={g.title}>
                 <Thumb image={g.cover_media_id ? { kind: 'media', id: g.cover_media_id } : null} alt={g.title} />
@@ -98,13 +133,36 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
       )}
 
       {sections.film && latestFilm && (
-        <a class="card mini rv" data-rv="side" style="border-top:1px solid var(--line);align-items:center" href={`/film/${latestFilm.slug}`}>
-          <span class="th" style="width:92px;height:58px"><Thumb image={latestFilm.cover_media_id ? { kind: 'media', id: latestFilm.cover_media_id } : null} /></span>
-          <span><span class="lbl">Latest film</span><b>{latestFilm.title}</b></span>
-        </a>
+        <div class="card rv" data-rv="side">
+          <div class="card-head"><span class="lbl">Latest film</span><a href="/film">All films <span class="arrow" aria-hidden="true">→</span></a></div>
+          <a class="mini" href={`/film/${latestFilm.slug}`}>
+            <span class="th play"><Thumb image={latestFilm.cover_media_id ? { kind: 'media', id: latestFilm.cover_media_id } : null} /><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5L19 12L8 18.5Z" fill="#fff"/></svg></span>
+            <span class="mini-text"><b>{latestFilm.title}</b>{filmMeta && <span>{filmMeta}</span>}</span>
+          </a>
+        </div>
+      )}
+
+      {popular.length > 0 && (
+        <div class="card rv" data-rv="side">
+          <div class="card-head"><span class="lbl">Most read</span><span class="meta">30 days</span></div>
+          <ol class="ranked">
+            {popular.map((p, i) => (
+              <li><span class="n" aria-hidden="true">{i + 1}</span><a href={p.url} rel={p.external ? 'noopener' : undefined} data-view={p.external ? p.key : undefined}>{p.title}{p.external && <><span aria-hidden="true"> ↗</span><span class="sr-only"> (on hey.sxingxian.com)</span></>}</a></li>
+            ))}
+          </ol>
+        </div>
       )}
     </aside>
   </section>
+
+  {series.length > 0 && (
+    <section class="wrap series-sec">
+      <div class="sec-head rv" data-rv="shead"><h2>Series</h2><a href="/series">All series <span class="arrow" aria-hidden="true">→</span></a></div>
+      <div class="series-grid">
+        {series.map((s) => <SeriesCard series={s} reveal />)}
+      </div>
+    </section>
+  )}
 
   <!-- Reveal-on-view. html.motion (set in <head>) hides [data-rv] until this marks them seen.
        First visit in a session: a staggered load sequence (after the intro curtain, if shown).
@@ -158,5 +216,72 @@ const coverName = featured && featured.cover_media_id ? `view-transition-name:c-
     }
     d.setAttribute('data-rv-ready', '');
   })();
+  </script>
+  <script is:inline>
+    // Featured carousel: scroll-snap track (swipe, trackpad and keyboard scrolling work without this script).
+    // Advances when the current progress bar finishes (CSS animation, --feat-ms). Pauses on hover, keyboard
+    // focus, the pause button and when the tab is hidden; never advances by itself with reduced motion.
+    (function () {
+      var root = document.querySelector('[data-carousel]');
+      if (!root) return;
+      var track = root.querySelector('.feat-track');
+      var slides = Array.prototype.slice.call(track.children);
+      var segs = Array.prototype.slice.call(root.querySelectorAll('.feat-seg'));
+      var count = root.querySelector('.feat-count');
+      var pauseBtn = root.querySelector('[data-feat="pause"]');
+      var n = slides.length, cur = 0, scrollT = 0;
+      var userPaused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var hold = { hover: false, focus: false, hidden: document.hidden };
+      root.classList.add('is-live');
+
+      function paused() { return userPaused || hold.hover || hold.focus || hold.hidden; }
+      function sync() {
+        root.classList.toggle('is-paused', paused());
+        root.classList.toggle('user-paused', userPaused);
+        pauseBtn.setAttribute('aria-label', userPaused ? 'Play featured stories' : 'Pause featured stories');
+        track.setAttribute('aria-live', paused() ? 'polite' : 'off');
+      }
+      function mark(i) {
+        cur = i;
+        segs.forEach(function (s, k) {
+          s.classList.toggle('done', k < i);
+          s.classList.remove('on');
+        });
+        void segs[i].offsetWidth; // restart the fill animation
+        segs[i].classList.add('on');
+        count.textContent = (i + 1) + ' / ' + n;
+      }
+      function go(i, instant) {
+        i = (i + n) % n;
+        mark(i);
+        track.scrollTo({ left: slides[i].offsetLeft, behavior: instant || userPaused ? 'auto' : 'smooth' });
+      }
+      segs.forEach(function (s, k) {
+        s.firstChild.addEventListener('animationend', function () { if (k === cur && !paused()) go(cur + 1); });
+      });
+      // A swipe or trackpad scroll picks the slide it settles on.
+      track.addEventListener('scroll', function () {
+        clearTimeout(scrollT);
+        scrollT = setTimeout(function () {
+          var i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+          if (i !== cur && i >= 0 && i < n) mark(i);
+        }, 120);
+      }, { passive: true });
+      root.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('[data-feat]');
+        if (!b) return;
+        var a = b.getAttribute('data-feat');
+        if (a === 'prev') go(cur - 1);
+        else if (a === 'next') go(cur + 1);
+        else { userPaused = !userPaused; sync(); }
+      });
+      root.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { hold.hover = true; sync(); } });
+      root.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { hold.hover = false; sync(); } });
+      root.addEventListener('focusin', function () { hold.focus = true; sync(); });
+      root.addEventListener('focusout', function (e) { if (!root.contains(e.relatedTarget)) { hold.focus = false; sync(); } });
+      document.addEventListener('visibilitychange', function () { hold.hidden = document.hidden; sync(); });
+      sync();
+      mark(0);
+    })();
   </script>
 </Site>

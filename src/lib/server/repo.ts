@@ -46,7 +46,7 @@ export async function putSetting<K extends SettingKey>(key: K, value: SettingsMa
 // ---------------- entries ----------------
 
 // topics falls back to [topic] for a row written by the previous release after the migration ran.
-const TOPICS_COL = `CASE WHEN cardinality(topics) = 0 AND topic <> '' THEN ARRAY[topic] ELSE topics END AS topics`;
+export const TOPICS_COL = `CASE WHEN cardinality(topics) = 0 AND topic <> '' THEN ARRAY[topic] ELSE topics END AS topics`;
 const ENTRY_COLS = `id, kind, title, slug, dek, topic, ${TOPICS_COL}, body, cover_media_id, video_url, meta, read_minutes,
   status, is_public, published_at, created_at, updated_at`;
 
@@ -63,6 +63,20 @@ async function readEntries(text: string, params: unknown[]): Promise<unknown[]> 
   } catch (e) {
     if (!isMissingTopics(e)) throw e;
     return sql().query(text.replaceAll(TOPICS_COL, LEGACY_TOPICS_COL).replace('$2 = ANY(topics) OR ', ''), params);
+  }
+}
+
+/**
+ * Public-read helper for other server modules: runs a query that may use TOPICS_COL / `ANY(topics)`
+ * (and the literal ENTRY_COLS) with the same pre-0007 fallback as the reads above.
+ */
+export async function queryEntries(text: string, params: unknown[]): Promise<unknown[]> {
+  const q = text.replaceAll('ENTRY_COLS', ENTRY_COLS);
+  try {
+    return await sql().query(q, params);
+  } catch (e) {
+    if (!isMissingTopics(e)) throw e;
+    return sql().query(q.replaceAll(TOPICS_COL, LEGACY_TOPICS_COL).replaceAll('$1 = ANY(topics) OR ', ''), params);
   }
 }
 

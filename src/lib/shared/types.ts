@@ -85,14 +85,36 @@ export interface SectionsSetting {
   about: boolean;
 }
 
+/**
+ * Featured stories: the rotating stories at the top of the home page.
+ * entryIds = chosen stories (none = the latest story). order 'date' = newest first, 'custom' = the order in entryIds.
+ * mode/entryId are the previous release's shape: still read (an old saved value becomes entryIds = [entryId])
+ * and still written, so rolling back keeps the first featured story.
+ */
 export interface FeaturedSetting {
-  mode: 'latest' | 'manual';
-  entryId: string | null;
+  entryIds: string[];
+  order: 'date' | 'custom';
+  mode?: 'latest' | 'manual';
+  entryId?: string | null;
+}
+
+export const MAX_FEATURED = 8;
+/** Seconds between featured stories on the home page. */
+export const FEATURED_INTERVAL_S = 8;
+
+/** The chosen featured story ids, from the current or the previous release's setting. */
+export function featuredIds(f: Partial<FeaturedSetting> | null | undefined): string[] {
+  if (!f) return [];
+  if (Array.isArray(f.entryIds) && f.entryIds.length) return [...new Set(f.entryIds.filter((x) => typeof x === 'string'))].slice(0, MAX_FEATURED);
+  if (f.mode === 'manual' && typeof f.entryId === 'string') return [f.entryId];
+  return [];
 }
 
 export interface FooterLink {
   label: string;
   url: string;
+  /** Open in a new tab (target=_blank, rel=noopener noreferrer). */
+  newTab?: boolean;
 }
 export interface FooterSetting {
   about: string;
@@ -211,7 +233,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   },
   topics: { work: [], photos: [], film: [] },
   sections: { work: true, photos: true, film: true, cv: true, about: true },
-  featured: { mode: 'latest', entryId: null },
+  featured: { entryIds: [], order: 'date' },
   footer: {
     about: 'Engineer and photographer in Singapore, writing about building things and noticing things.',
     columns: [
@@ -255,3 +277,25 @@ export const KIND_PATH: Record<EntryKind, string> = {
   gallery: '/photos',
   film: '/film',
 };
+
+// ---------- series ----------
+
+export interface Series {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  /** How many parts are planned (optional). Drives the progress bar. */
+  planned_parts: number | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Admin list row: a series plus how many of its stories are published / drafts. */
+export interface SeriesAdminRow extends Series {
+  published: number;
+  drafts: number;
+}
+
+export const MAX_SERIES_PART = 99;

@@ -8,7 +8,8 @@ import { useToast } from '../components/ui';
 import { Field, Segmented, ToggleRow, TopBar } from '../components/kit';
 import { KIND_SECTION } from '../nav';
 import { slugify } from '../../lib/shared/safe';
-import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryKind, type FeaturedSetting, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
+import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
+import SeriesField from '../components/SeriesField';
 import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
@@ -124,11 +125,14 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 
   const setFeature = async (on: boolean) => {
     if (!entryId) return toast('Save the post first');
-    const value: FeaturedSetting = on ? { mode: 'manual', entryId } : { mode: 'latest', entryId: null };
     try {
-      const r = await api.put<{ value: FeaturedSetting }>('/api/admin/settings/featured', value);
+      // Re-read so stories featured elsewhere since this editor opened are kept.
+      const cur = (await api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured')).value;
+      const ids = featuredIds(cur).filter((x) => x !== entryId);
+      if (on && ids.length >= MAX_FEATURED) { toast(`Up to ${MAX_FEATURED} featured stories: remove one in Settings → Home`); return; }
+      const r = await api.put<{ value: FeaturedSetting }>('/api/admin/settings/featured', { entryIds: on ? [...ids, entryId] : ids, order: cur.order === 'custom' ? 'custom' : 'date' });
       setFeatured(r.value);
-      toast(on ? 'Featured on the home page' : 'Home page shows the latest post');
+      toast(on ? 'Featured on the home page' : 'No longer featured');
     } catch (e) {
       toast(errorText(e));
     }
@@ -137,7 +141,8 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   if (err && !draft) return <div className="page"><p className="err-text">{err}</p></div>;
   if (!draft) return <div className="page"><p className="hint">Loading…</p></div>;
 
-  const isFeatured = featured?.mode === 'manual' && featured.entryId === entryId;
+  const featIds = featuredIds(featured);
+  const isFeatured = !!entryId && featIds.includes(entryId);
   const liveUrl = `${KIND_PATH[draft.kind]}/${draft.slug}`;
 
   return (
@@ -192,9 +197,10 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <div className="side-toggles">
             <ToggleRow label="Show publicly" hint={draft.is_public && draft.status === 'draft' ? 'Live once published' : undefined} checked={draft.is_public} onChange={(v) => patchNow({ is_public: v })} />
             {draft.kind === 'post' && (
-              <ToggleRow label="Feature on home page" hint={isFeatured ? 'Pinned on the home page' : undefined} checked={isFeatured} onChange={(v) => void setFeature(v)} />
+              <ToggleRow label="Feature on home page" hint={isFeatured ? `Featured · ${featIds.indexOf(entryId!) + 1} of ${featIds.length}` : undefined} checked={isFeatured} onChange={(v) => void setFeature(v)} />
             )}
           </div>
+          {draft.kind === 'post' && <SeriesField entryId={entryId} onManage={() => go('/admin/series')} />}
           <Field label="Publish date" hint="Future date = scheduled.">
             <DateTimePicker value={draft.published_at} onChange={(iso) => patch({ published_at: iso })} />
           </Field>

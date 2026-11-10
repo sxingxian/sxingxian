@@ -27,7 +27,9 @@ await build({
                export { cleanTopics, topicLabel } from './src/lib/shared/types.ts';
                export { entryInputSchema } from './src/lib/shared/schemas.ts';
                export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';
-               export { topicFor, pickImage, safeImageUrl } from './src/lib/server/wptopic.ts';`,
+               export { topicFor, pickImage, safeImageUrl } from './src/lib/server/wptopic.ts';
+               export { seriesInputSchema, entrySeriesSchema, viewInputSchema } from './src/lib/shared/schemas.ts';
+               export { featuredIds } from './src/lib/shared/types.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -43,7 +45,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -483,6 +485,47 @@ t('WordPress featured image: best size, https only', () => {
   assert.equal(safeImageUrl('https://user:pw@hey.example.com/a.jpg'), '');
   assert.equal(safeImageUrl('//hey.example.com/a.jpg'), '');
   assert.equal(safeImageUrl('https://hey.example.com/a b.jpg'), 'https://hey.example.com/a%20b.jpg');
+});
+
+t('featured stories: ids only, at most 8, old setting still read', () => {
+  const f = settingsSchemas.featured;
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  assert.deepEqual(f.parse({ entryIds: [id(1), id(1), id(2)], order: 'custom' }).entryIds, [id(1), id(2)]); // de-duplicated
+  assert.equal(f.safeParse({ entryIds: ['../etc/passwd'], order: 'date' }).success, false);
+  assert.equal(f.safeParse({ entryIds: Array.from({ length: 9 }, (_, i) => id(i)), order: 'date' }).success, false);
+  assert.equal(f.safeParse({ entryIds: [], order: 'random' }).success, false);
+  assert.deepEqual(featuredIds({ mode: 'manual', entryId: id(5) }), [id(5)]); // previous release's value
+  assert.deepEqual(featuredIds({ mode: 'latest', entryId: null }), []);
+  assert.deepEqual(featuredIds({ entryIds: [id(1), 7, id(1)] }), [id(1)]);
+});
+
+t('footer links: "new tab" is a plain flag, URLs still allow-listed', () => {
+  const footer = (link) => ({ about: '', columns: [{ heading: 'x', links: [link] }], bottomLine: '', showRss: true, showBuiltOn: false });
+  assert.equal(settingsSchemas.footer.safeParse(footer({ label: 'A', url: 'https://a.example', newTab: true })).success, true);
+  assert.equal(settingsSchemas.footer.safeParse(footer({ label: 'A', url: 'https://a.example', newTab: 'yes"><script>' })).success, false);
+  assert.equal(settingsSchemas.footer.safeParse(footer({ label: 'A', url: 'javascript:alert(1)', newTab: true })).success, false);
+});
+
+t('series: address, text and part numbers bounded', () => {
+  const ok = { title: 'Building', slug: 'building-sxingxian', description: '', planned_parts: 5, is_public: true };
+  assert.equal(seriesInputSchema.safeParse(ok).success, true);
+  for (const slug of ['Bad Slug', '../x', 'a--b', '-a', 'a'.repeat(81), '<b>']) assert.equal(seriesInputSchema.safeParse({ ...ok, slug }).success, false, slug);
+  assert.equal(seriesInputSchema.safeParse({ ...ok, planned_parts: 0 }).success, false);
+  assert.equal(seriesInputSchema.safeParse({ ...ok, planned_parts: 100 }).success, false);
+  assert.equal(seriesInputSchema.safeParse({ ...ok, planned_parts: 2.5 }).success, false);
+  assert.equal(seriesInputSchema.safeParse({ ...ok, title: '   ' }).success, false);
+  assert.equal(seriesInputSchema.safeParse({ ...ok, description: 'x'.repeat(301) }).success, false);
+  assert.equal(entrySeriesSchema.safeParse({ seriesId: 'not-a-uuid', part: 1 }).success, false);
+  assert.equal(entrySeriesSchema.safeParse({ seriesId: null }).success, true);
+  assert.equal(entrySeriesSchema.safeParse({ seriesId: '00000000-0000-4000-8000-000000000001', part: 100 }).success, false);
+});
+
+t('read counts: only a story id or a WordPress post number is accepted', () => {
+  const ok = (item) => viewInputSchema.safeParse({ item }).success;
+  assert.equal(ok('n:0d038776-413a-41e2-9840-e86da034c682'), true);
+  assert.equal(ok('w:9001'), true);
+  for (const bad of ['n:x', "n:0d038776-413a-41e2-9840-e86da034c682' OR 1=1", 'w:0', 'w:-1', 'w:1e5', 'w:' + '9'.repeat(13), 'x:1', '', 'N:0D038776-413A-41E2-9840-E86DA034C682'])
+    assert.equal(ok(bad), false, bad);
 });
 
 console.log(`\n${passed} security tests passed.`);
