@@ -31,9 +31,17 @@ export const POST: APIRoute = async ({ request }) => {
   if (!body.ok) return body.res;
   const a = body.data;
   switch (a.action) {
-    case 'sync':
+    case 'sync': {
+      // Pull recent changes, then re-apply the category → topic mapping to every synced post,
+      // so posts synced before a mapping change pick it up too.
       await syncIncremental('Manual sync');
-      break;
+      try {
+        const { updated } = await remapTopics();
+        return json({ ok: true, remapped: updated });
+      } catch {
+        return json({ ok: true, remapped: null });
+      }
+    }
     case 'reconcile':
       await reconcile();
       break;

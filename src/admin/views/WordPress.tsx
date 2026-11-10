@@ -45,8 +45,13 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
   const run = async (action: 'sync' | 'check' | 'reconcile') => {
     setBusy(action);
     try {
-      await api.post('/api/admin/wordpress', { action });
-      toast(action === 'sync' ? 'Synced' : action === 'check' ? 'Checked' : 'Full check done');
+      const r = await api.post<{ remapped?: number | null }>('/api/admin/wordpress', { action });
+      if (action === 'sync') {
+        const n = r.remapped;
+        toast(n == null ? 'Synced · couldn’t re-apply the mapping' : n ? `Synced · topics updated on ${n} post${n === 1 ? '' : 's'}` : 'Synced · topics match the mapping');
+      } else {
+        toast(action === 'check' ? 'Checked' : 'Full check done');
+      }
       load();
     } catch (e) {
       toast(errorText(e));
@@ -176,7 +181,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
           <ToggleRow label="Hide while down" hint="2 failed checks hide, 2 good ones show" checked={rules.hideWhenDown} onChange={(v) => saveRules({ ...rules, hideWhenDown: v })} />
           <ToggleRow label="Show new posts automatically" hint="Otherwise switch each one on below" checked={rules.autoShow} onChange={(v) => saveRules({ ...rules, autoShow: v })} />
           <ToggleRow label="Include in RSS" checked={rules.includeInRss} onChange={(v) => saveRules({ ...rules, includeInRss: v })} />
-          <Row label="Category → topic" hint="WordPress category to story topic">
+          <Row label="Category → topic" hint="Applies to all synced posts when saved and on Sync now">
             {map.map(([k, v], i) => (
               <div key={i} className="input-row">
                 <input className="input" aria-label="WordPress category" placeholder="WordPress category" value={k} onChange={(e) => setMap(map.map((m, j) => (j === i ? [e.target.value, m[1]] : m)))} />
