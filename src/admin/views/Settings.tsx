@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImage } from '../watermark';
 import { logoActive, watermarkHasContent } from '../../lib/shared/watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
+import FeaturedEditor from '../components/FeaturedEditor';
 import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
@@ -47,7 +48,7 @@ function HomeSettings() {
   useEffect(() => {
     api.get<{ value: SectionsSetting }>('/api/admin/settings/sections').then((r) => setSections(r.value)).catch((e) => setErr(errorText(e)));
     api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
-    api.get<{ entries: Omit<Entry, 'body'>[] }>('/api/admin/entries?kind=post').then((r) => setPosts(r.entries.filter((e) => e.status === 'published' && e.is_public))).catch(() => {});
+    api.get<{ entries: Omit<Entry, 'body'>[] }>('/api/admin/entries?kind=post').then((r) => setPosts(r.entries)).catch(() => {});
   }, []);
   if (!sections || !featured) return <Loading error={err} />;
 
@@ -63,34 +64,9 @@ function HomeSettings() {
     }
   };
 
-  const saveFeatured = async (next: FeaturedSetting) => {
-    setFeatured(next);
-    if (next.mode === 'manual' && !next.entryId) return;
-    try {
-      const r = await api.put<{ value: FeaturedSetting }>('/api/admin/settings/featured', next);
-      setFeatured(r.value);
-      toast('Saved');
-    } catch (e) {
-      toast(errorText(e));
-    }
-  };
-
   return (
     <>
-      <Panel title="Featured post" desc="The large story at the top of the home page.">
-        <Row label="Show" hint="Latest updates by itself">
-          <Segmented label="Featured post" value={featured.mode} options={[['latest', 'Latest post'], ['manual', 'Pinned post']] as const}
-            onChange={(m) => saveFeatured(m === 'latest' ? { mode: 'latest', entryId: null } : { mode: 'manual', entryId: featured.entryId ?? posts[0]?.id ?? null })} />
-        </Row>
-        {featured.mode === 'manual' && (
-          <Row label="Pinned post" hint="Published, public posts" htmlFor="feat-post">
-            <select id="feat-post" className="select" value={featured.entryId ?? ''} onChange={(e) => saveFeatured({ mode: 'manual', entryId: e.target.value || null })}>
-              <option value="">Choose…</option>
-              {posts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-          </Row>
-        )}
-      </Panel>
+      <FeaturedEditor value={featured} posts={posts} onSaved={setFeatured} />
       <Panel title="Sections" desc="Off hides a section everywhere. Its content is kept.">
         {(Object.keys(SECTION_LABELS) as (keyof SectionsSetting)[]).map((k) => (
           <ToggleRow key={k} label={SECTION_LABELS[k]} hint={`/${k}`} checked={sections[k]} onChange={(v) => saveSections({ ...sections, [k]: v })} />
@@ -304,9 +280,10 @@ function FooterSettings() {
               const setLink = (p: Partial<typeof l>) => { const links = c.links.slice(); links[li] = { ...l, ...p }; setCol(ci, { ...c, links }); };
               return (
                 <div key={li} className="stack" style={{ gap: 3 }}>
-                  <div className="input-row">
+                  <div className="input-row link-row">
                     <input className="input" aria-label="Link label" maxLength={40} value={l.label} onChange={(e) => setLink({ label: e.target.value })} />
                     <input className={`input mono${bad ? ' bad' : ''}`} aria-label="Link URL" value={l.url} onChange={(e) => setLink({ url: e.target.value.trim() })} />
+                    <label className="check new-tab" title="Open in a new tab"><input type="checkbox" checked={!!l.newTab} onChange={(e) => setLink({ newTab: e.target.checked })} />New tab</label>
                     <button type="button" className="btn small" aria-label={`Remove ${l.label}`} onClick={() => setCol(ci, { ...c, links: c.links.filter((_, j) => j !== li) })}>✕</button>
                   </div>
                   {bad && <span className="err-text">Use https://, a page like /cv, or mailto:</span>}

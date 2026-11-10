@@ -1,8 +1,8 @@
 // SERVER-ONLY. Data assembly for public pages.
 import { sql } from './db';
-import { getPublicEntryById, getSettings, listPublicEntries, listVisibleExternalPosts } from './repo';
+import { getSettings, listPublicEntries, listVisibleExternalPosts, queryEntries, TOPICS_COL } from './repo';
 import type { Entry, SectionsSetting } from '../shared/types';
-import { KIND_PATH, SECTION_LABELS } from '../shared/types';
+import { featuredIds, KIND_PATH, MAX_FEATURED, SECTION_LABELS } from '../shared/types';
 
 export interface FeedItem {
   key: string;
@@ -45,15 +45,16 @@ export function entryToFeed(e: Entry): FeedItem {
 }
 
 /** Stories feed: native posts + visible WordPress posts, newest first. */
-export async function getFeed(opts: { topic?: string; limit?: number; excludeId?: string } = {}): Promise<FeedItem[]> {
+export async function getFeed(opts: { topic?: string; limit?: number; excludeIds?: string[] } = {}): Promise<FeedItem[]> {
   const limit = opts.limit ?? 12;
+  const exclude = new Set(opts.excludeIds ?? []);
   const [native, wpVisible] = await Promise.all([
-    listPublicEntries('post', { topic: opts.topic, limit: limit + 1 }),
+    listPublicEntries('post', { topic: opts.topic, limit: limit + exclude.size }),
     isWordPressVisible(),
   ]);
   const external = wpVisible ? await listVisibleExternalPosts({ topic: opts.topic, limit }) : [];
   const items: FeedItem[] = [
-    ...native.filter((e) => e.id !== opts.excludeId).map(entryToFeed),
+    ...native.filter((e) => !exclude.has(e.id)).map(entryToFeed),
     ...external.map<FeedItem>((p) => ({
       key: `w:${p.wp_id}`,
       source: 'wordpress',
@@ -71,15 +72,145 @@ export async function getFeed(opts: { topic?: string; limit?: number; excludeId?
   return items.slice(0, limit);
 }
 
-/** Featured post: the one chosen in admin if it is still public, otherwise the latest native post. */
-export async function getFeatured(): Promise<Entry | null> {
+/**
+ * Featured stories for the home page carousel: the chosen ones that are still public, newest first or in
+ * the owner's order. None chosen (or none still public) = the latest story.
+ */
+export async function getFeaturedList(): Promise<Entry[]> {
   const { featured } = await getSettings(['featured']);
-  if (featured.mode === 'manual' && featured.entryId) {
-    const chosen = await getPublicEntryById(featured.entryId);
-    if (chosen && chosen.kind === 'post') return chosen;
+  const ids = featuredIds(featured);
+  if (ids.length) {
+    const rows = (await queryEntries(
+      `SELECT ENTRY_COLS FROM entries
+       WHERE id = ANY($1::uuid[]) AND kind = 'post' AND status = 'published' AND is_public = true AND published_at <= now()
+       ORDER BY published_at DESC`,
+      [ids],
+    )) as Entry[];
+    if (featured.order === 'custom') rows.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    if (rows.length) return rows.slice(0, MAX_FEATURED);
   }
-  const [latest] = await listPublicEntries('post', { limit: 1 });
-  return latest ?? null;
+  return listPublicEntries('post', { limit: 1 });
+}
+
+// ---------------- stories archive: one list of native + WordPress posts, by year and page ----------------
+
+export const ARCHIVE_PAGE_SIZE = 20;
+// Years follow the date shown on the site (Singapore time).
+const YEAR_OF = `extract(year from date AT TIME ZONE 'Asia/Singapore')::int`;
+
+function feedUnion(): string {
+  return `SELECT 'n' AS src, id::text AS ref, title, dek, ${TOPICS_COL}, published_at AS date, read_minutes,
+                 cover_media_id::text AS media_id, ''::text AS image_url, slug, ''::text AS url
+          FROM entries
+          WHERE kind = 'post' AND status = 'published' AND is_public = true AND published_at <= now()
+            AND ($1 = '' OR $1 = ANY(topics) OR topic = $1)
+          UNION ALL
+          SELECT 'w', wp_id::text, title, excerpt, CASE WHEN topic <> '' THEN ARRAY[topic] ELSE '{}'::text[] END,
+                 published_at, read_minutes, NULL, image_url, slug, url
+          FROM external_posts
+          WHERE $2::boolean AND show_on_main = true AND removed_at IS NULL AND ($1 = '' OR topic = $1)`;
+}
+
+interface FeedRow {
+  src: 'n' | 'w';
+  ref: string;
+  title: string;
+  dek: string;
+  topics: string[];
+  date: string;
+  read_minutes: number;
+  media_id: string | null;
+  image_url: string;
+  slug: string;
+  url: string;
+}
+
+function rowToFeed(r: FeedRow): FeedItem {
+  const native = r.src === 'n';
+  return {
+    key: `${r.src}:${r.ref}`,
+    source: native ? 'native' : 'wordpress',
+    title: r.title,
+    dek: r.dek,
+    topics: r.topics ?? [],
+    url: native ? `/story/${r.slug}` : r.url,
+    external: !native,
+    date: String(r.date),
+    readMinutes: r.read_minutes,
+    image: native ? (r.media_id ? { kind: 'media', id: r.media_id } : null) : r.image_url ? { kind: 'url', url: r.image_url } : null,
+  };
+}
+
+/** Years that have stories (newest first) with counts, for the archive sidebar. */
+export async function feedYears(opts: { topic?: string } = {}): Promise<{ year: number; count: number }[]> {
+  const wp = await isWordPressVisible();
+  const rows = await queryEntries(
+    `SELECT ${YEAR_OF} AS year, count(*)::int AS count FROM (${feedUnion()}) f GROUP BY 1 ORDER BY 1 DESC`,
+    [opts.topic ?? '', wp],
+  );
+  return rows as { year: number; count: number }[];
+}
+
+/** One page of the archive: stories newest first, optionally one year only. */
+export async function feedPage(opts: { topic?: string; year?: number | null; page?: number; perPage?: number } = {}): Promise<{ items: FeedItem[]; total: number; page: number; pages: number }> {
+  const per = Math.min(Math.max(opts.perPage ?? ARCHIVE_PAGE_SIZE, 1), 50);
+  const wp = await isWordPressVisible();
+  const year = opts.year ?? null;
+  const countRows = await queryEntries(
+    `SELECT count(*)::int AS total FROM (${feedUnion()}) f WHERE ($3::int IS NULL OR ${YEAR_OF} = $3)`,
+    [opts.topic ?? '', wp, year],
+  );
+  const total = (countRows[0] as { total: number } | undefined)?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / per));
+  const page = Math.min(Math.max(Math.trunc(opts.page ?? 1), 1), pages);
+  const rows = await queryEntries(
+    `SELECT * FROM (${feedUnion()}) f WHERE ($3::int IS NULL OR ${YEAR_OF} = $3)
+     ORDER BY date DESC, ref DESC LIMIT $4 OFFSET $5`,
+    [opts.topic ?? '', wp, year, per, (page - 1) * per],
+  );
+  return { items: (rows as FeedRow[]).map(rowToFeed), total, page, pages };
+}
+
+// ---------------- most read ----------------
+
+const MOST_READ_DAYS = 30;
+
+/**
+ * The most-read stories over the last 30 days: reads of stories here plus clicks through to WordPress
+ * posts, both still public. Empty until something has been read, or before migration 0009 has run.
+ */
+export async function mostRead(limit = 5): Promise<FeedItem[]> {
+  const wp = await isWordPressVisible();
+  try {
+    const rows = await queryEntries(
+      `WITH v AS (
+         SELECT item, sum(n)::int AS reads FROM item_views
+         WHERE day > (now() AT TIME ZONE 'Asia/Singapore')::date - $3::int GROUP BY item
+       )
+       SELECT f.*, v.reads FROM v JOIN (${feedUnion()}) f ON v.item = f.src || ':' || f.ref
+       ORDER BY v.reads DESC, f.date DESC LIMIT $4`,
+      ['', wp, MOST_READ_DAYS, Math.min(Math.max(limit, 1), 10)],
+    );
+    return (rows as FeedRow[]).map(rowToFeed);
+  } catch (e) {
+    if ((e as { code?: string })?.code === '42P01') return [];
+    throw e;
+  }
+}
+
+/** Count one read. Only public stories and visible WordPress posts are counted; anything else is ignored. */
+export async function recordView(item: string): Promise<void> {
+  const [kind, ref] = [item.slice(0, 1), item.slice(2)];
+  const exists =
+    kind === 'n'
+      ? `SELECT 1 FROM entries WHERE id = $2::uuid AND kind = 'post' AND status = 'published' AND is_public = true AND published_at <= now()`
+      : `SELECT 1 FROM external_posts WHERE wp_id = $2::bigint AND show_on_main = true AND removed_at IS NULL`;
+  await sql().query(
+    `INSERT INTO item_views (item, day, n)
+     SELECT $1, (now() AT TIME ZONE 'Asia/Singapore')::date, 1 WHERE EXISTS (${exists})
+     ON CONFLICT (item, day) DO UPDATE SET n = item_views.n + 1`,
+    [item, ref],
+  );
 }
 
 export interface NavItem {

@@ -181,6 +181,12 @@ Then go to Admin → Settings → **Photos**:
 - **Entries:** the editor's **Topics** picker adds up to 3 from that section's list, in the order shown publicly ("Travel · Photography"). A topic no longer in the list shows dashed until removed.
 - **Release (migration `0007_topics.sql`):** adds `entries.topics` and seeds the Work/Photos/Film lists from topics already on those entries. Run **Deploy Neon** after merging (or let `AUTO_DEPLOY_NEON` do it). Until it runs, public pages keep working on the old single topic and editor saves retry automatically.
 
+### Featured stories, series, Most read (migration `0009_series_views.sql`)
+
+- **Release:** adds the `series`, `series_parts` and `item_views` tables, and a rate limit (`VIEW_LIMITER`, 20 reads a minute per address) that `wrangler.jsonc` creates on deploy. Run **Deploy Neon** after merging. Until it runs, the site works as before: no Series row, no Most read card, and the admin's Series page says the database update is needed.
+- **Featured stories:** the old single pinned post carries over as the first featured story. Saving still writes the old fields too, so rolling back keeps it.
+- **Privacy page:** Most read stores only daily totals per story, with no cookies or personal data. You may still want a line in your Privacy page saying reads are counted anonymously.
+
 ## 7b. Google AdSense (optional)
 
 1. Write the **Privacy** page first: Admin → Pages → **Privacy** comes with a draft. Fill in the [placeholders], check it, and save. It then appears in the footer. AdSense requires one.

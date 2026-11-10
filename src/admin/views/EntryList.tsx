@@ -3,7 +3,7 @@ import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
 import { Page, Panel, Segmented, Empty } from '../components/kit';
 import { KIND_SECTION, SECTIONS } from '../nav';
-import { KIND_LABELS, KIND_PATH, type Entry, type EntryKind, type FeaturedSetting } from '../../lib/shared/types';
+import { KIND_LABELS, KIND_PATH, type Entry, type EntryKind, type FeaturedSetting, featuredIds } from '../../lib/shared/types';
 
 type Row = Omit<Entry, 'body'>;
 
@@ -58,7 +58,7 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
               <thead><tr><th>Title</th><th>Topics</th><th>Status</th><th>Updated</th><th style={{ textAlign: 'right' }}>Show publicly</th></tr></thead>
               <tbody>
                 {shown.map((r) => {
-                  const isFeatured = featured?.mode === 'manual' && featured.entryId === r.id;
+                  const isFeatured = featuredIds(featured).includes(r.id);
                   return (
                     <tr key={r.id}>
                       <td className="c-title">

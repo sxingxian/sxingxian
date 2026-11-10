@@ -4,13 +4,14 @@ import { createContext, useContext } from 'react';
 import type { EntryKind } from '../lib/shared/types';
 
 export type SectionKey =
-  | 'stories' | 'work' | 'photos' | 'film'
+  | 'stories' | 'series' | 'work' | 'photos' | 'film'
   | 'cv' | 'about' | 'privacy'
   | 'media' | 'wordpress' | 'settings'
   | 'account' | 'users';
 
 export const SECTIONS: Record<SectionKey, { group: string; label: string; path: string }> = {
   stories: { group: 'Content', label: 'Stories', path: '/admin/stories' },
+  series: { group: 'Content', label: 'Series', path: '/admin/series' },
   work: { group: 'Content', label: 'Work', path: '/admin/work' },
   photos: { group: 'Content', label: 'Photos', path: '/admin/photos' },
   film: { group: 'Content', label: 'Film', path: '/admin/film' },
