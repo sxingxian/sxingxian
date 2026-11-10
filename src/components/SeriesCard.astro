@@ -11,9 +11,9 @@ const label = total > s.published ? `${s.published} of ${total} parts` : `${s.pu
 const bars = Math.min(total, 24);
 ---
 <a class:list={['card', 'series-card', { rv: reveal }]} data-rv={reveal ? 'side' : undefined} href={`/series/${s.slug}`}>
-  <span class="lbl accent">{label}</span>
   <span class="series-t">{s.title}</span>
   {s.description && <span class="series-d">{s.description}</span>}
+  <span class="meta">{label}</span>
   <span class="series-bar" role="img" aria-label={label}>
     {Array.from({ length: bars }, (_, i) => <span class:list={{ on: i < Math.min(s.published, bars) }}></span>)}
   </span>

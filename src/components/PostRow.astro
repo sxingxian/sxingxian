@@ -13,15 +13,16 @@ const { item, reveal = false, noTransition = false } = Astro.props;
 // Native posts share a view-transition name with the post's cover, so the thumbnail grows into it.
 const vtName = !noTransition && item.source === 'native' && item.image ? `c-${item.key.slice(2).replace(/[^a-zA-Z0-9-]/g, '')}` : null;
 ---
-<a class:list={['post-row', { rv: reveal }]} href={item.url} rel={item.external ? 'noopener' : undefined} data-rv={reveal ? 'row' : undefined} data-view={item.external ? item.key : undefined}>
-  <span class="thumb" style={vtName ? `view-transition-name:${vtName}` : undefined}><Thumb image={item.image} /></span>
+<a class:list={['post-row', { rv: reveal, 'no-thumb': !item.image }]} href={item.url} rel={item.external ? 'noopener' : undefined} data-rv={reveal ? 'row' : undefined} data-view={item.external ? item.key : undefined}>
+  {item.image && <span class="thumb" style={vtName ? `view-transition-name:${vtName}` : undefined}><Thumb image={item.image} /></span>}
   <span class="body">
-    <span class="row-meta">
-      {item.topics.length > 0 && <span class="lbl accent">{topicLabel(item.topics)}</span>}
-      <span class="meta">{formatDate(item.date, { day: 'numeric', month: 'short' })} · {item.readMinutes} min</span>
-      <span class="src">{item.external ? <><span aria-hidden="true">↗</span><span class="sr-only">(on hey.sxingxian.com)</span></> : ''}</span>
-    </span>
     <span class="t"><span class="uline">{item.title}</span></span>
     {item.dek && <span class="d">{item.dek}</span>}
+    <span class="meta">
+      {item.topics.length > 0 && <span class="topic-name">{topicLabel(item.topics)}</span>}
+      <span>{formatDate(item.date, { day: 'numeric', month: 'short' })}</span>
+      <span>{item.readMinutes} min read</span>
+      {item.external && <span>hey.sxingxian.com <span aria-hidden="true">↗</span></span>}
+    </span>
   </span>
 </a>

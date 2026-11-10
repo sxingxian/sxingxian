@@ -12,5 +12,5 @@ const src = image ? (image.kind === 'media' ? `/media/${image.id}` : image.url) 
 {src ? (
   <img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" />
 ) : (
-  <div class="placeholder-cover" aria-hidden="true">sxingxian</div>
+  <div class="placeholder-cover" aria-hidden="true"></div>
 )}
