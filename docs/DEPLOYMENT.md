@@ -68,7 +68,7 @@ Optional media hosts (both are S3-compatible; hosts without credentials are grey
 
 | Name | Type | For |
 | --- | --- | --- |
-| `NAS_S3_ENDPOINT`, `NAS_S3_BUCKET`, `NAS_S3_REGION` | Text | NAS running Garage, exposed through **Cloudflare Tunnel** at an `https://` hostname (no router ports opened). Step by step for the Synology DS720+: [SYNOLOGY.md](SYNOLOGY.md) |
+| `NAS_S3_ENDPOINT`, `NAS_S3_BUCKET`, `NAS_S3_REGION` | Text | NAS running versitygw (S3 gateway over a NAS folder), exposed through **Cloudflare Tunnel** at an `https://` hostname (no router ports opened). Step by step for the Synology DS720+: [SYNOLOGY.md](SYNOLOGY.md) |
 | `NAS_S3_ACCESS_KEY_ID`, `NAS_S3_SECRET_ACCESS_KEY` | Secret | NAS credentials |
 | `NAS_ACCESS_CLIENT_ID`, `NAS_ACCESS_CLIENT_SECRET` | Secret | Optional Cloudflare Access service token, if the NAS address is behind Access (recommended) |
 | `B2_S3_ENDPOINT`, `B2_S3_BUCKET`, `B2_S3_REGION` | Text | Backblaze B2 |

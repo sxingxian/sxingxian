@@ -3,102 +3,109 @@
 The site stores files on "S3-compatible" storage: R2, Backblaze B2, or your NAS. DSM doesn't speak S3 by
 itself, so the NAS runs two small containers:
 
-- **Garage**, a lightweight S3 server, keeps the files on a NAS shared folder.
-- **cloudflared** (Cloudflare Tunnel) gives Garage a private, encrypted path to Cloudflare, so the site can reach it at
-  `https://nas-s3.sxingxian.com` **without opening any port on your router**.
-
-> Why not MinIO? Its free community edition stopped shipping Docker images in October 2025 and went into
-> maintenance mode, so it no longer gets regular security fixes. Garage is actively maintained and needs far less memory.
+- **versitygw** (Versity S3 Gateway, Apache 2.0) puts an S3 address in front of an ordinary NAS folder. Every upload
+  is a normal file at `docker/nas/data/<bucket>/<path>`: you can see it in File Station, and Hyper Backup and Btrfs
+  snapshots protect it like anything else. There is no database to look after or repair.
+- **cloudflared** (Cloudflare Tunnel) gives the gateway a private, encrypted path to Cloudflare, so the site can reach
+  it at `https://nas-s3.sxingxian.com` **without opening any port on your router**.
 
 ```
-sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel──▶ cloudflared ──▶ Garage :3900 ──▶ /volume1/docker/garage
+sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel──▶ cloudflared ──▶ versitygw :7070 ──▶ /volume1/docker/nas/data
 ```
+
+> **Why not Garage or MinIO?** Garage is built for clusters spread over several sites; on a single NAS that adds
+> layouts, an RPC secret and a metadata database for no benefit, and it kept crashing here. MinIO's free edition is no
+> longer maintained. The site needs plain "put / get / delete a file", which versitygw does with nothing in between
+> the S3 request and the file.
 
 ## 0 · Before you start
 
-- **DSM version.** DS720+ is an Intel (x86-64) model, so it runs containers. On **DSM 7.0** the package is
-  called **Docker**; from **DSM 7.2** it is **Container Manager**, with Docker Compose built into the UI.
-  Updating is recommended: **Control Panel → Update & Restore**, install the latest DSM 7.2.x your NAS is offered
-  (take a configuration backup first). The steps below show Container Manager; on DSM 7.0 use the Docker package
-  plus SSH (noted where different).
-- **Memory.** Garage and cloudflared together use roughly 100–200 MB. The DS720+'s 2 GB is enough.
-- **A shared folder for the data**, e.g. `docker` (Container Manager creates it). Btrfs snapshots and Hyper Backup
-  can protect it like any other folder.
+- **DSM 7.2 or later** with **Container Manager** (Package Center). DS720+ is Intel (x86-64), so it runs containers.
+- **Memory:** both containers together use well under 200 MB.
+- **Remove the old Garage project** if you created one: Container Manager → **Project** → `garage` → **Action → Delete**
+  (it also offers to remove its containers). Then delete the `docker/garage` folder in File Station. Nothing in it is
+  used by the site yet.
+- **Make two random keys** with your password manager. Use **letters and digits only** (symbols such as `$`, `#` or
+  `:` break the settings file):
+  - an **access key**, 20 characters
+  - a **secret key**, 40 characters.
 
-## 1 · Garage
+  They are the only way into the gateway. They go in the settings file below and in Cloudflare (step 4), nowhere else.
 
-1. In File Station create `docker/garage/meta`, `docker/garage/data`, and a file `docker/garage/garage.toml`:
+## 1 · The gateway
 
-   ```toml
-   metadata_dir = "/var/lib/garage/meta"
-   data_dir = "/var/lib/garage/data"
-   db_engine = "sqlite"
-   replication_factor = 1
-
-   rpc_bind_addr = "[::]:3901"
-   rpc_public_addr = "127.0.0.1:3901"
-   rpc_secret = "<64 hex characters, see below>"
-
-   [s3_api]
-   s3_region = "garage"
-   api_bind_addr = "[::]:3900"
-   root_domain = ".s3.garage.localhost"
-   ```
-
-   Make `rpc_secret` with **any** random generator that gives 64 hex characters (for example `openssl rand -hex 32`
-   over SSH). Don't reuse it anywhere else. Compare with the Garage quick-start page for your version
-   (garagehq.deuxfleurs.fr → Documentation → Quick start) in case a key has been renamed.
-
-2. **Container Manager → Project → Create**, path `docker/garage`, and this `compose.yaml`:
+1. In File Station create the folders `docker/nas` and `docker/nas/data`.
+2. **Container Manager → Project → Create**:
+   - Project name `nas`, path `docker/nas`, source **Create docker-compose.yml**, and paste:
 
    ```yaml
    services:
-     garage:
-       image: dxflrs/garage:v2.3.0   # pin a version; update deliberately
-       container_name: garage
+     versitygw:
+       image: versity/versitygw:latest   # after the first start, pin the version shown in the log (see "Updates")
+       container_name: versitygw
        restart: unless-stopped
+       environment:
+         - ROOT_ACCESS_KEY=PASTE_ACCESS_KEY
+         - ROOT_SECRET_KEY=PASTE_SECRET_KEY
+         - VGW_BACKEND=posix
+         - VGW_BACKEND_ARG=/data
        volumes:
-         - ./garage.toml:/etc/garage.toml:ro
-         - ./meta:/var/lib/garage/meta
-         - ./data:/var/lib/garage/data
+         - ./data:/data
        networks: [s3]
-       # No "ports:" — Garage is reached only through the tunnel, never from your LAN or the internet.
+       # No "ports:" — the gateway is reached only through the tunnel, never from your LAN or the internet.
      cloudflared:
        image: cloudflare/cloudflared:latest
        container_name: cloudflared
        restart: unless-stopped
        command: tunnel --no-autoupdate run
        environment:
-         - TUNNEL_TOKEN=PASTE_THE_TOKEN_HERE   # from step 2 · 2 (keep this file private)
+         - TUNNEL_TOKEN=PASTE_THE_TUNNEL_TOKEN   # from step 2 (keep this file private)
+       depends_on: [versitygw]
        networks: [s3]
    networks:
-     s3: {}
+     s3:
+       name: nas-s3
    ```
 
-   Leave `cloudflared` out until step 3 has given you the token (or start the project and fill the token in then).
-   *DSM 7.0:* save the file over SSH and run `sudo docker-compose up -d` in `/volume1/docker/garage`.
+   - Replace `PASTE_ACCESS_KEY` and `PASTE_SECRET_KEY` with your two keys. Leave the tunnel token for step 2.
+   - Untick "Set up web portal", then **Next → Done**. The project builds and starts; `cloudflared` will restart until
+     it has a token, which is fine.
+3. **Check it started:** Container Manager → **Container** → `versitygw` → **Log**. It should show the gateway
+   listening (port 7070) and no errors.
 
-3. Set up Garage once (Container Manager → Container → `garage` → Terminal → Create → `sh`, or over SSH with
-   `sudo docker exec -it garage /garage …`):
+### Create the bucket (no SSH needed)
 
-   ```sh
-   /garage status                                   # shows this node's ID
-   /garage layout assign -z home -c 500G <NODE_ID>  # capacity you want to give it
-   /garage layout apply --version 1
-   /garage bucket create sxingxian-media
-   /garage key create sxingxian-site                # prints the Key ID (GK…) and Secret key — copy both now
-   /garage bucket allow --read --write sxingxian-media --key sxingxian-site
-   ```
+Control Panel → **Task Scheduler → Create → Scheduled Task → User-defined script**:
+- **General:** name `nas-bucket`, user **root**, untick **Enabled** (so it only runs when you press Run).
+- **Task Settings → Run command** (put your two keys in):
 
-   Keep the key ID and secret somewhere safe: they go into Cloudflare in step 4 and nowhere else.
+  ```sh
+  {
+    /usr/local/bin/docker run --rm --network nas-s3 \
+      -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
+      amazon/aws-cli --endpoint-url http://versitygw:7070 s3 mb s3://sxingxian-media
+    /usr/local/bin/docker run --rm --network nas-s3 \
+      -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
+      amazon/aws-cli --endpoint-url http://versitygw:7070 s3 ls
+  } > /volume1/docker/nas/setup.log 2>&1
+  ```
+
+Select the task → **Run**, wait a minute, then open `docker/nas/setup.log` (Text Editor package or download it). You
+should see `make_bucket: sxingxian-media` and then the bucket in the list, and a `sxingxian-media` folder appears in
+`docker/nas/data`. This also proves the keys work. **Then delete the task** (it contains your keys) and the log.
+
+If the log shows **permission denied**, the container can't write to `docker/nas/data`: File Station → right-click
+`data` → **Properties → Permission → Create** → *Everyone* → **Read & Write**, apply to this folder, sub-folders and
+files → Save, and run the task again. ("Everyone" means accounts on your NAS, not the internet; keep the `docker`
+shared folder itself unshared.)
 
 ## 2 · Cloudflare Tunnel
 
 1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, name it `nas`.
-2. Choose **Docker** and copy the token from the command it shows (the long string after `--token`).
-   Paste it into `compose.yaml` in place of `PASTE_THE_TOKEN_HERE` (Container Manager → Project → `garage` → edit), and start
-   the `cloudflared` container. The tunnel turns **Healthy**.
-3. **Public hostname:** subdomain `nas-s3`, domain `sxingxian.com`, service **HTTP** → `garage:3900`.
+2. Choose **Docker** and copy the token from the command it shows (the long string after `--token`). In Container
+   Manager → **Project** → `nas` → **Action → Stop**, edit `docker-compose.yml`, replace `PASTE_THE_TUNNEL_TOKEN`, save,
+   then **Action → Build** (or Start). The tunnel turns **Healthy** in the dashboard.
+3. **Public hostname:** subdomain `nas-s3`, domain `sxingxian.com`, service **HTTP** → `versitygw:7070`.
 
 ## 3 · (Recommended) Only the site may use that address
 
@@ -118,23 +125,30 @@ Cloudflare → **Workers & Pages → sxingxian → Settings → Variables and Se
 | --- | --- |
 | `NAS_S3_ENDPOINT` | `https://nas-s3.sxingxian.com` |
 | `NAS_S3_BUCKET` | `sxingxian-media` |
-| `NAS_S3_REGION` | `garage` |
-| `NAS_S3_ACCESS_KEY_ID` | the Garage key ID (`GK…`) |
-| `NAS_S3_SECRET_ACCESS_KEY` | the Garage secret key |
+| `NAS_S3_REGION` | `us-east-1` (versitygw's default region) |
+| `NAS_S3_ACCESS_KEY_ID` | your access key |
+| `NAS_S3_SECRET_ACCESS_KEY` | your secret key |
 | `NAS_ACCESS_CLIENT_ID` | service token Client ID (step 3, optional) |
 | `NAS_ACCESS_CLIENT_SECRET` | service token Client Secret (step 3, optional) |
 
 Then in the admin: **Media → Upload**. "Home NAS" is now selectable; upload a photo and a PDF and open the story
-to check they appear.
+to check they appear. The files show up under `docker/nas/data/sxingxian-media/` in File Station.
+
+If an upload fails with a **signature or region** error, check that `NAS_S3_REGION` is `us-east-1`; if it fails with
+**access denied**, check the two keys match `docker-compose.yml` exactly.
 
 ## Good to know
 
+- **Leave the files alone in File Station.** You can look at and back them up, but don't rename, move or delete them:
+  the site keeps a record of each file's path and would show a broken image. Delete media from the admin instead.
 - **Videos** still go to R2 only (Cloudflare's terms for serving video).
 - **If the NAS is off or offline**, files stored on it can't be shown until it's back. Keep anything important
   (the featured cover, CV files) on R2, or copy it to both.
-- **Updates:** change the image tag in `compose.yaml` and re-deploy the project. Read Garage's release notes first;
-  back up `docker/garage` before a major version.
-- **Backups:** Hyper Backup the `docker/garage` folder (stop the `garage` container first for a clean copy, or use a
-  Btrfs snapshot).
+- **Updates:** after the first start, note the version in the `versitygw` log and change `latest` to that tag in
+  `docker-compose.yml`, so it only updates when you choose to. To update, read the release notes on
+  github.com/versity/versitygw, change the tag, then **Project → Action → Build**.
+- **Changing the keys:** edit both in `docker-compose.yml`, rebuild the project, and update the two Worker secrets.
+- **Backups:** Hyper Backup the `docker/nas/data` folder (plain files, no need to stop anything), or rely on Btrfs
+  snapshots of the `docker` shared folder.
 - Nothing about the NAS (address, keys, tokens) is ever sent to visitors: the site fetches from it and serves the file
   itself at `/media/<id>`.
