@@ -10,6 +10,7 @@ import { env } from 'cloudflare:workers';
 import { sql } from './db';
 import { getSetting } from './repo';
 import { htmlToText } from './text';
+import { topicFor } from './wptopic';
 import { normalizeWpBase } from '../shared/safe';
 
 const UA = 'sxingxian-sync/1.0 (+https://sxingxian.com)';
@@ -70,9 +71,7 @@ async function isSameSite(link: string): Promise<boolean> {
 
 async function upsert(p: WpPost, autoShow: boolean, categoryMap: Record<string, string>): Promise<'new' | 'updated'> {
   const terms = p._embedded?.['wp:term']?.flat() ?? [];
-  const category = terms.find((t) => t.taxonomy === 'category')?.name ?? '';
-  const mapped = Object.hasOwn(categoryMap, category) ? categoryMap[category] : undefined;
-  const topic = typeof mapped === 'string' && mapped ? mapped : category && category !== 'Uncategorized' ? category : 'Notes';
+  const topic = topicFor(terms.filter((t) => t?.taxonomy === 'category').map((t) => t.name), categoryMap);
   const media = p._embedded?.['wp:featuredmedia']?.[0];
   const imgRaw = media?.media_details?.sizes?.medium_large?.source_url ?? media?.source_url ?? '';
   const image = imgRaw && /^https:\/\//.test(imgRaw) ? imgRaw : '';
@@ -145,6 +144,52 @@ export async function syncIncremental(reason = 'Scheduled pull'): Promise<void> 
   }
   await sql()`UPDATE sources SET last_sync_at = ${started} WHERE id = 'wordpress'`;
   await log(reason, created + updated === 0 ? '0 changes' : `${created} new · ${updated} updated`);
+}
+
+/**
+ * Re-apply the category → topic mapping to every synced post (after the mapping is saved).
+ * Reads category names once, then each post's category IDs, and updates only topics that change.
+ */
+export async function remapTopics(): Promise<{ checked: number; updated: number }> {
+  const { categoryMap } = await getSetting('wordpress');
+
+  const names = new Map<number, string>();
+  for (let page = 1; page <= 20; page++) {
+    const res = await wpFetch(`/wp/v2/categories?per_page=100&page=${page}&_fields=id,name`, 10000);
+    if (res.status === 400 && page > 1) break;
+    if (!res.ok) throw new Error(`categories fetch failed (${res.status})`);
+    const cats = (await res.json()) as { id: number; name: string }[];
+    for (const c of cats) if (Number.isInteger(c?.id) && typeof c?.name === 'string') names.set(c.id, c.name);
+    if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || cats.length === 0) break;
+  }
+
+  const ids: number[] = [];
+  const topics: string[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const res = await wpFetch(`/wp/v2/posts?status=publish&per_page=100&page=${page}&_fields=id,categories`, 10000);
+    if (res.status === 400 && page > 1) break;
+    if (!res.ok) throw new Error(`posts fetch failed (${res.status})`);
+    const posts = (await res.json()) as { id: number; categories?: number[] }[];
+    for (const p of posts) {
+      if (!Number.isInteger(p?.id)) continue;
+      const cats = (Array.isArray(p.categories) ? p.categories : []).map((id) => names.get(id) ?? '').filter(Boolean);
+      ids.push(p.id);
+      topics.push(topicFor(cats, categoryMap));
+    }
+    if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || posts.length === 0) break;
+  }
+
+  const rows = ids.length
+    ? await sql().query(
+        `UPDATE external_posts e SET topic = v.topic
+           FROM unnest($1::int[], $2::text[]) AS v(wp_id, topic)
+          WHERE e.wp_id = v.wp_id AND e.topic IS DISTINCT FROM v.topic
+        RETURNING 1`,
+        [ids, topics],
+      )
+    : [];
+  await log('Category mapping applied', rows.length ? `topics updated on ${rows.length} of ${ids.length} posts` : `${ids.length} posts checked, no changes`);
+  return { checked: ids.length, updated: rows.length };
 }
 
 /** Compare all published IDs on WP with ours; mark missing ones removed. */

@@ -57,12 +57,24 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
 
   const saveRules = async (next: WordPressSetting) => {
     try {
+      const mapChanged = JSON.stringify(next.categoryMap) !== JSON.stringify(rules?.categoryMap ?? {});
       const r = await api.put<{ value: WordPressSetting }>('/api/admin/settings/wordpress', next);
       setRules(r.value);
       const entries = Object.entries(r.value.categoryMap);
       setMap(entries);
       setSavedMap(JSON.stringify(entries));
-      toast('Saved');
+      if (!mapChanged) {
+        toast('Saved');
+        return;
+      }
+      // Re-apply the mapping to posts already synced, not just future ones.
+      try {
+        const m = await api.post<{ checked: number; updated: number }>('/api/admin/wordpress', { action: 'remap' });
+        toast(m.updated ? `Saved · topics updated on ${m.updated} post${m.updated === 1 ? '' : 's'}` : 'Saved · existing posts already match');
+        load();
+      } catch (e) {
+        toast(`Saved, but ${errorText(e)}`);
+      }
     } catch (e) {
       toast(errorText(e));
     }
