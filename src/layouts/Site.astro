@@ -260,8 +260,11 @@ import Favicons from '../components/Favicons.astro';
         document.addEventListener('contextmenu', function (e) { if (isImg(e.target)) e.preventDefault(); });
         document.addEventListener('dragstart', function (e) { if (isImg(e.target)) e.preventDefault(); });
       }
-      var items = Array.prototype.slice.call(document.querySelectorAll('[data-lightbox]'));
-      if (!items.length) return;
+      // Photos in a gallery step through that gallery only (data-lb-group); other photos step through each other.
+      var all = Array.prototype.slice.call(document.querySelectorAll('[data-lightbox]'));
+      if (!all.length) return;
+      var items = all;
+      function groupOf(t) { return t.getAttribute('data-lb-group') || ''; }
       var box, img, cap, count, prevBtn, nextBtn, idx = 0, opener = null, startX = 0;
       function el(tag, cls, attrs) { var n = document.createElement(tag); if (cls) n.className = cls; for (var k in attrs || {}) n.setAttribute(k, attrs[k]); return n; }
       function build() {
@@ -299,7 +302,14 @@ import Favicons from '../components/Favicons.astro';
       function open(i, from) { opener = from; show(i); box.hidden = false; document.body.style.overflow = 'hidden'; box.querySelector('.lb-close').focus(); }
       function hide() { if (!box) return; box.hidden = true; document.body.style.overflow = ''; img.removeAttribute('src'); if (opener) opener.focus(); }
       function go(step) { show(idx + step); }
-      items.forEach(function (t) { t.addEventListener('click', function () { if (t.hasAttribute('data-broken')) return; open(Math.max(0, items.indexOf(t)), t); }); });
+      all.forEach(function (t) {
+        t.addEventListener('click', function () {
+          if (t.hasAttribute('data-broken')) return;
+          var g = groupOf(t);
+          items = all.filter(function (x) { return groupOf(x) === g && !x.hasAttribute('data-broken'); });
+          open(Math.max(0, items.indexOf(t)), t);
+        });
+      });
       document.addEventListener('keydown', function (e) {
         if (!box || box.hidden) return;
         if (e.key === 'Escape') hide();

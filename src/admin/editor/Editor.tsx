@@ -7,7 +7,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
 import { HeadingExit } from './headingExit';
 import DragHandle from '@tiptap/extension-drag-handle-react';
-import { Callout, Column, Columns, Embed, Figure, FileBlock, FileLink, MapBlock, PdfBlock, SxStorage, type FileKind, type PickedFile, type PickedMedia } from './nodes';
+import { Callout, Column, Columns, Embed, Figure, FileBlock, FileLink, Gallery, MapBlock, PdfBlock, SxStorage, type FileKind, type PickedFile, type PickedImage, type PickedMedia } from './nodes';
 import { SlashCommand } from './slash';
 import { isSafeHref } from '../../lib/shared/safe';
 import { useDialog } from '../components/dialog';
@@ -18,6 +18,7 @@ interface Props {
   onChange: (doc: DocNode) => void;
   pickMedia: () => Promise<PickedMedia | null>;
   pickFile?: (kind: FileKind) => Promise<PickedFile | null>;
+  pickImages?: (max: number) => Promise<PickedImage[] | null>;
   allowH1?: boolean;
 }
 
@@ -36,7 +37,7 @@ async function setLink(editor: TEditor, dialog: ReturnType<typeof useDialog>) {
   editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
 }
 
-export default function Editor({ content, onChange, pickMedia, pickFile, allowH1 = false }: Props) {
+export default function Editor({ content, onChange, pickMedia, pickFile, pickImages, allowH1 = false }: Props) {
   const dialog = useDialog();
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
@@ -60,6 +61,7 @@ export default function Editor({ content, onChange, pickMedia, pickFile, allowH1
       SxStorage,
       HeadingExit,
       Figure,
+      Gallery,
       PdfBlock,
       FileBlock,
       FileLink,
@@ -76,10 +78,11 @@ export default function Editor({ content, onChange, pickMedia, pickFile, allowH1
 
   useEffect(() => {
     if (!editor) return;
-    const sx = (editor.storage as unknown as { sx: { pickMedia: Props['pickMedia']; pickFile: Props['pickFile'] | null } }).sx;
+    const sx = (editor.storage as unknown as { sx: { pickMedia: Props['pickMedia']; pickFile: Props['pickFile'] | null; pickImages: Props['pickImages'] | null } }).sx;
     sx.pickMedia = pickMedia;
     sx.pickFile = pickFile ?? null;
-  }, [editor, pickMedia, pickFile]);
+    sx.pickImages = pickImages ?? null;
+  }, [editor, pickMedia, pickFile, pickImages]);
 
   if (!editor) return <div className="tiptap" aria-busy="true" />;
 

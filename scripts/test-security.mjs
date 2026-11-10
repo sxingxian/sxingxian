@@ -528,4 +528,34 @@ t('read counts: only a story id or a WordPress post number is accepted', () => {
     assert.equal(ok(bad), false, bad);
 });
 
+t('gallery block: ids checked, text escaped, layout and size bounded', () => {
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const gal = (attrs) => renderDoc({ type: 'doc', content: [{ type: 'gallery', attrs }] });
+  const html = gal({ layout: 'masonry', columns: 2, caption: '<b>Trip</b>', items: [
+    { mediaId: id(1), alt: '"><script>alert(1)</script>', w: 1600, h: 1000 },
+    { mediaId: '../../etc/passwd', alt: 'x' },
+    { mediaId: id(2), alt: 'Second', w: 'NaN', h: 5 },
+    'junk', null,
+  ] });
+  assert.ok(!html.includes('<script>'), 'alt escaped');
+  assert.ok(html.includes('&lt;b&gt;Trip&lt;/b&gt;'), 'caption escaped');
+  assert.ok(!html.includes('passwd'), 'bad id dropped');
+  assert.equal((html.match(/<img /g) || []).length, 2);
+  assert.ok(html.includes('gallery-masonry gallery-c2'));
+  assert.ok(html.includes('width="1600" height="1000"'));
+  assert.ok(!/width="0"|height="5"/.test(html), 'size only when both valid');
+  const g = html.match(/data-lb-group="(g\d+)"/g) || [];
+  assert.equal(new Set(g).size, 1, 'one lightbox group per gallery');
+  assert.ok(html.includes('aria-label="View photo 1 of 2:'));
+  const odd = gal({ layout: 'carousel"><x', columns: 99, items: [{ mediaId: id(3) }] });
+  assert.ok(odd.includes('gallery-grid gallery-c4'), 'unknown layout → grid; columns clamped');
+  assert.ok(!odd.includes('<x'));
+  const many = gal({ items: Array.from({ length: 45 }, (_, i) => ({ mediaId: id(i + 10) })) });
+  assert.equal((many.match(/<img /g) || []).length, 30, 'at most 30 photos');
+  assert.equal(gal({ items: [] }), '');
+  assert.equal(gal({ items: 'nope' }), '');
+  const two = renderDoc({ type: 'doc', content: [{ type: 'gallery', attrs: { items: [{ mediaId: id(1) }] } }, { type: 'gallery', attrs: { items: [{ mediaId: id(2) }] } }] });
+  assert.equal(new Set(two.match(/data-lb-group="g\d+"/g)).size, 2, 'separate groups');
+});
+
 console.log(`\n${passed} security tests passed.`);

@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { Extension, type Editor, type Range } from '@tiptap/core';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from '@tiptap/suggestion';
-import { columnsContent, type FileKind, type PickedFile, type PickedMedia } from './nodes';
+import { columnsContent, MAX_GALLERY, type FileKind, type PickedFile, type PickedImage, type PickedMedia } from './nodes';
 
 interface Item {
   group: string;
@@ -17,6 +17,11 @@ interface Item {
 function pickMedia(editor: Editor): Promise<PickedMedia | null> {
   const fn = (editor.storage as unknown as { sx?: { pickMedia: (() => Promise<PickedMedia | null>) | null } }).sx?.pickMedia;
   return fn ? fn() : Promise.resolve(null);
+}
+
+function pickImages(editor: Editor, max: number): Promise<PickedImage[] | null> {
+  const fn = (editor.storage as unknown as { sx?: { pickImages: ((n: number) => Promise<PickedImage[] | null>) | null } }).sx?.pickImages;
+  return fn ? fn(max) : Promise.resolve(null);
 }
 
 function pickFile(editor: Editor, kind: FileKind): Promise<PickedFile | null> {
@@ -40,6 +45,20 @@ const ITEMS: Item[] = [
       e.chain().focus().deleteRange(r).run();
       void pickMedia(e).then((m) => {
         if (m) e.chain().focus().insertContent({ type: 'figure', attrs: { mediaId: m.id, alt: m.alt } }).run();
+      });
+    },
+  },
+  {
+    group: 'Media', title: 'Gallery', hint: 'Several photos, grid or masonry', icon: '▦', keywords: 'gallery photos images grid masonry album collage multiple',
+    run: (e, r) => {
+      e.chain().focus().deleteRange(r).run();
+      void pickImages(e, MAX_GALLERY).then((list) => {
+        if (list && list.length) {
+          e.chain().focus().insertContent({
+            type: 'gallery',
+            attrs: { items: list.map((m) => ({ mediaId: m.id, alt: m.alt, w: m.w, h: m.h })), layout: 'grid', columns: list.length === 2 || list.length === 4 ? 2 : 3 },
+          }).run();
+        }
       });
     },
   },
