@@ -95,6 +95,7 @@ Accounts are stored in Neon (`users`, `sessions`, `recovery_codes`, `auth_events
   - turns embeds into fixed YouTube/Vimeo iframe URLs only;
   - sanitises code languages;
   - allows column widths only as clamped numbers;
+  - renders galleries only from UUID media IDs (at most 30), a fixed layout name (`grid`/`masonry`), columns clamped to 2–4, alt text cut to 300 characters and image sizes clamped to whole numbers;
   - caps nesting depth.
 
   There is no raw-HTML block.

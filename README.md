@@ -30,14 +30,15 @@ Public pages ship **no framework JavaScript**: only two small inline scripts (ap
 - **Section switches:** Work, Photos, Film, CV and About can each be turned off. They leave the menu and home page, their pages return 404, and their content is kept.
 - **Notion-style editor:**
   - **Blocks:** text, headings, lists, quote, callout, code, divider.
-  - **Media:** images (with alt text, caption and width), YouTube and Vimeo, vertical YouTube Shorts and TikTok, and maps (OpenStreetMap; search a place, or paste coordinates or a Google Maps/OSM link).
+  - **Media:** images (with alt text, caption and width), photo galleries (Grid or Masonry, 2–4 columns, up to 30 photos), YouTube and Vimeo, vertical YouTube Shorts and TikTok, and maps (OpenStreetMap; search a place, or paste coordinates or a Google Maps/OSM link).
   - **Layout:** 2- or 3-column blocks with draggable dividers, presets, gap, phone stacking and dividers.
   - **Editing:** a formatting bubble and drag handles.
+  - **Picking many photos:** the gallery picker selects several at once by click, Shift-click, dragging a box (hold ⌘/Ctrl to remove) or, on a phone, press-and-hold then slide. Numbers show the order. Photos can also be uploaded straight into the gallery, and reordered by dragging (on a phone, by the ⠿ handle) or Alt+arrow keys.
 - **CV page** (`/cv`): built from column blocks, printable to PDF from the browser (print stylesheet included).
 - **Editable footer:** about text, up to 3 link columns, bottom line with `{year}`. Links are allow-listed.
 - **WordPress sync** (see below), with automatic hiding when WordPress is down.
 - **Photos:**
-  - tapping a photo opens a full-screen lightbox, in posts and galleries and in the admin's Media page (arrows, swipe, Esc);
+  - tapping a photo opens a full-screen lightbox, in posts and galleries and in the admin's Media page (arrows, swipe, Esc). In a gallery block the arrows and counter stay within that gallery;
   - Settings → **Photos** turns a watermark on or off (optional logo left of the text, stored in Neon; text, position, size, opacity, live preview). It is baked into public copies capped at 2560 px, new uploads are watermarked automatically, and "Apply" updates existing photos. Originals stay private, so turning it off restores them;
   - **Block saving** (on by default) stops right-click, drag and long-press saving, and refuses image URLs opened on their own or embedded on other sites.
 - **Google AdSense** (optional, Settings → Ads): a publisher ID, plus optional units on the home page and at the end of posts. `/ads.txt` is generated. Ads never appear in the admin or on CV, About and Privacy. An editable **Privacy** page (draft template included) is linked in the footer once written.

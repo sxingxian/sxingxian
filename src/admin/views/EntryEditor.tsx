@@ -3,7 +3,7 @@ import { api, errorText } from '../api';
 import { useDialog } from '../components/dialog';
 import DateTimePicker from '../components/DateTimePicker';
 import Editor from '../editor/Editor';
-import MediaPicker, { type PickerAccept } from '../components/MediaPicker';
+import { useMediaPicker } from '../components/useMediaPicker';
 import { useToast } from '../components/ui';
 import { Field, Segmented, ToggleRow, TopBar } from '../components/kit';
 import { KIND_SECTION } from '../nav';
@@ -36,8 +36,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const [entryId, setEntryId] = useState<string | null>(id);
   const entryIdRef = useRef<string | null>(id);
   const [err, setErr] = useState('');
-  const [picker, setPicker] = useState<null | ((m: MediaItem | null) => void)>(null);
-  const [pickerAccept, setPickerAccept] = useState<PickerAccept>('images');
+  const { pickMedia, pickFile, pickImages, picker } = useMediaPicker();
   const [site, setSite] = useState<SiteSetting | null>(null);
   const [lists, setLists] = useState<TopicsSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
@@ -94,20 +93,6 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     return () => window.removeEventListener('keydown', onKey);
   }, [saveNow]);
 
-  const pickMedia = useCallback(
-    () => new Promise<{ id: string; alt: string } | null>((resolve) => {
-      setPickerAccept('images');
-      setPicker(() => (m: MediaItem | null) => { setPicker(null); resolve(m ? { id: m.id, alt: m.alt } : null); });
-    }),
-    [],
-  );
-  const pickFile = useCallback(
-    (kind: 'pdf' | 'file') => new Promise<{ id: string; name: string; mime: string; bytes: number } | null>((resolve) => {
-      setPickerAccept(kind === 'pdf' ? 'pdf' : 'files');
-      setPicker(() => (m: MediaItem | null) => { setPicker(null); resolve(m ? { id: m.id, name: m.filename, mime: m.mime, bytes: Number(m.bytes) || 0 } : null); });
-    }),
-    [],
-  );
 
   const remove = async () => {
     if (!entryId) return;
@@ -176,7 +161,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
                 <label className="prop"><span>Video link</span><input className="input" value={draft.video_url} onChange={(e) => patch({ video_url: e.target.value })} placeholder="https://www.youtube.com/watch?v=…" /></label>
               )}
             </div>
-            <Editor content={draft.body} onChange={(body) => patch({ body })} pickMedia={pickMedia} pickFile={pickFile} />
+            <Editor content={draft.body} onChange={(body) => patch({ body })} pickMedia={pickMedia} pickFile={pickFile} pickImages={pickImages} />
           </div>
         </div>
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close publishing" onClick={() => setSheet(false)} />}
@@ -204,7 +189,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           {entryId && <button type="button" className="btn danger side-danger" onClick={remove}>Delete entry</button>}
         </aside>
       </div>
-      {picker && <MediaPicker accept={pickerAccept} onPick={(m) => picker(m)} onClose={() => picker(null)} />}
+      {picker}
     </>
   );
 }

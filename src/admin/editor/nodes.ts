@@ -3,6 +3,7 @@
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { FigureView, EmbedView, ColumnsView, MapView, PdfView, FileView } from './views';
+import { GalleryView, MAX_GALLERY } from './gallery';
 import { docTypeFor } from '../../lib/shared/files';
 
 export interface PickedMedia {
@@ -19,6 +20,21 @@ export interface PickedFile {
 
 export type FileKind = 'pdf' | 'file';
 
+/** A photo chosen for a gallery (w/h let the site reserve space before it loads). */
+export interface PickedImage {
+  id: string;
+  alt: string;
+  w: number;
+  h: number;
+}
+
+export interface GalleryItem {
+  mediaId: string;
+  alt: string;
+  w: number;
+  h: number;
+}
+
 /** Shared editor storage: lets slash commands open the media picker. */
 export const SxStorage = Extension.create({
   name: 'sx',
@@ -26,6 +42,7 @@ export const SxStorage = Extension.create({
     return {
       pickMedia: null as null | (() => Promise<PickedMedia | null>),
       pickFile: null as null | ((kind: FileKind) => Promise<PickedFile | null>),
+      pickImages: null as null | ((max: number) => Promise<PickedImage[] | null>),
     };
   },
 });
@@ -50,6 +67,40 @@ export const PdfBlock = Node.create({
     return ReactNodeViewRenderer(PdfView);
   },
 });
+
+/** Several photos shown as a grid (square crops) or masonry (natural shapes). Up to MAX_GALLERY. */
+export const Gallery = Node.create({
+  name: 'gallery',
+  group: 'block',
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      items: { default: [] as GalleryItem[] },
+      layout: { default: 'grid' },
+      columns: { default: 3 },
+      caption: { default: '' },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="gallery"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    // Items live in the JSON document; copy/paste between editors goes through it, not this HTML.
+    const { items: _items, ...rest } = HTMLAttributes;
+    return ['div', mergeAttributes(rest, { 'data-type': 'gallery' })];
+  },
+  addNodeView() {
+    // Pointer and keyboard events inside the photo grid, toolbar and alt-text box belong to the gallery
+    // (reordering, selecting), not to the editor's own selection and block dragging.
+    return ReactNodeViewRenderer(GalleryView, {
+      stopEvent: ({ event }) => !!(event.target as HTMLElement | null)?.closest?.('.gal-tiles, .gal-tools, .gal-alt, .gal-cap'),
+    });
+  },
+});
+
+export { MAX_GALLERY };
 
 /** A downloadable file shown as a card between paragraphs. */
 export const FileBlock = Node.create({
@@ -184,7 +235,7 @@ export const Callout = Node.create({
 // A column holds normal blocks but never another column layout.
 export const Column = Node.create({
   name: 'column',
-  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | embed | map | callout | pdf | file)+',
+  content: '(paragraph | heading | bulletList | orderedList | blockquote | codeBlock | horizontalRule | figure | gallery | embed | map | callout | pdf | file)+',
   isolating: true,
   parseHTML() {
     return [{ tag: 'div[data-type="column"]' }];

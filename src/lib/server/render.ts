@@ -70,6 +70,24 @@ function columnWidths(raw: unknown, count: number): number[] {
   return arr.map((v) => Math.round(v));
 }
 
+const MAX_GALLERY = 30;
+// Lightbox group ids only need to be unique within a page; a running counter also keeps two documents
+// rendered on the same page (e.g. a story and its sidebar) from sharing a group.
+let galleryCount = 0;
+
+interface GalleryItem { id: string; alt: string; w: number; h: number }
+
+function galleryItem(raw: unknown): GalleryItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const it = raw as Record<string, unknown>;
+  const id = typeof it.mediaId === 'string' && UUID_RE.test(it.mediaId) ? it.mediaId : '';
+  if (!id) return null;
+  const alt = typeof it.alt === 'string' ? it.alt.trim().slice(0, 300) : '';
+  const w = Math.round(num(it.w, 0, 20000, 0));
+  const h = Math.round(num(it.h, 0, 20000, 0));
+  return { id, alt, w: w && h ? w : 0, h: w && h ? h : 0 };
+}
+
 function renderNode(node: DocNode, depth: number): string {
   if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return '';
   const a = node.attrs ?? {};
@@ -135,6 +153,30 @@ function renderNode(node: DocNode, depth: number): string {
       const caption = typeof a.caption === 'string' ? a.caption.slice(0, 500) : '';
       // The image sits in a button so the lightbox works by keyboard as well as by tap.
       return `<figure class="fig fig-${size}"><button type="button" class="lb" data-lightbox data-caption="${esc(caption || alt)}" aria-label="${esc(alt ? `View photo: ${alt}` : 'View photo')}"><img src="/media/${id}" alt="${esc(alt)}" loading="lazy" decoding="async" draggable="false"></button>${
+        caption ? `<figcaption>${esc(caption)}</figcaption>` : ''
+      }</figure>`;
+    }
+    case 'gallery': {
+      // Grid (square crops, 2–4 columns) or masonry (natural shapes, CSS columns). Each photo opens the
+      // lightbox, which steps through this gallery only. Everything is checked: ids must be UUIDs, text is
+      // escaped, numbers clamped, and at most MAX_GALLERY photos are rendered.
+      const items = (Array.isArray(a.items) ? a.items : [])
+        .map((it: unknown) => galleryItem(it))
+        .filter((it): it is GalleryItem => it !== null)
+        .slice(0, MAX_GALLERY);
+      if (!items.length) return '';
+      const layout = a.layout === 'masonry' ? 'masonry' : 'grid';
+      const cols = Math.round(num(a.columns, 2, 4, 3));
+      const caption = typeof a.caption === 'string' ? a.caption.trim().slice(0, 500) : '';
+      const group = `g${++galleryCount}`;
+      const photos = items
+        .map((it, i) => {
+          const label = it.alt ? `View photo ${i + 1} of ${items.length}: ${it.alt}` : `View photo ${i + 1} of ${items.length}`;
+          const size = it.w && it.h ? ` width="${it.w}" height="${it.h}"` : '';
+          return `<li><button type="button" class="lb" data-lightbox data-lb-group="${group}" data-caption="${esc(it.alt || caption)}" aria-label="${esc(label)}"><img src="/media/${it.id}" alt="${esc(it.alt)}"${size} loading="lazy" decoding="async" draggable="false"></button></li>`;
+        })
+        .join('');
+      return `<figure class="gallery gallery-${layout} gallery-c${cols}"${caption ? '' : ` aria-label="Photo gallery, ${items.length} photos"`}><ul class="gallery-list">${photos}</ul>${
         caption ? `<figcaption>${esc(caption)}</figcaption>` : ''
       }</figure>`;
     }
