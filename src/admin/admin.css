@@ -665,3 +665,17 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .gal-tools-end { margin-left: 0; width: 100%; justify-content: space-between; }
 }
 @media (prefers-reduced-motion: reduce) { .gal-tile { transition: none; } .gal-tile.lifted { transform: none; } }
+
+/* Modal for short add/edit forms (components/Modal.tsx) */
+.modal.modal-sm { width: min(560px, 100%); }
+.modal > form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.modal footer .actions { display: flex; gap: 8px; margin-left: auto; }
+.modal .body .kit-field textarea.input { resize: vertical; min-height: 76px; }
+.modal-2col { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+.modal-anim { animation: dlg-fade .16s ease-out; }
+.modal-anim .modal { animation: dlg-in .18s cubic-bezier(.2, .8, .2, 1); transform-origin: 50% 60%; }
+@media (prefers-reduced-motion: reduce) { .modal-anim, .modal-anim .modal { animation: none; } }
+@media (max-width: 760px) {
+  .modal-2col { grid-template-columns: minmax(0, 1fr); }
+  .modal footer { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+}
