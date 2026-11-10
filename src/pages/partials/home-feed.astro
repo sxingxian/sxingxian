@@ -1,0 +1,23 @@
+---
+// The home page's "Latest" list for one topic, without the rest of the page. Fetched by the topic
+// chips so changing topic swaps the list in place instead of loading a new page.
+// Same data and markup as the list on / (the chips stay real links, so / ?topic= still works without JS).
+export const partial = true;
+import PostRow from '../../components/PostRow.astro';
+import { getFeaturedList, getFeed } from '../../lib/server/site';
+import { getSetting } from '../../lib/server/repo';
+
+const site = await getSetting('site');
+const raw = Astro.url.searchParams.get('topic') ?? '';
+const topic = site.topics.includes(raw) ? raw : '';
+// Featured stories stay above the list: left out of "All", and without the shared transition name in a topic
+// (one name per page, or the browser skips the animation).
+const featured = await getFeaturedList();
+const featuredKeys = new Set(featured.map((f) => `n:${f.id}`));
+const feed = await getFeed({ topic, limit: 10, excludeIds: topic ? [] : featured.map((f) => f.id) });
+Astro.response.headers.set('cache-control', 'no-store');
+Astro.response.headers.set('x-robots-tag', 'noindex');
+---
+<template data-topic={topic} data-count={String(feed.length)} data-all={topic ? `/story?topic=${encodeURIComponent(topic)}` : '/story'}>
+  {feed.length === 0 ? <p class="empty">No posts here yet.</p> : feed.map((item) => <PostRow item={item} noTransition={featuredKeys.has(item.key)} />)}
+</template>

@@ -394,7 +394,9 @@ a.pg:hover { border-color: var(--line-strong); }
   .js .site-header .nav, .js .site-header .rss-btn { display: none; }
   .js .menu-btn { display: inline-flex; }
   .icon-btn { width: 44px; height: 44px; }
-  .list-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  /* nowrap: in a wrapping column the line grows to the chip row's full width and widens the page */
+  .list-head { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
+  .list-head .topics { min-width: 0; }
   .topics { flex-wrap: nowrap; overflow-x: auto; margin: 0 -18px; padding: 2px 18px 4px; scrollbar-width: none; }
   .topics::-webkit-scrollbar { display: none; }
   .topic { flex-shrink: 0; }
@@ -597,6 +599,8 @@ html.intro { overflow: hidden; }
 .site-header { view-transition-name: site-header; }
 .topic[aria-current='true'] { view-transition-name: topic-on; }
 .feed { view-transition-name: feed; }
+/* topic switch in place: dim the list only if loading takes a moment */
+.feed[aria-busy='true'] { opacity: .5; transition: opacity .2s ease .15s; }
 ::view-transition-group(*) { animation-duration: .5s; animation-timing-function: cubic-bezier(.32, .72, 0, 1); }
 ::view-transition-group(topic-on) { animation-duration: .32s; animation-timing-function: cubic-bezier(.23, 1, .32, 1); }
 ::view-transition-old(root) { animation: vt-out .18s ease-out both; }
