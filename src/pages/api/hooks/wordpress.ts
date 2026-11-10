@@ -5,6 +5,8 @@ import { env } from 'cloudflare:workers';
 import { syncOne, verifyWebhook, log } from '../../../lib/server/wordpress';
 import { error, json } from '../../../lib/server/http';
 
+const WEBHOOK_DELAY_MS = 5000;
+
 export const POST: APIRoute = async ({ request, locals, clientAddress }) => {
   if (env.WEBHOOK_LIMITER) {
     const { success } = await env.WEBHOOK_LIMITER.limit({ key: clientAddress || 'unknown' });
@@ -29,8 +31,12 @@ export const POST: APIRoute = async ({ request, locals, clientAddress }) => {
   if (!Number.isInteger(postId) || postId <= 0) return error(422, 'post_id must be a positive integer');
   const action = typeof payload.action === 'string' ? payload.action.slice(0, 20) : 'update';
 
-  // Respond fast; do the fetch-back in the background.
-  const job = syncOne(postId, `Webhook (${action})`).catch(() => 'failed');
+  // Respond fast; do the fetch-back in the background. Wait a few seconds first: WordPress's editor
+  // saves the post, then its featured image and categories, and older plugin versions notify at the
+  // first step, so fetching straight away could read the old image.
+  const job = new Promise((r) => setTimeout(r, WEBHOOK_DELAY_MS))
+    .then(() => syncOne(postId, `Webhook (${action})`))
+    .catch(() => 'failed');
   if (locals.cfContext) locals.cfContext.waitUntil(job);
   else await job;
   return json({ ok: true }, { status: 202 });

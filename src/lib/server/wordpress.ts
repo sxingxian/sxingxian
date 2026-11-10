@@ -10,7 +10,7 @@ import { env } from 'cloudflare:workers';
 import { sql } from './db';
 import { getSetting } from './repo';
 import { htmlToText } from './text';
-import { topicFor } from './wptopic';
+import { pickImage, topicFor } from './wptopic';
 import { normalizeWpBase } from '../shared/safe';
 
 const UA = 'sxingxian-sync/1.0 (+https://sxingxian.com)';
@@ -72,9 +72,7 @@ async function isSameSite(link: string): Promise<boolean> {
 async function upsert(p: WpPost, autoShow: boolean, categoryMap: Record<string, string>): Promise<'new' | 'updated'> {
   const terms = p._embedded?.['wp:term']?.flat() ?? [];
   const topic = topicFor(terms.filter((t) => t?.taxonomy === 'category').map((t) => t.name), categoryMap);
-  const media = p._embedded?.['wp:featuredmedia']?.[0];
-  const imgRaw = media?.media_details?.sizes?.medium_large?.source_url ?? media?.source_url ?? '';
-  const image = imgRaw && /^https:\/\//.test(imgRaw) ? imgRaw : '';
+  const image = pickImage(p._embedded?.['wp:featuredmedia']?.[0]);
   const words = htmlToText(p.content?.rendered ?? '').split(/\s+/).filter(Boolean).length;
   const url = (await isSameSite(p.link)) ? p.link : `${await wpBase()}/?p=${p.id}`;
 
@@ -147,10 +145,13 @@ export async function syncIncremental(reason = 'Scheduled pull'): Promise<void> 
 }
 
 /**
- * Re-apply the category → topic mapping to every synced post (after the mapping is saved).
- * Reads category names once, then each post's category IDs, and updates only topics that change.
+ * Bring every synced post's topic and featured image up to date with WordPress, without waiting for the
+ * post to be edited again. Used after the mapping is saved, by Sync now, and by the nightly reconcile
+ * (which catches a featured image changed on its own, as that doesn't mark the post modified).
+ * Reads category names once, each post's category and featured-image IDs, then the images in batches,
+ * and writes only rows that changed. An image WordPress won't show us is left as it was, not cleared.
  */
-export async function remapTopics(): Promise<{ checked: number; updated: number }> {
+export async function refreshSyncedPosts(reason = 'Topics and images refreshed'): Promise<{ checked: number; updated: number }> {
   const { categoryMap } = await getSetting('wordpress');
 
   const names = new Map<number, string>();
@@ -163,32 +164,48 @@ export async function remapTopics(): Promise<{ checked: number; updated: number 
     if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || cats.length === 0) break;
   }
 
-  const ids: number[] = [];
-  const topics: string[] = [];
+  const posts: { id: number; topic: string; media: number }[] = [];
   for (let page = 1; page <= 50; page++) {
-    const res = await wpFetch(`/wp/v2/posts?status=publish&per_page=100&page=${page}&_fields=id,categories`, 10000);
+    const res = await wpFetch(`/wp/v2/posts?status=publish&per_page=100&page=${page}&_fields=id,categories,featured_media`, 10000);
     if (res.status === 400 && page > 1) break;
     if (!res.ok) throw new Error(`posts fetch failed (${res.status})`);
-    const posts = (await res.json()) as { id: number; categories?: number[] }[];
-    for (const p of posts) {
+    const batch = (await res.json()) as { id: number; categories?: number[]; featured_media?: number }[];
+    for (const p of batch) {
       if (!Number.isInteger(p?.id)) continue;
       const cats = (Array.isArray(p.categories) ? p.categories : []).map((id) => names.get(id) ?? '').filter(Boolean);
-      ids.push(p.id);
-      topics.push(topicFor(cats, categoryMap));
+      const media = Number.isInteger(p.featured_media) && (p.featured_media as number) > 0 ? (p.featured_media as number) : 0;
+      posts.push({ id: p.id, topic: topicFor(cats, categoryMap), media });
     }
-    if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || posts.length === 0) break;
+    if (page >= Number(res.headers.get('X-WP-TotalPages') ?? '1') || batch.length === 0) break;
   }
 
+  // Featured images, 100 at a time. Missing from the answer = unknown (private, deleted): keep ours.
+  const images = new Map<number, string>();
+  const mediaIds = [...new Set(posts.map((p) => p.media).filter((m) => m > 0))];
+  for (let i = 0; i < mediaIds.length; i += 100) {
+    const ids = mediaIds.slice(i, i + 100);
+    const res = await wpFetch(`/wp/v2/media?include=${ids.join(',')}&per_page=100&_fields=id,source_url,media_details`, 10000);
+    if (!res.ok) continue;
+    for (const m of (await res.json()) as ({ id: number } & Parameters<typeof pickImage>[0])[]) {
+      if (Number.isInteger(m?.id)) images.set(m.id, pickImage(m));
+    }
+  }
+
+  const ids = posts.map((p) => p.id);
+  const topics = posts.map((p) => p.topic);
+  const imgs = posts.map((p) => (p.media === 0 ? '' : images.has(p.media) ? (images.get(p.media) as string) : null));
   const rows = ids.length
     ? await sql().query(
-        `UPDATE external_posts e SET topic = v.topic
-           FROM unnest($1::int[], $2::text[]) AS v(wp_id, topic)
-          WHERE e.wp_id = v.wp_id AND e.topic IS DISTINCT FROM v.topic
+        `UPDATE external_posts e
+            SET topic = v.topic, image_url = COALESCE(v.image, e.image_url)
+           FROM unnest($1::int[], $2::text[], $3::text[]) AS v(wp_id, topic, image)
+          WHERE e.wp_id = v.wp_id
+            AND (e.topic IS DISTINCT FROM v.topic OR (v.image IS NOT NULL AND e.image_url IS DISTINCT FROM v.image))
         RETURNING 1`,
-        [ids, topics],
+        [ids, topics, imgs],
       )
     : [];
-  await log('Category mapping applied', rows.length ? `topics updated on ${rows.length} of ${ids.length} posts` : `${ids.length} posts checked, no changes`);
+  await log(reason, rows.length ? `${rows.length} of ${ids.length} posts updated` : `${ids.length} posts checked, no changes`);
   return { checked: ids.length, updated: rows.length };
 }
 
@@ -218,6 +235,12 @@ export async function reconcile(): Promise<void> {
     }
   }
   await log('Nightly reconcile', removed ? `${removed} removed` : 'in sync');
+  // Also catch featured images and categories changed without the post being marked modified.
+  try {
+    await refreshSyncedPosts('Nightly refresh');
+  } catch (e) {
+    await log('Nightly refresh', `failed (${String((e as Error)?.message ?? e).slice(0, 80)})`, false);
+  }
 }
 
 /** Health check with hysteresis. Returns the resulting status. */

@@ -1,4 +1,4 @@
-// SERVER-ONLY: which story topic a WordPress post gets from its categories.
+// SERVER-ONLY: which story topic and featured image a WordPress post gets.
 //
 // Rules (one topic per WordPress post):
 //   1. The first of the post's categories that has a mapping in Admin → WordPress → Category → topic.
@@ -29,4 +29,32 @@ export function topicFor(categoryNames: readonly string[], categoryMap: Record<s
   }
   const first = names.find((n) => categoryKey(n) !== 'uncategorized');
   return (first || FALLBACK_TOPIC).slice(0, MAX_TOPIC_LEN);
+}
+
+interface WpMedia {
+  source_url?: string;
+  media_details?: { sizes?: Record<string, { source_url?: string } | undefined> };
+}
+
+/**
+ * The featured-image address to show for a WordPress post: a mid-size rendition when WordPress made one
+ * (medium_large → large → original). http:// links are upgraded to https:// (the page would block them
+ * otherwise); anything that isn't a plain https URL is dropped.
+ */
+export function pickImage(media: WpMedia | null | undefined): string {
+  const sizes = media?.media_details?.sizes;
+  const raw = sizes?.medium_large?.source_url || sizes?.large?.source_url || media?.source_url || '';
+  return safeImageUrl(raw);
+}
+
+export function safeImageUrl(raw: string): string {
+  if (typeof raw !== 'string' || !raw || raw.length > 2000) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:') u.protocol = 'https:';
+    if (u.protocol !== 'https:' || u.username || u.password) return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
 }
