@@ -8,6 +8,7 @@ import { sessionFromRequest } from './lib/server/users';
 import { maintenanceOnRequest } from './lib/server/maintenance';
 import { adsFor } from './lib/server/ads';
 import { wpBase } from './lib/server/wordpress';
+import { canonicalPath, isAdminPath } from './lib/server/paths';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -16,10 +17,6 @@ const PUBLIC_ADMIN_PAGES = new Set(['/admin/login', '/admin/setup']);
 
 // While a user must change a temporary password, only these work.
 const PASSWORD_CHANGE_ALLOWED = new Set(['/api/admin/me', '/api/admin/account/password', '/admin/account']);
-
-function isAdminPath(path: string): boolean {
-  return path === '/admin' || path.startsWith('/admin/') || path.startsWith('/api/admin/') || path === '/api/admin';
-}
 
 function isAuthApi(path: string): boolean {
   return path.startsWith('/api/auth/');
@@ -94,8 +91,16 @@ const BASE_HEADERS: Record<string, string> = {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request, url } = context;
-  const path = url.pathname;
-  const admin = isAdminPath(path);
+  // Decide on the decoded, normalised path, and also on the route the router actually matched, so an
+  // encoded or dotted spelling of an admin URL can never slip past the prefix checks.
+  const path = canonicalPath(url.pathname);
+  if (path === null) {
+    return new Response(JSON.stringify({ error: 'Bad request' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...BASE_HEADERS },
+    });
+  }
+  const admin = isAdminPath(path) || isAdminPath(context.routePattern);
 
   const isApi = path.startsWith('/api/');
   const deny = (status: number, message: string) =>
@@ -107,7 +112,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // CSRF: writes must come from this site's own pages. A custom header cannot be sent
   // cross-site without a CORS preflight, which this API never grants. The session
   // cookie is also SameSite=Strict.
-  if ((path.startsWith('/api/admin') || isAuthApi(path)) && MUTATING.has(request.method)) {
+  if ((path.startsWith('/api/admin') || context.routePattern.startsWith('/api/admin') || isAuthApi(path) || context.routePattern.startsWith('/api/auth/')) && MUTATING.has(request.method)) {
     const sameOrigin = request.headers.get('Origin') === url.origin;
     const marked = request.headers.get('X-Sx-Admin') === '1';
     if (!sameOrigin || !marked) return deny(403, 'Cross-site request blocked');

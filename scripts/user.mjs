@@ -80,8 +80,9 @@ async function setPassword(id, email) {
   const pre = await prehashPassword(password);
   await sql`
     UPDATE users SET password_hash = crypt(${pre}, gen_salt('bf', 12)), must_change_password = ${temporary},
-      password_changed_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now()
+      password_changed_at = now(), updated_at = now()
     WHERE id = ${id}`;
+  await sql`DELETE FROM login_throttle WHERE email = ${email}`;
   await sql`DELETE FROM sessions WHERE user_id = ${id}`;
   return temporary ? password : null;
 }
@@ -113,7 +114,7 @@ try {
     case 'list': {
       const rows = await sql`
         SELECT email, role, disabled, totp_enabled, must_change_password, last_login_at,
-               (locked_until IS NOT NULL AND locked_until > now()) AS locked
+               EXISTS (SELECT 1 FROM login_throttle t WHERE t.email = users.email AND t.locked_until > now()) AS locked
         FROM users ORDER BY created_at`;
       if (!rows.length) console.log('No accounts yet. Create one with:  npm run user -- create you@example.com --role owner');
       for (const r of rows) {
@@ -166,7 +167,7 @@ try {
     }
     case 'unlock': {
       const u = await findUser(emailArg);
-      await sql`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ${u.id}`;
+      await sql`DELETE FROM login_throttle WHERE email = ${u.email}`;
       await audit(u.id, u.email, 'unlocked (command line)');
       console.log(`✓ Unlocked ${u.email}`);
       break;
