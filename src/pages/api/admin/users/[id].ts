@@ -6,7 +6,7 @@ import { error, json, readBody } from '../../../../lib/server/http';
 import { userPatchSchema } from '../../../../lib/shared/schemas';
 import { UUID_RE } from '../../../../lib/shared/safe';
 import { prehashPassword, randomPassword } from '../../../../lib/server/authcrypto';
-import { deleteSessionsForUser, enabledOwnerCount, logAuth, requestMeta } from '../../../../lib/server/users';
+import { clearThrottle, deleteSessionsForUser, enabledOwnerCount, logAuth, requestMeta } from '../../../../lib/server/users';
 
 export const PATCH: APIRoute = async ({ params, request, locals, clientAddress }) => {
   const me = locals.user!;
@@ -36,14 +36,15 @@ export const PATCH: APIRoute = async ({ params, request, locals, clientAddress }
     await sql()`UPDATE users SET disabled = ${p.disabled}, updated_at = now() WHERE id = ${id}`;
     if (p.disabled) await deleteSessionsForUser(id);
   }
-  if (p.unlock) await sql()`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ${id}`;
+  if (p.unlock) await clearThrottle(email);
   if (p.resetPassword) {
     temporaryPassword = randomPassword();
     const pre = await prehashPassword(temporaryPassword);
     await sql()`
       UPDATE users SET password_hash = crypt(${pre}, gen_salt('bf', 12)), must_change_password = true,
-        password_changed_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now()
+        password_changed_at = now(), updated_at = now()
       WHERE id = ${id}`;
+    await clearThrottle(email);
     await deleteSessionsForUser(id);
   }
   if (p.reset2fa) {

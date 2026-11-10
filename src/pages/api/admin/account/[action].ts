@@ -68,7 +68,7 @@ export const POST: APIRoute = async ({ params, request, locals, clientAddress })
       const pre = await prehashPassword(next);
       await sql()`
         UPDATE users SET password_hash = crypt(${pre}, gen_salt('bf', 12)), must_change_password = false,
-          password_changed_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now()
+          password_changed_at = now(), updated_at = now()
         WHERE id = ${u.id}`;
       await deleteSessionsForUser(u.id, locals.sessionHash);
       await logAuth(u.id, u.email, 'password changed', true, meta);

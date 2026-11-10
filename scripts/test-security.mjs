@@ -25,7 +25,8 @@ await build({
                export { cleanFileName } from './src/lib/shared/files.ts';
                export { normalizeWpBase } from './src/lib/shared/safe.ts';
                export { cleanTopics, topicLabel } from './src/lib/shared/types.ts';
-               export { entryInputSchema } from './src/lib/shared/schemas.ts';`,
+               export { entryInputSchema } from './src/lib/shared/schemas.ts';
+               export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -41,7 +42,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -437,6 +438,21 @@ t('section topic lists are bounded', () => {
   assert.equal(settingsSchemas.topics.safeParse({ ...ok, work: Array.from({ length: 13 }, (_, i) => `t${i}`) }).success, false);
   assert.equal(settingsSchemas.topics.safeParse({ ...ok, film: [{}] }).success, false);
   assert.equal(settingsSchemas.topics.safeParse({ work: [] }).success, false);
+});
+
+t('admin paths cannot be disguised by encoding, dots or slashes', () => {
+  for (const raw of ['/api/%61dmin/entries', '/%61dmin/', '/admin/../admin/users', '//admin//users', '/%2561dmin/x', '/api/admin/./entries', '/api\\admin/x', '/ADMIN/../admin']) {
+    const c = canonicalPath(raw);
+    assert.ok(c !== null && isAdminPath(c), `${raw} -> ${c}`);
+  }
+  assert.equal(canonicalPath('/admin/login'), '/admin/login');
+  assert.equal(canonicalPath('/work/x'), '/work/x');
+  assert.equal(isAdminPath(canonicalPath('/administrator')), false);
+});
+t('malformed or deeply encoded paths are refused', () => {
+  assert.equal(canonicalPath('/%E0%A4%A'), null);
+  assert.equal(canonicalPath('/a%00b'), null);
+  assert.equal(canonicalPath('/%252525252561dmin'), null);
 });
 
 console.log(`\n${passed} security tests passed.`);

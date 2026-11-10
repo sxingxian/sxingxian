@@ -126,6 +126,7 @@ export async function logAuth(userId: string | null, email: string, event: strin
 export async function purgeAuthData(): Promise<void> {
   await sql()`DELETE FROM sessions WHERE expires_at < now()`;
   await sql()`DELETE FROM auth_events WHERE at < now() - interval '180 days'`;
+  await sql()`DELETE FROM login_throttle WHERE updated_at < now() - interval '1 day'`;
 }
 
 // -------------------------------------------------------------- passwords
@@ -184,52 +185,75 @@ export type LoginResult =
 
 const GENERIC = 'Email or password is incorrect.';
 
-export async function attemptLogin(emailIn: string, password: string, code: string | undefined, meta: RequestMeta): Promise<LoginResult> {
-  const email = normaliseEmail(emailIn);
+// Throttle per (email, IP). Unknown emails are tracked exactly like real ones, so a lock reveals nothing
+// about which accounts exist, and one address's failures never lock the owner out from another address.
+// The exponent is capped: the lock is 1, 2, 4 ... 32, then 60 minutes.
+const MAX_LOCK_MINUTES = 60;
+const MAX_EXPONENT = 6;
+
+async function throttleMinutes(email: string, ip: string): Promise<number> {
   const rows = await sql()`
-    SELECT id, password_hash, disabled, totp_enabled, must_change_password,
-           CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60) AS lock_minutes
-    FROM users WHERE email = ${email}`;
+    SELECT CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60) AS lock_minutes
+    FROM login_throttle WHERE email = ${email} AND ip = ${ip} AND locked_until > now()`;
+  return Number(rows[0]?.lock_minutes ?? 0);
+}
+
+async function recordFailure(email: string, ip: string): Promise<number> {
+  const rows = await sql()`
+    INSERT INTO login_throttle (email, ip, failed, locked_until, updated_at)
+    VALUES (${email}, ${ip}, 1, NULL, now())
+    ON CONFLICT (email, ip) DO UPDATE SET
+      failed = login_throttle.failed + 1,
+      locked_until = CASE WHEN login_throttle.failed + 1 >= ${LOCK_AFTER}
+        THEN now() + make_interval(mins => LEAST(POWER(2, LEAST(login_throttle.failed + 1 - ${LOCK_AFTER}, ${MAX_EXPONENT}))::int, ${MAX_LOCK_MINUTES}))
+        ELSE login_throttle.locked_until END,
+      updated_at = now()
+    RETURNING CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60) AS lock_minutes`;
+  return Number(rows[0]?.lock_minutes ?? 0);
+}
+
+/** Clears an email's throttle on every address (admin or command-line unlock). */
+export async function clearThrottle(email: string): Promise<void> {
+  await sql()`DELETE FROM login_throttle WHERE email = ${normaliseEmail(email)}`;
+}
+
+export async function attemptLogin(emailIn: string, password: string, code: string | undefined, meta: RequestMeta): Promise<LoginResult> {
+  const email = normaliseEmail(emailIn).slice(0, 254);
+
+  const lockMinutes = await throttleMinutes(email, meta.ip);
+  if (lockMinutes > 0) {
+    await logAuth(null, email, 'sign-in (throttled)', false, meta);
+    return { kind: 'locked', minutes: lockMinutes };
+  }
+
+  const fail = async (userId: string | null, event: string, message: string): Promise<LoginResult> => {
+    const m = await recordFailure(email, meta.ip);
+    await logAuth(userId, email, event, false, meta);
+    return m > 0 ? { kind: 'locked', minutes: m } : { kind: 'invalid', message };
+  };
+
+  const rows = await sql()`
+    SELECT id, password_hash, disabled, totp_enabled, must_change_password FROM users WHERE email = ${email}`;
   const u = rows[0];
 
   if (!u || u.disabled) {
     await checkPassword(password, null);
-    await logAuth(u ? (u.id as string) : null, email, u ? 'sign-in (disabled account)' : 'sign-in (unknown email)', false, meta);
-    return { kind: 'invalid', message: GENERIC };
+    return fail(u ? (u.id as string) : null, u ? 'sign-in (disabled account)' : 'sign-in (unknown email)', GENERIC);
   }
   const userId = u.id as string;
 
-  const lockMinutes = Number(u.lock_minutes ?? 0);
-  if (lockMinutes > 0) {
-    await logAuth(userId, email, 'sign-in (locked)', false, meta);
-    return { kind: 'locked', minutes: lockMinutes };
-  }
-
-  const fail = async (event: string, message: string): Promise<LoginResult> => {
-    const r = await sql()`
-      UPDATE users SET
-        failed_attempts = failed_attempts + 1,
-        locked_until = CASE WHEN failed_attempts + 1 >= ${LOCK_AFTER}
-          THEN now() + LEAST(make_interval(mins => POWER(2, failed_attempts + 1 - ${LOCK_AFTER})::int), interval '60 minutes')
-          ELSE locked_until END
-      WHERE id = ${userId}
-      RETURNING CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60) AS lock_minutes`;
-    await logAuth(userId, email, event, false, meta);
-    const m = Number(r[0]?.lock_minutes ?? 0);
-    return m > 0 ? { kind: 'locked', minutes: m } : { kind: 'invalid', message };
-  };
-
-  if (!(await checkPassword(password, u.password_hash as string))) return fail('sign-in (wrong password)', GENERIC);
+  if (!(await checkPassword(password, u.password_hash as string))) return fail(userId, 'sign-in (wrong password)', GENERIC);
 
   let usedRecovery = false;
   if (u.totp_enabled) {
     if (!code) return { kind: 'mfa' };
     const how = await checkSecondFactor(userId, code);
-    if (!how) return fail('sign-in (wrong code)', 'That code isn’t right. Check your authenticator app and try again.');
+    if (!how) return fail(userId, 'sign-in (wrong code)', 'That code isn’t right. Check your authenticator app and try again.');
     usedRecovery = how === 'recovery';
   }
 
-  await sql()`UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = now() WHERE id = ${userId}`;
+  await sql()`DELETE FROM login_throttle WHERE email = ${email} AND ip = ${meta.ip}`;
+  await sql()`UPDATE users SET last_login_at = now() WHERE id = ${userId}`;
   await logAuth(userId, email, usedRecovery ? 'signed in (recovery code)' : 'signed in', true, meta);
   return { kind: 'ok', userId, mustChangePassword: u.must_change_password as boolean, usedRecovery };
 }

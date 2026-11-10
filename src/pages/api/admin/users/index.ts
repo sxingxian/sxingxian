@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ locals }) => {
   if (locals.user!.role !== 'owner') return error(403, 'Only an owner can manage users.');
   const users = await sql()`
     SELECT u.id, u.email, u.name, u.role, u.disabled, u.totp_enabled, u.must_change_password, u.last_login_at, u.created_at,
-           (u.locked_until IS NOT NULL AND u.locked_until > now()) AS locked,
+           EXISTS (SELECT 1 FROM login_throttle t WHERE t.email = u.email AND t.locked_until > now()) AS locked,
            (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions
     FROM users u ORDER BY u.created_at`;
   return json({ users });
