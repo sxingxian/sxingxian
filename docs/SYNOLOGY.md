@@ -1,16 +1,18 @@
 # Home NAS storage on a Synology DS720+
 
 The site stores files on "S3-compatible" storage: R2, Backblaze B2, or your NAS. DSM doesn't speak S3 by
-itself, so the NAS runs two small containers:
+itself, so the NAS runs two small pieces:
 
 - **versitygw** (Versity S3 Gateway, Apache 2.0) puts an S3 address in front of an ordinary NAS folder. Every upload
   is a normal file at `docker/nas/data/<bucket>/<path>`: you can see it in File Station, and Hyper Backup and Btrfs
   snapshots protect it like anything else. There is no database to look after or repair.
-- **cloudflared** (Cloudflare Tunnel) gives the gateway a private, encrypted path to Cloudflare, so the site can reach
-  it at `https://nas-s3.sxingxian.com` **without opening any port on your router**.
+- **Cloudflare Tunnel** (a Package Center package) gives the gateway a private, encrypted path to Cloudflare, so the
+  site can reach it at `https://nas-s3.sxingxian.com` **without opening any port on your router**. The site runs on
+  Cloudflare, so it needs *some* way in to your NAS; the tunnel is the safe one (the alternative is port forwarding
+  plus your own certificate, which exposes the NAS directly).
 
 ```
-sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel──▶ cloudflared ──▶ versitygw :7070 ──▶ /volume1/docker/nas/data
+sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel──▶ Cloudflare Tunnel package ──▶ localhost:7070 (versitygw) ──▶ /volume1/docker/nas/data
 ```
 
 > **Why not Garage or MinIO?** Garage is built for clusters spread over several sites; on a single NAS that adds
@@ -21,10 +23,10 @@ sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel�
 ## 0 · Before you start
 
 - **DSM 7.2 or later** with **Container Manager** (Package Center). DS720+ is Intel (x86-64), so it runs containers.
-- **Memory:** both containers together use well under 200 MB.
+- **Memory:** the gateway and the tunnel together use well under 200 MB.
 - **Remove the old Garage project** if you created one: Container Manager → **Project** → `garage` → **Action → Delete**
-  (it also offers to remove its containers). Then delete the `docker/garage` folder in File Station. Nothing in it is
-  used by the site yet.
+  (it also offers to remove its containers, including any `cloudflared` container: remove it, the tunnel now runs
+  as a package). Then delete the `docker/garage` folder in File Station. Nothing in it is used by the site yet.
 - **Make two random keys** with your password manager. Use **letters and digits only** (symbols such as `$`, `#` or
   `:` break the settings file):
   - an **access key**, 20 characters
@@ -41,7 +43,7 @@ sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel�
    ```yaml
    services:
      versitygw:
-       image: versity/versitygw:latest   # after the first start, pin the version shown in the log (see "Updates")
+       image: versity/versitygw:latest   # after the first start, pin the version shown in the log (see "Gateway updates")
        container_name: versitygw
        restart: unless-stopped
        environment:
@@ -51,25 +53,12 @@ sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel�
          - VGW_BACKEND_ARG=/data
        volumes:
          - ./data:/data
-       networks: [s3]
-       # No "ports:" — the gateway is reached only through the tunnel, never from your LAN or the internet.
-     cloudflared:
-       image: cloudflare/cloudflared:latest
-       container_name: cloudflared
-       restart: unless-stopped
-       command: tunnel --no-autoupdate run
-       environment:
-         - TUNNEL_TOKEN=PASTE_THE_TUNNEL_TOKEN   # from step 2 (keep this file private)
-       depends_on: [versitygw]
-       networks: [s3]
-   networks:
-     s3:
-       name: nas-s3
+       ports:
+         - "127.0.0.1:7070:7070"   # reachable only from the NAS itself (the tunnel), not from your LAN or the internet
    ```
 
-   - Replace `PASTE_ACCESS_KEY` and `PASTE_SECRET_KEY` with your two keys. Leave the tunnel token for step 2.
-   - Untick "Set up web portal", then **Next → Done**. The project builds and starts; `cloudflared` will restart until
-     it has a token, which is fine.
+   - Replace `PASTE_ACCESS_KEY` and `PASTE_SECRET_KEY` with your two keys.
+   - Untick "Set up web portal", then **Next → Done**. The project builds and starts.
 3. **Check it started:** Container Manager → **Container** → `versitygw` → **Log**. It should show the gateway
    listening (port 7070) and no errors.
 
@@ -81,12 +70,12 @@ Control Panel → **Task Scheduler → Create → Scheduled Task → User-define
 
   ```sh
   {
-    /usr/local/bin/docker run --rm --network nas-s3 \
+    /usr/local/bin/docker run --rm --network host \
       -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
-      amazon/aws-cli --endpoint-url http://versitygw:7070 s3 mb s3://sxingxian-media
-    /usr/local/bin/docker run --rm --network nas-s3 \
+      amazon/aws-cli --endpoint-url http://127.0.0.1:7070 s3 mb s3://sxingxian-media
+    /usr/local/bin/docker run --rm --network host \
       -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
-      amazon/aws-cli --endpoint-url http://versitygw:7070 s3 ls
+      amazon/aws-cli --endpoint-url http://127.0.0.1:7070 s3 ls
   } > /volume1/docker/nas/setup.log 2>&1
   ```
 
@@ -99,13 +88,22 @@ If the log shows **permission denied**, the container can't write to `docker/nas
 files → Save, and run the task again. ("Everyone" means accounts on your NAS, not the internet; keep the `docker`
 shared folder itself unshared.)
 
-## 2 · Cloudflare Tunnel
+## 2 · Cloudflare Tunnel (Package Center)
 
-1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, name it `nas`.
-2. Choose **Docker** and copy the token from the command it shows (the long string after `--token`). In Container
-   Manager → **Project** → `nas` → **Action → Stop**, edit `docker-compose.yml`, replace `PASTE_THE_TUNNEL_TOKEN`, save,
-   then **Action → Build** (or Start). The tunnel turns **Healthy** in the dashboard.
-3. **Public hostname:** subdomain `nas-s3`, domain `sxingxian.com`, service **HTTP** → `versitygw:7070`.
+1. **Add the SynoCommunity package source** (once): Package Center → **Settings**
+   - **General → Trust Level:** *Synology Inc. and trusted publishers*.
+   - **Package Sources → Add:** name `SynoCommunity`, location `https://packages.synocommunity.com/` → OK.
+2. **Create the tunnel:** Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**,
+   name it `nas`. On the install screen pick any system (e.g. Docker) and copy just the **token**: the long string
+   after `--token` in the command it shows. Keep it private; anyone with it can run your tunnel.
+3. **Install it on the NAS:** Package Center → **Community** → **Cloudflare Tunnel** → **Install**, and paste the token
+   when it asks. Back in the Cloudflare dashboard the tunnel turns **Healthy**.
+4. **Point it at the gateway:** in the tunnel → **Public hostname → Add**: subdomain `nas-s3`, domain
+   `sxingxian.com`, service **HTTP**, URL `localhost:7070` → Save.
+
+To check it: open `https://nas-s3.sxingxian.com` in a browser. An XML "AccessDenied" (or similar) error is
+**good**: the gateway answered and refused a request without keys. A Cloudflare error page means the tunnel or the
+hostname isn't right yet.
 
 ## 3 · (Recommended) Only the site may use that address
 
@@ -144,7 +142,9 @@ If an upload fails with a **signature or region** error, check that `NAS_S3_REGI
 - **Videos** still go to R2 only (Cloudflare's terms for serving video).
 - **If the NAS is off or offline**, files stored on it can't be shown until it's back. Keep anything important
   (the featured cover, CV files) on R2, or copy it to both.
-- **Updates:** after the first start, note the version in the `versitygw` log and change `latest` to that tag in
+- **Tunnel updates** come through Package Center (Community tab). If the tunnel ever stops, Package Center →
+  Installed → Cloudflare Tunnel → **Run**; its log is under the package's details.
+- **Gateway updates:** after the first start, note the version in the `versitygw` log and change `latest` to that tag in
   `docker-compose.yml`, so it only updates when you choose to. To update, read the release notes on
   github.com/versity/versitygw, change the tag, then **Project → Action → Build**.
 - **Changing the keys:** edit both in `docker-compose.yml`, rebuild the project, and update the two Worker secrets.
