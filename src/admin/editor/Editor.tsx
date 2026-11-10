@@ -5,6 +5,7 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
+import { HeadingExit } from './headingExit';
 import DragHandle from '@tiptap/extension-drag-handle-react';
 import { Callout, Column, Columns, Embed, Figure, FileBlock, FileLink, MapBlock, PdfBlock, SxStorage, type FileKind, type PickedFile, type PickedMedia } from './nodes';
 import { SlashCommand } from './slash';
@@ -57,6 +58,7 @@ export default function Editor({ content, onChange, pickMedia, pickFile, allowH1
         placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : "Type '/' for blocks"),
       }),
       SxStorage,
+      HeadingExit,
       Figure,
       PdfBlock,
       FileBlock,
