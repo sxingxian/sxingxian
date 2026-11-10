@@ -2,7 +2,7 @@
 /**
  * Plugin Name: sxingxian sync
  * Description: Notifies sxingxian.com when a post is published, updated, unpublished or deleted, so the main site stays in sync. Sends only the post ID — sxingxian.com fetches the post back from the public REST API.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 5.6
  * Author: sxingxian
  * License: MIT
@@ -128,3 +128,47 @@ add_action(
 		sxingxian_sync_notify( $post_id, 'delete' );
 	}
 );
+
+/*
+ * Featured image address in the post's REST data, as `sx_featured_image` (1.2.0).
+ * WordPress hides an image's own REST entry when it is attached to another post that isn't published
+ * (a draft, or one in the trash), so sxingxian.com couldn't find the featured image even though the post
+ * shows it. This gives the address directly. Only posts the REST API already shows publicly get it, and
+ * password-protected posts get an empty value.
+ */
+add_action(
+	'rest_api_init',
+	function () {
+		register_rest_field(
+			'post',
+			'sx_featured_image',
+			array(
+				'get_callback' => function ( $data ) {
+					$post_id = isset( $data['id'] ) ? (int) $data['id'] : 0;
+					if ( $post_id <= 0 || post_password_required( $post_id ) ) {
+						return '';
+					}
+					$thumb = get_post_thumbnail_id( $post_id );
+					if ( ! $thumb ) {
+						return '';
+					}
+					$url = wp_get_attachment_image_url( $thumb, 'medium_large' );
+					if ( ! $url ) {
+						$url = wp_get_attachment_image_url( $thumb, 'large' );
+					}
+					if ( ! $url ) {
+						$url = wp_get_attachment_url( $thumb );
+					}
+					return $url ? esc_url_raw( $url ) : '';
+				},
+				'schema'       => array(
+					'description' => 'Featured image URL for sxingxian.com',
+					'type'        => 'string',
+					'context'     => array( 'view', 'embed' ),
+					'readonly'    => true,
+				),
+			)
+		);
+	}
+);
+
