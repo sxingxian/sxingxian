@@ -33,6 +33,7 @@ sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel�
   - a **secret key**, 40 characters.
 
   They are the only way into the gateway. They go in the settings file below and in Cloudflare (step 4), nowhere else.
+  (The gateway also accepts them as `ROOT_ACCESS_KEY_ID` / `ROOT_SECRET_ACCESS_KEY`; either name works.)
 
 ## 1 · The gateway
 
@@ -62,31 +63,8 @@ sxingxian.com (Cloudflare Worker) ──HTTPS──▶ Cloudflare ──Tunnel�
 3. **Check it started:** Container Manager → **Container** → `versitygw` → **Log**. It should show the gateway
    listening (port 7070) and no errors.
 
-### Create the bucket (no SSH needed)
-
-Control Panel → **Task Scheduler → Create → Scheduled Task → User-defined script**:
-- **General:** name `nas-bucket`, user **root**, untick **Enabled** (so it only runs when you press Run).
-- **Task Settings → Run command** (put your two keys in):
-
-  ```sh
-  {
-    /usr/local/bin/docker run --rm --network host \
-      -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
-      amazon/aws-cli --endpoint-url http://127.0.0.1:7070 s3 mb s3://sxingxian-media
-    /usr/local/bin/docker run --rm --network host \
-      -e AWS_ACCESS_KEY_ID=PASTE_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=PASTE_SECRET_KEY -e AWS_DEFAULT_REGION=us-east-1 \
-      amazon/aws-cli --endpoint-url http://127.0.0.1:7070 s3 ls
-  } > /volume1/docker/nas/setup.log 2>&1
-  ```
-
-Select the task → **Run**, wait a minute, then open `docker/nas/setup.log` (Text Editor package or download it). You
-should see `make_bucket: sxingxian-media` and then the bucket in the list, and a `sxingxian-media` folder appears in
-`docker/nas/data`. This also proves the keys work. **Then delete the task** (it contains your keys) and the log.
-
-If the log shows **permission denied**, the container can't write to `docker/nas/data`: File Station → right-click
-`data` → **Properties → Permission → Create** → *Everyone* → **Read & Write**, apply to this folder, sub-folders and
-files → Save, and run the task again. ("Everyone" means accounts on your NAS, not the internet; keep the `docker`
-shared folder itself unshared.)
+That's all for the gateway. There is **no bucket to create by hand**: the site creates the `sxingxian-media`
+folder inside `docker/nas/data` the first time you upload to the NAS (step 4).
 
 ## 2 · Cloudflare Tunnel (Package Center)
 
@@ -132,8 +110,9 @@ Cloudflare → **Workers & Pages → sxingxian → Settings → Variables and Se
 Then in the admin: **Media → Upload**. "Home NAS" is now selectable; upload a photo and a PDF and open the story
 to check they appear. The files show up under `docker/nas/data/sxingxian-media/` in File Station.
 
-If an upload fails with a **signature or region** error, check that `NAS_S3_REGION` is `us-east-1`; if it fails with
-**access denied**, check the two keys match `docker-compose.yml` exactly.
+If an upload fails, the admin says what to check: **refused the keys** (the two keys or the region don't match
+`docker-compose.yml`), **isn't reachable** (NAS off, or the tunnel isn't Healthy / its hostname doesn't point at
+`localhost:7070`), or **Cloudflare Access blocked the request** (the service token secrets don't match).
 
 ## Good to know
 

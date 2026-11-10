@@ -2,7 +2,7 @@
 // YouTube/Vimeo embed. Files are checked by declared type AND magic bytes.
 import type { APIRoute } from 'astro';
 import { insertMedia, listMedia } from '../../../../lib/server/repo';
-import { putObject, availableProviders } from '../../../../lib/server/storage';
+import { putObject, availableProviders, StorageError } from '../../../../lib/server/storage';
 import { error, json } from '../../../../lib/server/http';
 import { embedInputSchema, mediaMetaSchema } from '../../../../lib/shared/schemas';
 import { parseVideoUrl } from '../../../../lib/shared/safe';
@@ -82,7 +82,8 @@ export const POST: APIRoute = async ({ request }) => {
     if (!doc.ok) return error(415, `${doc.reason}. Allowed: photos, video, PDF, Office and OpenDocument files, RTF, text, Markdown, CSV and calendar files.`);
     const now = new Date();
     const key = `files/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${doc.ext}`;
-    await putObject(provider, key, buf, doc.mime);
+    const stored = await store(provider, key, buf, doc.mime);
+    if (stored) return stored;
     const media = await insertMedia({
       provider, object_key: key, embed_id: '', mime: doc.mime, bytes: buf.byteLength,
       width: null, height: null, alt, filename: cleanFileName(file.name, doc.ext),
@@ -97,7 +98,8 @@ export const POST: APIRoute = async ({ request }) => {
 
   const now = new Date();
   const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${EXT[real]}`;
-  await putObject(provider, key, buf, real);
+  const stored = await store(provider, key, buf, real);
+  if (stored) return stored;
 
   const media = await insertMedia({
     provider, object_key: key, embed_id: '', mime: real, bytes: buf.byteLength,
@@ -105,3 +107,14 @@ export const POST: APIRoute = async ({ request }) => {
   });
   return json({ media }, { status: 201 });
 };
+
+/** Upload to storage; a storage problem becomes a clear message in the admin instead of a bare 500. */
+async function store(provider: Parameters<typeof putObject>[0], key: string, buf: ArrayBuffer, mime: string): Promise<Response | null> {
+  try {
+    await putObject(provider, key, buf, mime);
+    return null;
+  } catch (e) {
+    if (e instanceof StorageError) return error(502, e.message);
+    throw e;
+  }
+}
