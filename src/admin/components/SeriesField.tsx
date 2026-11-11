@@ -57,14 +57,11 @@ export default function SeriesField({ entryId, onManage }: { entryId: string | n
     return runs;
   }, []).map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a}–${b}`)).join(', ');
   const useNext = <button type="button" className="linklike" onClick={() => { setPart(String(next)); void save(seriesId, next); }}>Use Part {next}</button>;
-  const parts = others.length > 1 ? 'parts' : 'part';
   const partHint = clash
-    ? <>Part {part} is already “{clash.title}”. {useNext}</>
+    ? <>Part {part} is taken. {useNext}</>
     : !others.length
-      ? (part ? 'No other stories in this series yet.' : <>No other stories in this series yet. {useNext}</>)
-      : part
-        ? `Other stories use ${parts} ${used}. A new part would be ${Math.max(next, (Number(part) || 0) + 1)}.`
-        : <>Other stories use {parts} {used}. {useNext}</>;
+      ? (part ? 'First in this series' : <>First in this series. {useNext}</>)
+      : part ? `Other parts: ${used}` : <>Other parts: {used}. {useNext}</>;
 
   return (
     <>
