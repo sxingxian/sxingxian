@@ -32,7 +32,9 @@ await build({
                export { featuredIds } from './src/lib/shared/types.ts';
                export { entryContentSchema, entryStateSchema } from './src/lib/shared/schemas.ts';
                export { entryState, untilLabel, whenLabel } from './src/lib/shared/state.ts';
-               export { partsLabel, laterParts, outWhen } from './src/lib/shared/series-text.ts';`,
+               export { partsLabel, laterParts, outWhen } from './src/lib/shared/series-text.ts';
+               export { markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX } from './src/lib/shared/telegram-format.ts';
+               export { TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, settingsSchemas as SETTINGS_SCHEMAS } from './src/lib/shared/schemas.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -48,7 +50,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -476,6 +478,29 @@ t('series wording: one label everywhere; a scheduled part shows only when', () =
   assert.equal(outWhen('2026-11-12T01:00:00Z', now, 'Asia/Singapore'), 'tomorrow, 9:00 am');
   assert.equal(outWhen('2026-11-14T01:00:00Z', now, 'Asia/Singapore'), 'Saturday, 9:00 am');
   assert.equal(outWhen('2026-11-30T01:00:00Z', now, 'Asia/Singapore'), '30 Nov, 9:00 am');
+});
+t('telegram: messages can only carry b/i/code/http(s) links; titles are escaped; ids and tokens are checked', () => {
+  const md = markdownToTelegramHtml;
+  assert.equal(md('**b** _i_ `c` [x](https://a.example/p?q=1&r=2)'), '<b>b</b> <i>i</i> <code>c</code> <a href="https://a.example/p?q=1&amp;r=2">x</a>');
+  assert.equal(md('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');
+  assert.equal(md('[x](javascript:alert(1))'), '[x](javascript:alert(1))');
+  assert.equal(md('[x](https://a.example/"onmouseover="y)').includes('<a'), false); // a quote can't break out of href: no link at all
+  assert.equal(md('snake_case_name stays'), 'snake_case_name stays');
+  assert.equal(md('[l](https://a.example/_x_/)'), '<a href="https://a.example/_x_/">l</a>'); // no tags inside an address
+  const body = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'word '.repeat(400) }] }] };
+  const base = { kind: 'post', title: 'A <b> & "c"', dek: '', body, topics: [], series: '', url: 'https://x.example/story/a', template: '**{title}**\n\n{excerpt}', custom: null, button: 'Read', imageId: 'img' };
+  const p = buildPost(base);
+  assert.ok(p.html.startsWith('<b>A &lt;b&gt; &amp; "c"</b>'));
+  assert.ok(visibleLength(p.html) <= CAPTION_MAX);
+  assert.equal(buildPost({ ...base, custom: 'x'.repeat(1500) }).imageId, null); // too long for a caption: text only
+  assert.ok(excerptOf(body, '', 100).length <= 101);
+  for (const ok of ['@sxingxian_stories', '-1001234567890']) assert.equal(TELEGRAM_CHAT_RE.test(ok), true, ok);
+  for (const bad of ['sxingxian', '@a', '-12345', "@x' or 1=1", 'https://t.me/x']) assert.equal(TELEGRAM_CHAT_RE.test(bad), false, bad);
+  assert.equal(TELEGRAM_TOKEN_RE.test('123456789:AAHfakeTokenForQaOnly_0123456789abcdef'), true);
+  assert.equal(TELEGRAM_TOKEN_RE.test('123:short'), false);
+  // The settings never hold the token.
+  const keys = Object.keys(SETTINGS_SCHEMAS.telegram.shape);
+  assert.equal(keys.some((k) => /token|secret/i.test(k)), false);
 });
 t('section topic lists are bounded', () => {
   const ok = { work: ['Web'], photos: [], film: [] };
