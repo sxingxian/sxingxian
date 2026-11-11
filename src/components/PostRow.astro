@@ -21,8 +21,8 @@ const vtName = !noTransition && item.source === 'native' && item.image ? `c-${it
     <span class="meta">
       {item.topics.length > 0 && <span class="topic-name">{topicLabel(item.topics)}</span>}
       <span>{formatDate(item.date, { day: 'numeric', month: 'short' })}</span>
-      <span>{item.readMinutes} min read</span>
-      {item.external && <span>hey.sxingxian.com <span aria-hidden="true">↗</span></span>}
+      <span>{item.readMinutes} min read{item.external && <span class="ext-mark" aria-hidden="true"> ↗</span>}</span>
+      {item.external && <span class="src"><span aria-hidden="true">hey.sxingxian.com ↗</span><span class="sr-only">on hey.sxingxian.com</span></span>}
     </span>
   </span>
 </a>
