@@ -1,7 +1,7 @@
 // A pop-up for short forms (add/edit). Same look as the media picker (.modal): centred on desktop,
 // a bottom sheet on phones. Traps focus, closes on Escape / ✕ / backdrop, gives focus back afterwards,
 // and asks before throwing away unsaved changes.
-import { useCallback, useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { useDialog } from './dialog';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -31,6 +31,16 @@ export function Modal({ title, onClose, children, footer, onSubmit, dirty = fals
     if (s.dirty && !(await dialog.confirm({ title: 'Discard changes?', body: 'What you typed here hasn’t been saved.', confirmLabel: 'Discard', danger: true }))) return;
     s.onClose();
   }, [dialog]);
+
+  // Closing: let go of the focused field first, so the phone keyboard closes and the admin's tab bar comes back
+  // (a removed field fires no blur).
+  useLayoutEffect(() => {
+    const panelEl = panel.current;
+    return () => {
+      const a = document.activeElement as HTMLElement | null;
+      if (a && panelEl?.contains(a)) a.blur();
+    };
+  }, []);
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
