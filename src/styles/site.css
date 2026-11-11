@@ -67,9 +67,13 @@ img { max-width: 100%; display: block; }
 .lbl.accent { color: var(--accent); }
 .meta { font: 13.5px/1.5 var(--sans); color: var(--faint); font-variant-numeric: tabular-nums; }
 /* "Travel · 9 Nov · 6 min read": separators drawn between the parts */
-.meta > * + *::before { content: '·'; margin: 0 .45em; color: var(--faint); font-weight: 400; }
+.meta > :not(:last-child)::after { content: '·'; margin: 0 .45em; color: var(--faint); font-weight: 400; }
+/* parts stay whole ("hey.sxingxian.com ↗") but the line wraps between them; the separator ends the line it follows */
+.meta:has(> *) { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0; row-gap: 2px; min-width: 0; }
 .meta .topic-name { color: var(--ink-2); font-weight: 500; }
-.meta > * { white-space: nowrap; }
+.meta > * { white-space: nowrap; min-width: 0; }
+.meta > .topic-name, .meta > .part-kicker { white-space: normal; }
+.meta .ext-mark { display: none; }
 
 
 /* header */
@@ -155,7 +159,9 @@ html[data-theme='dark'] .i-moon { display: none; }
 
 /* no picture and no default cover: a flat tile with the topic set in type */
 .placeholder-cover { width: 100%; height: 100%; display: flex; align-items: flex-end; padding: 10% 9%; box-sizing: border-box; background: var(--accent-bg); color: var(--accent); overflow: hidden; }
-.placeholder-cover span { font: 500 clamp(15px, 1.6vw, 22px)/1.1 var(--serif); letter-spacing: -.01em; }
+.placeholder-cover { container-type: inline-size; }
+/* sized to the tile, so a long topic fits a 96 px phone thumbnail as well as a wide card */
+.placeholder-cover span { font: 500 clamp(12px, 14cqi, 24px)/1.1 var(--serif); letter-spacing: -.01em; overflow-wrap: anywhere; hyphens: auto; }
 
 /* main grid */
 .main { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 56px; align-items: start; padding-top: 64px; }
@@ -439,6 +445,12 @@ a.pg:hover { border-color: var(--line-strong); }
   .part-nav .next { grid-column: 1; }
   /* archive: years become a sideways row of chips above the list */
   .years-chips { display: flex; margin-top: 12px; }
+  /* the Years card moves into the chips above, so an otherwise empty sidebar takes no space */
+  .archive .side:not(:has(> :not(.years-card))) { display: none; }
+  /* WordPress rows on phones: "4 min read ↗" (the address part hides; screen readers still hear it) */
+  .meta .ext-mark { display: inline; }
+  .meta > .src { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .meta > :has(+ .src)::after { content: none; }
   .archive .side .years-card { display: none; }
   .pages .nums > * { display: none; }
   .pages .nums::before { content: attr(data-label); font: 13.5px var(--sans); color: var(--faint); align-self: center; }
