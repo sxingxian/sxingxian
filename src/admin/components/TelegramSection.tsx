@@ -30,9 +30,11 @@ function postLink(chat: string, id: number | null): string | null {
   return null;
 }
 
-export default function TelegramSection({ entryId, state, refreshKey, pickMedia }: {
+export default function TelegramSection({ entryId, state, refreshKey, pickMedia, onTargets }: {
   entryId: string | null;
   state: EntryState;
+  /** The channels it will post to when it goes live ("a, b"), or null when it won't post. For the action bar. */
+  onTargets?: (names: string | null) => void;
   /** Changes when the entry is published or unpublished: reload what was posted. */
   refreshKey: string;
   pickMedia: () => Promise<{ id: string } | null>;
@@ -60,6 +62,9 @@ export default function TelegramSection({ entryId, state, refreshKey, pickMedia 
     return () => clearTimeout(t);
   }, [state, v, load]);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const targets = v && v.available && v.connected && v.channels.length && v.options.announce
+    ? v.channels.map((c) => c.title || c.chat).join(', ') : null;
+  useEffect(() => { onTargets?.(targets); }, [onTargets, targets]);
 
   if (!entryId || !v || !v.available || !v.connected || !v.channels.length) return null;
 

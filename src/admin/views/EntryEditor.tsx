@@ -57,6 +57,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const [lists, setLists] = useState<TopicsSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
   const [sheet, setSheet] = useState(false);
+  const [tgTargets, setTgTargets] = useState<string | null>(null);
   // The entry as stored (its publishing state and live content), and whether a live entry has private edits.
   const [entry, setEntry] = useState<Entry | null>(null);
   const [hasEdits, setHasEdits] = useState(false);
@@ -260,10 +261,6 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
                   <DateTimePicker value={scheduleAt} onChange={(iso) => { if (iso) setScheduleAt(iso); }} label="Goes live" />
                 </Field>
               )}
-              <button type="button" className="btn primary state-cta" disabled={busy}
-                onClick={() => void (when === 'later' ? act('schedule', scheduleAt) : act('publish'))}>
-                {when === 'later' ? 'Schedule' : 'Publish now'}
-              </button>
             </>
           )}
           {state === 'scheduled' && at && (
@@ -275,10 +272,6 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
               <Field label="Goes live">
                 <DateTimePicker value={at} onChange={(iso) => actLater('schedule', iso)} label="Goes live" />
               </Field>
-              <div className="state-actions">
-                <button type="button" className="btn" disabled={busy} onClick={() => void unpublish()}>Back to draft</button>
-                <button type="button" className="btn primary" disabled={busy} onClick={() => void act('publish')}>Publish now</button>
-              </div>
             </>
           )}
           {state === 'published' && (
@@ -288,21 +281,12 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
                 <span className="state-date">{at ? whenLabel(at, now) : ''}</span>
                 <a href={liveUrl} target="_blank" rel="noopener">View ↗</a>
               </div>
-              {edited && (
-                <div className="state-edits" role="status">
-                  <span>Your edits are saved but not live yet.</span>
-                  <div className="state-actions">
-                    <button type="button" className="btn" disabled={busy} onClick={() => void discardEdits()}>Discard edits</button>
-                    <button type="button" className="btn primary" disabled={busy} onClick={() => void act('update')}>Update live story</button>
-                  </div>
-                </div>
-              )}
               <Field label="Date shown on it">
                 <DateTimePicker value={at} onChange={(iso) => actLater('redate', iso)} label="Date shown on it" />
               </Field>
             </>
           )}
-          <TelegramSection entryId={entryId} state={state} refreshKey={`${state}|${at ?? ''}`} pickMedia={pickMedia} />
+          <TelegramSection entryId={entryId} state={state} refreshKey={`${state}|${at ?? ''}`} pickMedia={pickMedia} onTargets={setTgTargets} />
           <div className="side-toggles">
             {draft.kind === 'post' && (
               <ToggleRow label="Feature on home page" checked={isFeatured} onChange={(v) => void setFeature(v)}
@@ -313,8 +297,48 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <Field label="URL slug" hint={state === 'published' && draft.slug !== entry?.slug ? `Live: ${liveUrl} · changes with Update` : liveUrl} htmlFor="ed-slug">
             <input id="ed-slug" className="input mono" value={draft.slug} onChange={(e) => { slugTouched.current = true; patch({ slug: slugify(e.target.value) }); }} />
           </Field>
-          {state === 'published' && <button type="button" className="btn side-unpublish" disabled={busy} onClick={() => void unpublish()}>Unpublish (back to draft)</button>}
           {entryId && <button type="button" className="btn danger side-danger" onClick={remove}>Delete entry</button>}
+          {/* The action bar: what will happen, then the buttons. Stays in view at the bottom of the panel. */}
+          <div className="side-bar">
+            {state === 'draft' && (
+              <>
+                <p className="side-bar-note" role="status">
+                  Goes live <b>{when === 'later' ? whenPhrase(scheduleAt, now) : 'now'}</b>{tgTargets && <> · posts to {tgTargets}</>}
+                </p>
+                <button type="button" className="btn primary state-cta" disabled={busy}
+                  onClick={() => void (when === 'later' ? act('schedule', scheduleAt) : act('publish'))}>
+                  {when === 'later' ? 'Schedule' : 'Publish now'}
+                </button>
+              </>
+            )}
+            {state === 'scheduled' && at && (
+              <>
+                <p className="side-bar-note" role="status">Goes live by itself <b>{untilLabel(at, now)}</b>{tgTargets && <> · posts to {tgTargets}</>}</p>
+                <div className="state-actions">
+                  <button type="button" className="btn" disabled={busy} onClick={() => void unpublish()}>Back to draft</button>
+                  <button type="button" className="btn primary" disabled={busy} onClick={() => void act('publish')}>Publish now</button>
+                </div>
+              </>
+            )}
+            {state === 'published' && edited && (
+              <>
+                <p className="side-bar-note" role="status">Your edits are saved but <b>not live yet</b>.</p>
+                <div className="state-actions">
+                  <button type="button" className="btn" disabled={busy} onClick={() => void discardEdits()}>Discard edits</button>
+                  <button type="button" className="btn primary" disabled={busy} onClick={() => void act('update')}>Update live story</button>
+                </div>
+              </>
+            )}
+            {state === 'published' && !edited && (
+              <>
+                <p className="side-bar-note" role="status">Live since <b>{at ? sinceLabel(at, now) : '—'}</b></p>
+                <div className="state-actions">
+                  <button type="button" className="btn" disabled={busy} onClick={() => void unpublish()}>Back to draft</button>
+                  <a className="btn" href={liveUrl} target="_blank" rel="noopener">View live ↗</a>
+                </div>
+              </>
+            )}
+          </div>
         </aside>
       </div>
       {picker}
@@ -326,6 +350,12 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 function whenPhrase(iso: string, now: number): string {
   const w = whenLabel(iso, now);
   return /^(Today|Tomorrow|Yesterday)/.test(w) ? w[0].toLowerCase() + w.slice(1) : `on ${w}`;
+}
+
+/** "today, 9:00 pm" · "Tue 10 Nov, 9:00 pm", to follow "since". */
+function sinceLabel(iso: string, now: number): string {
+  const w = whenLabel(iso, now);
+  return /^(Today|Tomorrow|Yesterday)/.test(w) ? w[0].toLowerCase() + w.slice(1) : w;
 }
 
 function ClockIcon() {
