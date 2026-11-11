@@ -100,6 +100,15 @@ export async function listPublicEntries(kind: EntryKind, opts: { limit?: number;
   return rows as Entry[];
 }
 
+/** Every live entry, light fields only: for sitemap.xml and llms.txt. */
+export async function listPublicIndex(): Promise<Pick<Entry, 'kind' | 'slug' | 'title' | 'dek' | 'cover_media_id' | 'published_at' | 'updated_at'>[]> {
+  const rows = await sql()`
+    SELECT kind, slug, title, dek, cover_media_id, published_at, updated_at FROM entries
+    WHERE status = 'published' AND is_public = true AND published_at <= now()
+    ORDER BY published_at DESC LIMIT 5000`;
+  return rows as Pick<Entry, 'kind' | 'slug' | 'title' | 'dek' | 'cover_media_id' | 'published_at' | 'updated_at'>[];
+}
+
 export async function getPublicEntry(kind: EntryKind, slug: string): Promise<Entry | null> {
   const rows = await readEntries(
     `SELECT ${ENTRY_COLS} FROM entries

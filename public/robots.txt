@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /admin
 Disallow: /api/
-Sitemap: https://sxingxian.com/rss.xml
+
+Sitemap: https://sxingxian.com/sitemap.xml
