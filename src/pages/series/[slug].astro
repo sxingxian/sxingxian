@@ -13,15 +13,14 @@ const published = data?.parts.length ?? 0;
 const total = data ? Math.max(data.series.planned_parts ?? published, published) : 0;
 const label = total > published ? `${published} of ${total} parts` : `${published} ${published === 1 ? 'part' : 'parts'}`;
 const planned = Math.max(0, total - published);
-const lastPart = data?.parts[data.parts.length - 1]?.part ?? 0;
 ---
 {data ? (
   <Site title={data.series.title} description={data.series.description || `A series in ${published} parts.`}>
     <section class="wrap" style="max-width:900px">
       <header class="page-head">
-        <span class="lbl accent">Series · {label}</span>
-        <h1 style="margin-top:8px">{data.series.title}</h1>
+        <h1>{data.series.title}</h1>
         {data.series.description && <p>{data.series.description}</p>}
+        <p class="meta" style="margin-top:10px">A series · {label}</p>
         <span class="series-bar series-head-bar" role="img" aria-label={label}>
           {Array.from({ length: Math.min(total, 24) }, (_, i) => <span class:list={{ on: i < published }}></span>)}
         </span>
@@ -30,7 +29,6 @@ const lastPart = data?.parts[data.parts.length - 1]?.part ?? 0;
         {data.parts.map((p) => (
           <li>
             <a class="series-part" href={`/story/${p.slug}`}>
-              <span class="num" aria-hidden="true">{String(p.part).padStart(2, '0')}</span>
               <span class="thumb"><Thumb image={p.cover_media_id ? { kind: 'media', id: p.cover_media_id } : null} /></span>
               <span style="display:flex;flex-direction:column;gap:4px;min-width:0">
                 <span class="meta">Part {p.part} · {formatDate(p.published_at)} · {p.read_minutes} min</span>
@@ -42,7 +40,6 @@ const lastPart = data?.parts[data.parts.length - 1]?.part ?? 0;
         ))}
         {planned > 0 && (
           <li class="series-part planned">
-            <span class="num" aria-hidden="true">{String(lastPart + 1).padStart(2, '0')}</span>
             <span class="thumb" aria-hidden="true"></span>
             <span>{planned === 1 ? 'One more part planned' : `${planned} more parts planned`}</span>
           </li>

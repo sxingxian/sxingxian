@@ -28,15 +28,14 @@ const morePlanned = inSeries ? Math.max(0, seriesTotal - Math.max(inSeries.parts
 ---
 <Site title={entry.title} description={entry.dek} image={ogImage}>
   <article class="article" data-read={entry.kind === 'post' ? `n:${entry.id}` : undefined}>
-    <div class="kicker">
-      <span class="lbl accent">{kicker}{entry.topics.length ? ` · ${topicLabel(entry.topics)}` : ''}</span>
-      <span class="meta">{formatDate(entry.published_at)} · {entry.read_minutes} min</span>
-    </div>
     <h1>{entry.title}</h1>
     {entry.dek && <p class="dek">{entry.dek}</p>}
-    {inSeries && (
-      <p style="margin:12px 0 0"><a class="part-kicker" href="#series">Part {inSeries.part} of {seriesTotal} · {inSeries.series.title}</a></p>
-    )}
+    <p class="meta article-meta">
+      {entry.topics.length > 0 ? <span class="topic-name">{topicLabel(entry.topics)}</span> : <span class="topic-name">{kicker}</span>}
+      <span>{formatDate(entry.published_at)}</span>
+      <span>{entry.read_minutes} min read</span>
+      {inSeries && <a class="part-kicker" href="#series">Part {inSeries.part} of {seriesTotal} in {inSeries.series.title}</a>}
+    </p>
     {videoSrc ? (
       <div class="prose" style="padding-top:28px">
         <figure class={`embed${video?.portrait ? ' portrait' : ''}`} style="margin:0"><div class="embed-frame">
@@ -50,22 +49,22 @@ const morePlanned = inSeries ? Math.max(0, seriesTotal - Math.max(inSeries.parts
     {html.includes('data-pdf=') && <PdfViewer />}
     {inSeries && (
       <section class="series-box" id="series" aria-label={`Series: ${inSeries.series.title}`}>
-        <div class="card-head"><span class="lbl accent">Series · {inSeries.parts.length} of {seriesTotal} parts out</span><a href={`/series/${inSeries.series.slug}`}>Series page <span class="arrow" aria-hidden="true">→</span></a></div>
-        <span class="series-t">{inSeries.series.title}</span>
+        <div class="card-head"><h2 class="series-t">{inSeries.series.title}</h2><a href={`/series/${inSeries.series.slug}`}>Series page <span class="arrow" aria-hidden="true">→</span></a></div>
+        <span class="meta">A series · {inSeries.parts.length} of {seriesTotal} parts out</span>
         <ol>
           {inSeries.parts.map((p) => p.id === entry.id ? (
-            <li aria-current="page"><span class="pn">{String(p.part).padStart(2, '0')}</span><span>{p.title}</span><span class="meta">{p.read_minutes} min</span></li>
+            <li aria-current="page"><span class="pn">Part {p.part}</span><span>{p.title}</span><span class="meta">{p.read_minutes} min</span></li>
           ) : (
-            <li><span class="pn">{String(p.part).padStart(2, '0')}</span><a href={`/story/${p.slug}`}>{p.title}</a><span class="meta">{p.read_minutes} min</span></li>
+            <li><span class="pn">Part {p.part}</span><a href={`/story/${p.slug}`}>{p.title}</a><span class="meta">{p.read_minutes} min</span></li>
           ))}
-          {morePlanned > 0 && <li class="planned"><span class="pn">··</span><span>{morePlanned === 1 ? 'One more part planned' : `${morePlanned} more parts planned`}</span><span></span></li>}
+          {morePlanned > 0 && <li class="planned"><span class="pn">Next</span><span>{morePlanned === 1 ? 'One more part planned' : `${morePlanned} more parts planned`}</span><span></span></li>}
         </ol>
       </section>
     )}
     {(prevPart || nextPart) && (
       <nav class="part-nav" aria-label="Series navigation">
-        {prevPart && <a href={`/story/${prevPart.slug}`} rel="prev"><span class="lbl">← Part {prevPart.part}</span><b>{prevPart.title}</b></a>}
-        {nextPart && <a class="next" href={`/story/${nextPart.slug}`} rel="next"><span class="lbl">Part {nextPart.part} →</span><b>{nextPart.title}</b></a>}
+        {prevPart && <a href={`/story/${prevPart.slug}`} rel="prev"><span class="meta">← Part {prevPart.part}</span><b>{prevPart.title}</b></a>}
+        {nextPart && <a class="next" href={`/story/${nextPart.slug}`} rel="next"><span class="meta">Part {nextPart.part} →</span><b>{nextPart.title}</b></a>}
       </nav>
     )}
     <AdSlot slot="article" />

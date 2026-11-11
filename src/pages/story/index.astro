@@ -53,7 +53,7 @@ const title = [topic || 'All stories', year ? String(year) : '', page > 1 ? `pag
   <section class="wrap archive">
     <header class="page-head">
       <h1>{topic || 'All stories'}</h1>
-      <p>Stories written here and on hey.sxingxian.com, newest first.</p>
+      <p>Newest first, including posts from hey.sxingxian.com.</p>
     </header>
     <nav class="topics" aria-label="Filter by topic" style="margin-top:16px">
       <a class="topic" href={href({ topic: '', year: null })} aria-current={topic === '' ? 'true' : undefined}>All</a>
@@ -99,7 +99,7 @@ const title = [topic || 'All stories', year ? String(year) : '', page > 1 ? `pag
       <aside class="side side-sticky" aria-label="Browse stories">
         {years.length > 0 && (
           <div class="card years-card">
-            <div class="card-head"><span class="lbl">Years</span></div>
+            <div class="card-head"><h2 class="lbl">Years</h2></div>
             <nav class="years" aria-label="Filter by year">
               <a href={href({ year: null })} aria-current={year === null ? 'true' : undefined}><span>All years</span><span class="meta">{allCount}</span></a>
               {years.map((y) => (
@@ -110,7 +110,7 @@ const title = [topic || 'All stories', year ? String(year) : '', page > 1 ? `pag
         )}
         {series.length > 0 && (
           <div class="card">
-            <div class="card-head"><span class="lbl">Series</span><a href="/series">All series <span class="arrow" aria-hidden="true">→</span></a></div>
+            <div class="card-head"><h2 class="lbl">Series</h2><a href="/series">All series <span class="arrow" aria-hidden="true">→</span></a></div>
             {series.map((s) => (
               <a class="mini" href={`/series/${s.slug}`}>
                 <span class="mini-text"><b>{s.title}</b><span>{s.planned_parts && s.planned_parts > s.published ? `${s.published} of ${s.planned_parts} parts` : `${s.published} ${s.published === 1 ? 'part' : 'parts'}`}</span></span>

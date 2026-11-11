@@ -27,6 +27,7 @@ const [feed, work, galleries, films, popular, series] = await Promise.all([
 ]);
 const latestFilm = films[0];
 const many = featured.length > 1;
+const featuredKeys = new Set(featured.map((f) => `n:${f.id}`));
 const vt = (id: string) => `view-transition-name:c-${id.replace(/[^a-zA-Z0-9-]/g, '')}`;
 // 1–2 galleries fill the card instead of leaving empty cells: one wide photo, or two squares.
 const photoCols = Math.min(galleries.length, 3);
@@ -42,18 +43,24 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
           const Title = first ? 'h1' : 'h2';
           return (
             <article class="featured feat-slide" role={many ? 'group' : undefined} aria-roledescription={many ? 'slide' : undefined} aria-label={many ? `${i + 1} of ${featured.length}` : undefined}>
-              <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
-                <span class="par"><Thumb image={f.cover_media_id ? { kind: 'media', id: f.cover_media_id } : null} eager={first} /></span>
-              </a>
+              {f.cover_media_id && <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
+                <span class="par"><Thumb image={{ kind: 'media', id: f.cover_media_id }} eager={first} /></span>
+              </a>}
+              {!f.cover_media_id && (
+                <a class="cover cover-type" href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true">
+                  <span>{f.dek || f.title}</span>
+                </a>
+              )}
               <div class="stack">
-                <span class:list={['row-meta', { rv: first }]} data-rv={first ? 'fmeta' : undefined}>
-                  <span class="lbl accent">Featured{f.topics.length ? ` · ${topicLabel(f.topics)}` : ''}</span>
-                  <span class="meta">{formatDate(f.published_at)} · {f.read_minutes} min</span>
-                </span>
                 <Title class:list={['feat-title', { title: first, rv: first }]} data-rv={first ? 'ftitle' : undefined}>
                   <a href={`/story/${f.slug}`}>{first ? words.map((w, k) => (<><span class={`w w${Math.min(k + 1, 14)}`}><span>{w}</span></span>{k < words.length - 1 ? ' ' : ''}</>)) : f.title}</a>
                 </Title>
                 {f.dek && <p class:list={{ rv: first }} data-rv={first ? 'fdek' : undefined}>{f.dek}</p>}
+                <span class:list={['meta', { rv: first }]} data-rv={first ? 'fmeta' : undefined}>
+                  {f.topics.length > 0 && <span class="topic-name">{topicLabel(f.topics)}</span>}
+                  <span>{formatDate(f.published_at)}</span>
+                  <span>{f.read_minutes} min read</span>
+                </span>
                 <a class:list={['read', { rv: first }]} data-rv={first ? 'fread' : undefined} href={`/story/${f.slug}`}>Read <span class="arrow" aria-hidden="true">→</span><span class="sr-only">: {f.title}</span></a>
               </div>
             </article>
@@ -82,34 +89,35 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
     <div>
       <div class="list-head rv" data-rv="lhead">
         <h2>{topic ? topic : 'Latest'}</h2>
-        <nav class="topics" aria-label="Filter by topic">
+        <nav class="topics" aria-label="Filter by topic" data-topic-nav>
           <a class="topic" href="/" aria-current={topic === '' ? 'true' : undefined}>All</a>
           {site.topics.map((t) => (
             <a class="topic" href={`/?topic=${encodeURIComponent(t)}`} aria-current={topic === t ? 'true' : undefined}>{t}</a>
           ))}
         </nav>
       </div>
-      <div class="feed">
+      <p class="sr-only" aria-live="polite" data-feed-status></p>
+      <div class="feed" data-feed>
         {feed.length === 0 ? (
           <p class="empty">No posts here yet.</p>
         ) : (
-          feed.map((item) => <PostRow item={item} reveal />)
+          feed.map((item) => <PostRow item={item} reveal noTransition={featuredKeys.has(item.key)} />)
         )}
       </div>
-      <div class="pager rv" data-rv="pager"><span></span><a href={topic ? `/story?topic=${encodeURIComponent(topic)}` : '/story'}>All stories <span class="arrow" aria-hidden="true">→</span></a></div>
+      <div class="pager rv" data-rv="pager"><span></span><a data-feed-all href={topic ? `/story?topic=${encodeURIComponent(topic)}` : '/story'}>All stories <span class="arrow" aria-hidden="true">→</span></a></div>
       <AdSlot slot="home" />
     </div>
 
     <aside class="side" aria-label="More from sxingxian">
       <div class="card rv" data-rv="side">
-        <div class="card-head"><span class="lbl">Follow along</span></div>
-        <p class="card-text">Every story, from here and from hey.sxingxian.com, in one feed for your reader.</p>
-        <div class="rss-url"><code>sxingxian.com/rss.xml</code><a href="/rss.xml">Open</a></div>
+        <div class="card-head"><h2 class="lbl">Subscribe</h2></div>
+        <p class="card-text">New stories from here and from hey.sxingxian.com, in any feed reader.</p>
+        <div class="rss-url"><span>sxingxian.com/rss.xml</span><a href="/rss.xml">RSS feed</a></div>
       </div>
 
       {sections.work && work.length > 0 && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Selected work</span><a href="/work">All work <span class="arrow" aria-hidden="true">→</span></a></div>
+          <div class="card-head"><h2 class="lbl">Selected work</h2><a href="/work">All work <span class="arrow" aria-hidden="true">→</span></a></div>
           {work.map((w) => (
             <a class="mini" href={`/work/${w.slug}`}>
               <span class="th"><Thumb image={w.cover_media_id ? { kind: 'media', id: w.cover_media_id } : null} /></span>
@@ -121,7 +129,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
 
       {sections.photos && galleries.length > 0 && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Photos</span><a href="/photos">All photos <span class="arrow" aria-hidden="true">→</span></a></div>
+          <div class="card-head"><h2 class="lbl">Photos</h2><a href="/photos">All photos <span class="arrow" aria-hidden="true">→</span></a></div>
           <div class={`photo-grid pg-${photoCols}`}>
             {galleries.map((g) => (
               <a href={`/photos/${g.slug}`} aria-label={g.title}>
@@ -134,7 +142,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
 
       {sections.film && latestFilm && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Latest film</span><a href="/film">All films <span class="arrow" aria-hidden="true">→</span></a></div>
+          <div class="card-head"><h2 class="lbl">Latest film</h2><a href="/film">All films <span class="arrow" aria-hidden="true">→</span></a></div>
           <a class="mini" href={`/film/${latestFilm.slug}`}>
             <span class="th play"><Thumb image={latestFilm.cover_media_id ? { kind: 'media', id: latestFilm.cover_media_id } : null} /><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5L19 12L8 18.5Z" fill="#fff"/></svg></span>
             <span class="mini-text"><b>{latestFilm.title}</b>{filmMeta && <span>{filmMeta}</span>}</span>
@@ -144,7 +152,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
 
       {popular.length > 0 && (
         <div class="card rv" data-rv="side">
-          <div class="card-head"><span class="lbl">Most read</span><span class="meta">30 days</span></div>
+          <div class="card-head"><h2 class="lbl">Most read</h2><span class="meta">Last 30 days</span></div>
           <ol class="ranked">
             {popular.map((p, i) => (
               <li><span class="n" aria-hidden="true">{i + 1}</span><a href={p.url} rel={p.external ? 'noopener' : undefined} data-view={p.external ? p.key : undefined}>{p.title}{p.external && <><span aria-hidden="true"> ↗</span><span class="sr-only"> (on hey.sxingxian.com)</span></>}</a></li>
@@ -172,7 +180,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
     var d = document.documentElement;
     if (!d.classList.contains('motion')) return;
     var els = Array.prototype.slice.call(document.querySelectorAll('[data-rv]'));
-    var FIXED = { fcover: 0, fmeta: 1, ftitle: 2, fdek: 3, fread: 4 };
+    var FIXED = { fcover: 0, ftitle: 1, fdek: 2, fmeta: 3, fread: 4 };
     function reveal(list) {
       list.sort(function (a, b) { var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return Math.abs(ra.top - rb.top) < 24 ? ra.left - rb.left : ra.top - rb.top; });
       var n = list.some(function (el) { return FIXED[el.getAttribute('data-rv')] !== undefined; }) ? 3 : 0;
@@ -218,6 +226,53 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
   })();
   </script>
   <script is:inline>
+    // Topic chips: swap the Latest list in place (no page load, address unchanged). The chips stay real
+    // links, so this is only an enhancement: modified clicks and failures fall back to normal navigation.
+    (function () {
+      var nav = document.querySelector('[data-topic-nav]');
+      var feed = document.querySelector('[data-feed]');
+      if (!nav || !feed || !window.fetch || !window.DOMParser) return;
+      var head = document.querySelector('.list-head h2');
+      var all = document.querySelector('[data-feed-all]');
+      var status = document.querySelector('[data-feed-status]');
+      var ctl = null, vt = null;
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+      nav.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a.topic');
+        if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        if (a.getAttribute('aria-current') === 'true') return;
+        var topic = new URL(a.href, location.href).searchParams.get('topic') || '';
+        if (ctl) ctl.abort();
+        ctl = new AbortController();
+        feed.setAttribute('aria-busy', 'true');
+        fetch('/partials/home-feed?topic=' + encodeURIComponent(topic), { signal: ctl.signal, credentials: 'same-origin', headers: { Accept: 'text/html' } })
+          .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+          .then(function (html) {
+            var tpl = new DOMParser().parseFromString(html, 'text/html').querySelector('template[data-topic]');
+            if (!tpl) throw new Error('bad fragment');
+            var apply = function () {
+              nav.querySelectorAll('a.topic').forEach(function (x) { if (x === a) x.setAttribute('aria-current', 'true'); else x.removeAttribute('aria-current'); });
+              feed.replaceChildren(document.importNode(tpl.content, true));
+              if (head) head.textContent = topic || 'Latest';
+              if (all) all.setAttribute('href', tpl.getAttribute('data-all') || '/story');
+            };
+            // One transition at a time: a quick second click finishes the first one instantly.
+            if (vt) { try { vt.skipTransition(); } catch (e2) {} }
+            if (document.startViewTransition && !reduce.matches && !document.hidden) {
+              vt = document.startViewTransition(apply);
+              var done = function () { vt = null; };
+              vt.ready.catch(function () {});
+              vt.finished.then(done, done);
+            } else apply();
+            var n = Number(tpl.getAttribute('data-count')) || 0;
+            if (status) status.textContent = n ? 'Showing ' + n + (n === 1 ? ' story' : ' stories') + (topic ? ' in ' + topic : '') : 'No stories' + (topic ? ' in ' + topic : '');
+          })
+          .catch(function (err) { if (err && err.name === 'AbortError') return; location.href = a.href; })
+          .finally(function () { feed.removeAttribute('aria-busy'); });
+      });
+    })();
+
     // Featured carousel: scroll-snap track (swipe, trackpad and keyboard scrolling work without this script).
     // Advances when the current progress bar finishes (CSS animation, --feat-ms). Pauses on hover, keyboard
     // focus, the pause button and when the tab is hidden; never advances by itself with reduced motion.
