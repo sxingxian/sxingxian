@@ -13,9 +13,9 @@ export function formatMoney(cents: number): string {
 
 /** "15", "15.5", "S$15.50", "1,000" → cents. Anything else (negative, 3 decimals, words) → null. */
 export function parseMoney(input: string): number | null {
-  const s = input.trim().replace(/^S?\$\s*/i, '').replace(/,/g, '');
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(s)) return null;
-  const [d, f = ''] = s.split('.');
+  const parts = input.trim().replace(/^S?\$\s*/i, '').replace(/,/g, '').split('.');
+  const [d, f = ''] = parts;
+  if (parts.length > 2 || !/^\d{1,7}$/.test(d) || (parts.length === 2 && !/^\d{1,2}$/.test(f))) return null;
   return Number(d) * 100 + Number((f + '00').slice(0, 2));
 }
 
@@ -34,7 +34,6 @@ export function cleanMessage(input: string): string {
   return input
     .normalize('NFC')
     .replace(/\r\n?/g, '\n')
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

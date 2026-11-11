@@ -90,9 +90,9 @@ const customText = custom ? (custom / 100).toFixed(custom % 100 ? 2 : 0) : '';
     const min = Number(form.dataset.min), max = Number(form.dataset.max);
     const money = (c: number) => `S$${(c / 100).toLocaleString('en-SG', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
     const parse = (v: string): number | null => {
-      const t = v.trim().replace(/^S?\$\s*/i, '').replace(/,/g, '');
-      if (!/^\d{1,7}(\.\d{1,2})?$/.test(t)) return null;
-      const [d, f = ''] = t.split('.');
+      const parts = v.trim().replace(/^S?\$\s*/i, '').replace(/,/g, '').split('.');
+      const [d, f = ''] = parts;
+      if (parts.length > 2 || !/^\d{1,7}$/.test(d) || (parts.length === 2 && !/^\d{1,2}$/.test(f))) return null;
       return Number(d) * 100 + Number((f + '00').slice(0, 2));
     };
     const choice = () => (form.querySelector('input[name="amount"]:checked') as HTMLInputElement | null)?.value ?? '';
