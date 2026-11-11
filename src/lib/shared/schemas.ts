@@ -67,6 +67,7 @@ export const settingsSchemas = {
     title: z.string().trim().min(1).max(60),
     tagline: z.string().max(60),
     topics: topicList,
+    defaultCoverId: z.string().regex(UUID_RE).nullable().optional(),
   }),
   topics: z.object({ work: topicList, photos: topicList, film: topicList }),
   sections: z.object({

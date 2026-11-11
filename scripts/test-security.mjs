@@ -558,4 +558,11 @@ t('gallery block: ids checked, text escaped, layout and size bounded', () => {
   assert.equal(new Set(two.match(/data-lb-group="g\d+"/g)).size, 2, 'separate groups');
 });
 
+t('default cover: a media id only', () => {
+  const site = (defaultCoverId) => ({ title: 'x', tagline: '', topics: [], defaultCoverId });
+  assert.equal(settingsSchemas.site.safeParse(site('0d038776-413a-41e2-9840-e86da034c682')).success, true);
+  assert.equal(settingsSchemas.site.safeParse(site(null)).success, true);
+  for (const bad of ['../media/x', 'https://evil.example/x.jpg', '0d038776', 42]) assert.equal(settingsSchemas.site.safeParse(site(bad)).success, false, String(bad));
+});
+
 console.log(`\n${passed} security tests passed.`);

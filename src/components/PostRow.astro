@@ -13,8 +13,8 @@ const { item, reveal = false, noTransition = false } = Astro.props;
 // Native posts share a view-transition name with the post's cover, so the thumbnail grows into it.
 const vtName = !noTransition && item.source === 'native' && item.image ? `c-${item.key.slice(2).replace(/[^a-zA-Z0-9-]/g, '')}` : null;
 ---
-<a class:list={['post-row', { rv: reveal, 'no-thumb': !item.image }]} href={item.url} rel={item.external ? 'noopener' : undefined} data-rv={reveal ? 'row' : undefined} data-view={item.external ? item.key : undefined}>
-  {item.image && <span class="thumb" style={vtName ? `view-transition-name:${vtName}` : undefined}><Thumb image={item.image} /></span>}
+<a class:list={['post-row', { rv: reveal }]} href={item.url} rel={item.external ? 'noopener' : undefined} data-rv={reveal ? 'row' : undefined} data-view={item.external ? item.key : undefined}>
+  <span class="thumb" style={vtName ? `view-transition-name:${vtName}` : undefined}><Thumb image={item.image} label={item.topics[0] ?? ''} /></span>
   <span class="body">
     <span class="t"><span class="uline">{item.title}</span></span>
     {item.dek && <span class="d">{item.dek}</span>}

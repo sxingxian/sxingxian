@@ -138,6 +138,8 @@ export interface SiteSetting {
   tagline: string;
   /** Story topics (home page and /story filters). */
   topics: string[];
+  /** Image used for any story, WordPress post, work item or film without its own picture (media id). */
+  defaultCoverId?: string | null;
 }
 
 /** Topic lists for the other sections. Story topics live in SiteSetting.topics. */
@@ -230,6 +232,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     title: 'sxingxian',
     tagline: 'stories',
     topics: ['Engineering', 'Homelab', 'Photography', 'Essays', 'Notes'],
+    defaultCoverId: null,
   },
   topics: { work: [], photos: [], film: [] },
   sections: { work: true, photos: true, film: true, cv: true, about: true },
