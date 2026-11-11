@@ -16,8 +16,8 @@ import { sql } from './db';
 import { getPublicEntryById, getSetting, putSetting } from './repo';
 import { authSecretProblem, openSecret, sealSecret } from './authcrypto';
 import { verifyStripeSignature } from './stripe-sig';
-import { amountProblem, cleanMessage, formatMoney, SPONSOR_CURRENCY } from '../shared/sponsor';
-import { sponsorLive, type SponsorSetting } from '../shared/types';
+import { amountProblem, cleanMessage, formatMoney, paypalMeUrl, SPONSOR_CURRENCY } from '../shared/sponsor';
+import { KIND_BACK, KIND_PATH, paypalVia, sponsorLive, type SponsorSetting } from '../shared/types';
 
 const STRIPE_API = 'https://api.stripe.com';
 const PAYPAL_API = { live: 'https://api-m.paypal.com', test: 'https://api-m.sandbox.paypal.com' } as const;
@@ -248,12 +248,14 @@ export async function checkProvider(provider: Provider): Promise<{ ok: boolean; 
 
 // ---------- a visitor paying ----------
 
-export interface CheckoutInput { method: Provider; amount: number; message: string; from?: string | null }
+export interface CheckoutInput { method: Provider | 'paypalme'; amount: number; message: string; from?: string | null }
+
 
 /** Records the attempt and asks Stripe or PayPal for a payment page. Returns where to send the visitor. */
 export async function startCheckout(input: CheckoutInput, origin: string): Promise<string> {
   const s: SponsorSetting = await getSetting('sponsor');
-  if (!sponsorLive(s) || !s.methods[input.method]) throw new SponsorError('This way to pay isn’t available right now');
+  const available = input.method === 'stripe' ? s.methods.stripe : input.method === 'paypal' ? paypalVia(s) === 'api' : paypalVia(s) === 'me';
+  if (!sponsorLive(s) || !available) throw new SponsorError('This way to pay isn’t available right now');
   const problem = amountProblem(s, input.amount);
   if (problem) throw new SponsorError(problem);
 
@@ -262,6 +264,12 @@ export async function startCheckout(input: CheckoutInput, origin: string): Promi
 
   const source = input.from && UUID_RE.test(input.from) ? await getPublicEntryById(input.from).catch(() => null) : null;
   const site = (await getSetting('site')).title || 'sxingxian';
+  // PayPal.Me: nothing to set up with PayPal. Keep the amount and note for you to check against PayPal later.
+  if (input.method === 'paypalme') {
+    await sql()`INSERT INTO sponsors (provider, status, amount_cents, currency, message, source_id, source_title)
+      VALUES ('paypalme', 'unconfirmed', ${input.amount}, ${SPONSOR_CURRENCY}, ${cleanMessage(input.message)}, ${source?.id ?? null}, ${clip(source?.title, 300)})`;
+    return paypalMeUrl(s.paypalMe, input.amount);
+  }
   const rows = await sql()`INSERT INTO sponsors (provider, amount_cents, currency, message, source_id, source_title)
     VALUES (${input.method}, ${input.amount}, ${SPONSOR_CURRENCY}, ${cleanMessage(input.message)}, ${source?.id ?? null}, ${clip(source?.title, 300)})
     RETURNING id`;
@@ -330,20 +338,19 @@ function paidFromSession(s: StripeSession) {
   return { name: s.customer_details?.name ?? '', email: s.customer_details?.email ?? '', amount: s.currency === SPONSOR_CURRENCY.toLowerCase() && Number.isInteger(s.amount_total) ? s.amount_total! : null, paymentRef: s.payment_intent ?? '', live: s.livemode };
 }
 
-/** Where to go "back" to: the story they came from, or the home page. */
-async function backHref(sourceId: string | null): Promise<string> {
-  if (!sourceId) return '/';
-  const e = await getPublicEntryById(sourceId).catch(() => null);
-  return e ? `/story/${e.slug}` : '/';
+/** Where to go "back" to: the page they came from (a story, work, photos or film), or the home page. */
+async function backTo(sourceId: string | null): Promise<{ back: string; backLabel: string }> {
+  const e = sourceId ? await getPublicEntryById(sourceId).catch(() => null) : null;
+  return e ? { back: `${KIND_PATH[e.kind]}/${e.slug}`, backLabel: KIND_BACK[e.kind] } : { back: '/', backLabel: 'Back to the site' };
 }
 
-export interface ReturnView { state: 'paid' | 'processing' | 'declined' | 'unknown'; amount: string | null; back: string; via: Provider }
+export interface ReturnView { state: 'paid' | 'processing' | 'declined' | 'unknown'; amount: string | null; back: string; backLabel: string; via: Provider }
 
 /** The visitor came back from paying. Confirms with the provider (and takes a PayPal payment). */
 export async function finishReturn(id: string, via: Provider): Promise<ReturnView> {
   const row = await rowFor(id, via);
-  if (!row) return { state: 'unknown', amount: null, back: '/', via };
-  const view = (state: ReturnView['state']): ReturnView => ({ state, amount: formatMoney(row.amount_cents), back: '', via });
+  if (!row) return { state: 'unknown', amount: null, back: '/', backLabel: 'Back to the site', via };
+  const view = (state: ReturnView['state']): ReturnView => ({ state, amount: formatMoney(row.amount_cents), back: '/', backLabel: 'Back to the site', via });
   let out: ReturnView;
   if (row.status === 'paid' || row.status === 'refunded') out = view('paid');
   else if (via === 'stripe') {
@@ -373,14 +380,13 @@ export async function finishReturn(id: string, via: Provider): Promise<ReturnVie
       else out = view('unknown');
     }
   }
-  out.back = await backHref(row.source_id);
-  return out;
+  return { ...out, ...(await backTo(row.source_id)) };
 }
 
 /** The visitor backed out on Stripe or PayPal. Closes the attempt (unless it was in fact paid). */
-export async function cancelReturn(id: string, via: Provider): Promise<{ paid: boolean; amount: number | null; back: string; from: string | null }> {
+export async function cancelReturn(id: string, via: Provider): Promise<{ paid: boolean; amount: number | null; back: string; backLabel: string; from: string | null }> {
   const row = await rowFor(id, via);
-  if (!row) return { paid: false, amount: null, back: '/', from: null };
+  if (!row) return { paid: false, amount: null, back: '/', backLabel: 'Back to the site', from: null };
   let paid = row.status === 'paid' || row.status === 'refunded';
   if (!paid && row.status === 'pending' && via === 'stripe') {
     const k = await stripeKey();
@@ -393,7 +399,7 @@ export async function cancelReturn(id: string, via: Provider): Promise<{ paid: b
     }
   }
   if (!paid) await sql()`UPDATE sponsors SET status = 'cancelled' WHERE id = ${row.id} AND status = 'pending'`;
-  return { paid, amount: row.amount_cents, back: await backHref(row.source_id), from: row.source_id };
+  return { paid, amount: row.amount_cents, ...(await backTo(row.source_id)), from: row.source_id };
 }
 
 // ---------- Stripe's webhook ----------
@@ -432,11 +438,13 @@ export async function handleStripeWebhook(body: string, signature: string | null
 
 // ---------- the admin's list ----------
 
-export interface SponsorItem { id: string; at: string; amount: number; status: 'paid' | 'refunded'; name: string; email: string; message: string; source: string; via: Provider; link: string | null; live: boolean }
-export interface SponsorList { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; items: SponsorItem[]; more: boolean }
+export type Via = Provider | 'paypalme';
+export interface SponsorItem { id: string; at: string; amount: number; status: 'paid' | 'refunded'; name: string; email: string; message: string; source: string; via: Via; link: string | null; live: boolean }
+export interface ToCheck { id: string; at: string; amount: number; message: string; source: string }
+export interface SponsorList { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; toCheck: ToCheck[]; items: SponsorItem[]; more: boolean }
 
-function paymentLink(via: Provider, ref: string, live: boolean): string | null {
-  if (!ref || !/^[A-Za-z0-9_-]{1,255}$/.test(ref)) return null;
+function paymentLink(via: Via, ref: string, live: boolean): string | null {
+  if (via === 'paypalme' || !ref || !/^[A-Za-z0-9_-]{1,255}$/.test(ref)) return null;
   if (via === 'stripe') return `https://dashboard.stripe.com/${live ? '' : 'test/'}payments/${ref}`;
   return `https://www.${live ? '' : 'sandbox.'}paypal.com/activity/payment/${ref}`;
 }
@@ -444,7 +452,7 @@ function paymentLink(via: Provider, ref: string, live: boolean): string | null {
 export async function listSponsors(page = 0): Promise<SponsorList> {
   const size = 50;
   try {
-    const [totals, top, rows] = await Promise.all([
+    const [totals, top, rows, check] = await Promise.all([
       sql()`SELECT
           coalesce(sum(amount_cents) FILTER (WHERE status = 'paid' AND paid_at >= (date_trunc('month', now() AT TIME ZONE 'Asia/Singapore') AT TIME ZONE 'Asia/Singapore')), 0)::int AS m_total,
           count(*) FILTER (WHERE status = 'paid' AND paid_at >= (date_trunc('month', now() AT TIME ZONE 'Asia/Singapore') AT TIME ZONE 'Asia/Singapore'))::int AS m_count,
@@ -455,6 +463,7 @@ export async function listSponsors(page = 0): Promise<SponsorList> {
         GROUP BY source_id, source_title ORDER BY n DESC, max(paid_at) DESC LIMIT 1`,
       sql()`SELECT id, provider, status, amount_cents, name, email, message, source_title, payment_ref, live, paid_at FROM sponsors
         WHERE status IN ('paid', 'refunded') ORDER BY paid_at DESC NULLS LAST, id LIMIT ${size + 1} OFFSET ${page * size}`,
+      page === 0 ? sql()`SELECT id, amount_cents, message, source_title, created_at FROM sponsors WHERE status = 'unconfirmed' ORDER BY created_at DESC LIMIT 100` : Promise.resolve([]),
     ]);
     const t = totals[0] ?? {};
     return {
@@ -462,23 +471,34 @@ export async function listSponsors(page = 0): Promise<SponsorList> {
       month: { total: Number(t.m_total ?? 0), count: Number(t.m_count ?? 0) },
       all: { total: Number(t.a_total ?? 0), count: Number(t.a_count ?? 0) },
       top: top[0] ? { title: top[0].title as string, count: Number(top[0].n) } : null,
+      toCheck: check.map((r) => ({ id: r.id as string, at: new Date(r.created_at as string).toISOString(), amount: Number(r.amount_cents), message: r.message as string, source: (r.source_title as string) || '/sponsor' })),
       items: rows.slice(0, size).map((r) => ({
         id: r.id as string, at: new Date(r.paid_at as string).toISOString(), amount: Number(r.amount_cents), status: r.status as 'paid' | 'refunded',
         name: r.name as string, email: r.email as string, message: r.message as string, source: (r.source_title as string) || '/sponsor',
-        via: r.provider as Provider, link: paymentLink(r.provider as Provider, r.payment_ref as string, !!r.live), live: !!r.live,
+        via: r.provider as Via, link: paymentLink(r.provider as Via, r.payment_ref as string, !!r.live), live: !!r.live,
       })),
       more: rows.length > size,
     };
   } catch (e) {
-    if (missingTable(e)) return { available: false, month: { total: 0, count: 0 }, all: { total: 0, count: 0 }, top: null, items: [], more: false };
+    if (missingTable(e)) return { available: false, month: { total: 0, count: 0 }, all: { total: 0, count: 0 }, top: null, toCheck: [], items: [], more: false };
     throw e;
   }
 }
 
-/** Daily: unfinished attempts (and the notes typed into them) don't need keeping. */
+/** After checking PayPal: a PayPal.Me sponsor arrived (with the amount that actually came) or didn't. */
+export async function markSponsor(id: string, mark: { action: 'received'; amount: number } | { action: 'not-received' }): Promise<boolean> {
+  if (!UUID_RE.test(id)) return false;
+  const rows = mark.action === 'received'
+    ? await sql()`UPDATE sponsors SET status = 'paid', amount_cents = ${mark.amount}, paid_at = created_at WHERE id = ${id} AND status = 'unconfirmed' RETURNING id`
+    : await sql()`DELETE FROM sponsors WHERE id = ${id} AND status = 'unconfirmed' RETURNING id`;
+  return rows.length > 0;
+}
+
+/** Daily: unfinished attempts (and the notes typed into them) don't need keeping; nor PayPal.Me ones left unmarked for 30 days. */
 export async function tidySponsors(): Promise<void> {
   try {
     await sql()`DELETE FROM sponsors WHERE status IN ('pending', 'cancelled', 'failed') AND created_at < now() - interval '2 days'`;
+    await sql()`DELETE FROM sponsors WHERE status = 'unconfirmed' AND created_at < now() - interval '30 days'`;
   } catch (e) {
     if (!missingTable(e)) throw e;
   }

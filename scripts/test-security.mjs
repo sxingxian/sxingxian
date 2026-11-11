@@ -36,9 +36,10 @@ await build({
                export { markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX } from './src/lib/shared/telegram-format.ts';
                export { TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, settingsSchemas as SETTINGS_SCHEMAS } from './src/lib/shared/schemas.ts';
                export { sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema } from './src/lib/shared/schemas.ts';
-               export { parseMoney, formatMoney, amountProblem, cleanMessage } from './src/lib/shared/sponsor.ts';
+               export { parseMoney, formatMoney, amountProblem, cleanMessage, paypalMeUrl } from './src/lib/shared/sponsor.ts';
                export { verifyStripeSignature } from './src/lib/server/stripe-sig.ts';
-               export { DEFAULT_SETTINGS, sponsorLive } from './src/lib/shared/types.ts';`,
+               export { DEFAULT_SETTINGS, sponsorLive, paypalVia, sponsorCardTitle } from './src/lib/shared/types.ts';
+               export { sponsorMarkSchema, PAYPAL_ME_RE } from './src/lib/shared/schemas.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -54,7 +55,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -662,7 +663,7 @@ t('sponsor: amounts are whole cents, checked against the settings, never trusted
   // Sponsoring shows only when switched on AND a way to pay is connected.
   assert.equal(sponsorLive({ ...s, enabled: true, methods: { stripe: false, paypal: false } }), false);
   assert.equal(sponsorLive({ ...s, enabled: false, methods: { stripe: true, paypal: true } }), false);
-  assert.equal(sponsorLive({ ...s, enabled: true, methods: { stripe: false, paypal: true } }), true);
+  assert.equal(sponsorLive({ ...s, enabled: true, paypalMode: 'api', methods: { stripe: false, paypal: true } }), true);
 });
 t('sponsor: notes are plain text, no control or direction-flipping characters, at most 280', () => {
   assert.equal(cleanMessage('  hello\u0000 there\u202E  '), 'hello there');
@@ -702,6 +703,31 @@ t('sponsor: settings hold no keys, and amounts stay consistent', () => {
   for (const k of ['pk_live_' + 'a'.repeat(30), 'rk_live_short', 'rk_live_' + 'a'.repeat(30) + '/../x', 'whsec_abc']) assert.equal(stripeConnectSchema.safeParse({ key: k }).success, false, k);
   assert.equal(paypalConnectSchema.safeParse({ clientId: 'A'.repeat(40), secret: 'B'.repeat(40), mode: 'live' }).success, true);
   assert.equal(paypalConnectSchema.safeParse({ clientId: 'A'.repeat(40), secret: 'B b'.repeat(20), mode: 'live' }).success, false);
+});
+
+t('sponsor: PayPal.Me links are built only from a checked name and amount', () => {
+  assert.equal(paypalMeUrl('sxingxian', 1000), 'https://www.paypal.com/paypalme/sxingxian/10SGD');
+  assert.equal(paypalMeUrl('sxingxian', 1250), 'https://www.paypal.com/paypalme/sxingxian/12.50SGD');
+  for (const bad of ['../evil', 'a b', 'x'.repeat(21), 'name?x=1', 'name/../../', '', 'javascript:alert(1)']) {
+    assert.equal(PAYPAL_ME_RE.test(bad) && bad.length > 0, false, bad);
+    assert.equal(paypalMeUrl(bad, 1000), 'https://www.paypal.com/paypalme', bad);
+  }
+  assert.equal(paypalMeUrl('ok', 10.5), 'https://www.paypal.com/paypalme');
+  const s = { ...DEFAULT_SETTINGS.sponsor, methods: { stripe: false, paypal: false } };
+  assert.equal(paypalVia({ ...s, paypalMode: 'me', paypalMe: '' }), null, 'no name: no PayPal');
+  assert.equal(paypalVia({ ...s, paypalMode: 'me', paypalMe: 'sxingxian' }), 'me');
+  assert.equal(paypalVia({ ...s, paypalMode: 'me', paypalMe: '../x' }), null);
+  assert.equal(paypalVia({ ...s, paypalMode: 'api', paypalMe: 'sxingxian' }), null, 'API mode needs a connected app');
+  assert.equal(sponsorLive({ ...s, paypalMode: 'me', paypalMe: 'sxingxian' }), true);
+  assert.equal(SETTINGS_SCHEMAS.sponsor.safeParse({ ...DEFAULT_SETTINGS.sponsor, paypalMe: 'a/b' }).success, false);
+  assert.equal(SETTINGS_SCHEMAS.sponsor.safeParse({ ...DEFAULT_SETTINGS.sponsor, cardKinds: ['post', 'admin'] }).success, false);
+  // Marking a PayPal.Me sponsor: received needs a real amount.
+  assert.equal(sponsorMarkSchema.safeParse({ action: 'received', amount: 1000 }).success, true);
+  for (const bad of [{ action: 'received' }, { action: 'received', amount: 10.5 }, { action: 'received', amount: -1 }, { action: 'paid', amount: 1000 }]) assert.equal(sponsorMarkSchema.safeParse(bad).success, false, JSON.stringify(bad));
+  // The card's heading fits each kind of page; a heading saved before {this} still reads right.
+  assert.equal(sponsorCardTitle(DEFAULT_SETTINGS.sponsor, 'gallery'), 'Enjoyed these photos?');
+  assert.equal(sponsorCardTitle({ ...DEFAULT_SETTINGS.sponsor, cardTitle: 'Enjoyed this story?' }, 'film'), 'Enjoyed this film?');
+  assert.equal(sponsorCardTitle({ ...DEFAULT_SETTINGS.sponsor, cardTitle: 'Like it?' }, 'project'), 'Like it?');
 });
 
 console.log(`\n${passed} security tests passed.`);

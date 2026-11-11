@@ -21,9 +21,9 @@ import PdfViewer from './PdfViewer.astro';
 import { seriesForEntry } from '../lib/server/series';
 const inSeries = entry.kind === 'post' ? await seriesForEntry(entry.id) : null;
 import { getSetting } from '../lib/server/repo';
-import { sponsorLive } from '../lib/shared/types';
+import { sponsorCardTitle, sponsorLive } from '../lib/shared/types';
 const sponsor = await getSetting('sponsor');
-const sponsorCard = entry.kind === 'post' && sponsorLive(sponsor) && sponsor.storyCard;
+const sponsorCard = sponsorLive(sponsor) && sponsor.storyCard && sponsor.cardKinds.includes(entry.kind);
 const partIdx = inSeries ? inSeries.parts.findIndex((p) => p.id === entry.id) : -1;
 const prevPart = inSeries && partIdx > 0 ? inSeries.parts[partIdx - 1] : null;
 const nextPart = inSeries && partIdx >= 0 ? inSeries.parts[partIdx + 1] ?? null : null;
@@ -83,7 +83,7 @@ const outAt = (iso: string) => `Out ${outWhen(iso, Date.now(), 'Asia/Singapore')
     {sponsorCard && (
       <aside class="sponsor-card" aria-label="Sponsor">
         <div class="sponsor-card-text">
-          <h2>{sponsor.cardTitle}</h2>
+          <h2>{sponsorCardTitle(sponsor, entry.kind)}</h2>
           <p>{sponsor.cardText}</p>
         </div>
         <a class="sponsor-btn" href={`/sponsor?from=${entry.id}`}>Sponsor <span aria-hidden="true">→</span></a>

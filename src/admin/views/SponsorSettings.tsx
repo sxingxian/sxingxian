@@ -6,9 +6,11 @@ import { useToast } from '../components/ui';
 import { useDialog } from '../components/dialog';
 import { Field, Loading, Panel, SaveBar, Segmented, ToggleRow } from '../components/kit';
 import { formatMoney, parseMoney } from '../../lib/shared/sponsor';
-import { PAYPAL_ID_RE, STRIPE_KEY_RE } from '../../lib/shared/schemas';
+import { PAYPAL_ID_RE, PAYPAL_ME_RE, STRIPE_KEY_RE } from '../../lib/shared/schemas';
 import { whenLabel } from '../../lib/shared/state';
-import type { SponsorSetting } from '../../lib/shared/types';
+import { paypalVia, type EntryKind, type SponsorSetting } from '../../lib/shared/types';
+
+const KINDS: [EntryKind, string][] = [['post', 'Stories'], ['project', 'Work'], ['gallery', 'Photos'], ['film', 'Film']];
 
 interface ProviderStatus { connected: boolean; mode: 'live' | 'test' | null; account: string; hint: string; connectedAt: string | null; lastPaidAt: string | null }
 interface Status { available: boolean; stripe: ProviderStatus; paypal: ProviderStatus }
@@ -36,11 +38,12 @@ export default function SponsorSettings() {
     return <Panel title="Sponsor"><p className="hint">Sponsoring needs a database update first: run “Deploy Neon” on GitHub (migration 0012), then reload this page.</p></Panel>;
   }
 
-  const anyMethod = status.stripe.connected || status.paypal.connected;
+  const anyMethod = status.stripe.connected || paypalVia({ ...saved, methods: { stripe: status.stripe.connected, paypal: status.paypal.connected } }) !== null;
   const problem = (() => {
     if (!s.amounts.length) return 'Add at least one amount';
     if (s.allowCustom && s.min >= s.max) return 'The minimum must be below the maximum';
     if ([s.cardTitle, s.cardText, s.pageTitle, s.pageText].some((x) => !x.trim())) return 'Fill in all the words';
+    if (s.paypalMode === 'me' && s.paypalMe && !PAYPAL_ME_RE.test(s.paypalMe)) return 'A PayPal.Me name is letters and numbers, up to 20';
     return '';
   })();
   const dirty = JSON.stringify({ ...s, methods: null }) !== JSON.stringify({ ...saved, methods: null });
@@ -77,7 +80,15 @@ export default function SponsorSettings() {
     <>
       <Panel title="Show it" desc={anyMethod ? 'Off hides the page, the invitation and the footer link. Payments already made are kept.' : 'Nothing shows on the site until Stripe or PayPal is connected below.'}>
         <ToggleRow label="Sponsor page" hint="/sponsor" checked={s.enabled} onChange={(enabled) => setS({ ...s, enabled })} />
-        <ToggleRow label="Invite at the end of every story" checked={s.storyCard} disabled={!s.enabled} onChange={(storyCard) => setS({ ...s, storyCard })} />
+        <ToggleRow label="Invite at the end of a page" checked={s.storyCard} disabled={!s.enabled} onChange={(storyCard) => setS({ ...s, storyCard })} />
+        {s.storyCard && s.enabled && (
+          <div className="tg-kinds sp-kinds" role="group" aria-label="Pages that get the invitation">
+            {KINDS.map(([k, label]) => {
+              const on = s.cardKinds.includes(k);
+              return <button key={k} type="button" aria-pressed={on} onClick={() => setS({ ...s, cardKinds: on ? s.cardKinds.filter((x) => x !== k) : [...s.cardKinds, k] })}>{label}</button>;
+            })}
+          </div>
+        )}
         <ToggleRow label="“Sponsor” link in the footer" checked={s.footerLink} disabled={!s.enabled} onChange={(footerLink) => setS({ ...s, footerLink })} />
       </Panel>
 
@@ -121,10 +132,11 @@ export default function SponsorSettings() {
 
       <Panel title="Words">
         <div className="sp-words">
-          <span className="field-l">End of a story</span>
+          <span className="field-l">End of a page</span>
           <div className="sp-words-c">
-            <input className="input" aria-label="End of a story: heading" maxLength={80} value={s.cardTitle} onChange={(e) => setS({ ...s, cardTitle: e.target.value })} />
-            <textarea className="input" aria-label="End of a story: text" rows={2} maxLength={300} value={s.cardText} onChange={(e) => setS({ ...s, cardText: e.target.value })} />
+            <input className="input" aria-label="End of a page: heading" maxLength={80} value={s.cardTitle} onChange={(e) => setS({ ...s, cardTitle: e.target.value })} />
+            <textarea className="input" aria-label="End of a page: text" rows={2} maxLength={300} value={s.cardText} onChange={(e) => setS({ ...s, cardText: e.target.value })} />
+            <span className="field-hint">{'{this}'} becomes “this story”, “this work”, “these photos” or “this film”.</span>
           </div>
           <span className="field-l">Sponsor page</span>
           <div className="sp-words-c">
@@ -136,7 +148,28 @@ export default function SponsorSettings() {
 
       <div className="sp-providers">
         <StripePanel status={status.stripe} onStatus={setStatus} />
-        <PaypalPanel status={status.paypal} onStatus={setStatus} />
+        <Panel title="PayPal" desc="How visitors pay you with PayPal.">
+          <Segmented label="PayPal mode" value={s.paypalMode} onChange={(paypalMode) => setS({ ...s, paypalMode })} options={[['me', 'PayPal.Me link'], ['api', 'Business (API)']] as const} />
+          {s.paypalMode === 'me' ? (
+            <>
+              <p className="hint sp-me-intro">Works with a personal PayPal account. No keys needed. PayPal doesn’t tell the site who paid, so each PayPal sponsor waits in <b>Sponsors → To check</b> until you mark it.</p>
+              <Field label="Your PayPal.Me name" htmlFor="sp-me" hint="Find it in PayPal → Settings → PayPal.Me. Letters and numbers only.">
+                <span className="sp-prefix"><span aria-hidden="true">paypal.me/</span><input id="sp-me" className="input" autoComplete="off" spellCheck={false} maxLength={20} value={s.paypalMe}
+                  onChange={(e) => setS({ ...s, paypalMe: e.target.value.trim() })} /></span>
+              </Field>
+              {s.paypalMe && PAYPAL_ME_RE.test(s.paypalMe) && (
+                <div className="tg-actions"><a className="btn" href={`https://www.paypal.com/paypalme/${encodeURIComponent(s.paypalMe)}`} target="_blank" rel="noopener noreferrer">Open my link to check ↗</a></div>
+              )}
+              <p className="sp-warn">Your PayPal.Me page shows your PayPal name and photo to anyone who opens it.</p>
+              {saved.paypalMode !== 'me' && <span className="hint">Save to switch PayPal to this link.</span>}
+            </>
+          ) : (
+            <>
+              <PaypalPanel status={status.paypal} onStatus={setStatus} bare />
+              {saved.paypalMode !== 'api' && <span className="hint">Save to switch PayPal to the business account.</span>}
+            </>
+          )}
+        </Panel>
       </div>
 
       <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} error={dirty ? problem || undefined : undefined} disabled={!!problem} />
@@ -219,7 +252,7 @@ function StripePanel({ status, onStatus }: { status: ProviderStatus; onStatus: (
   );
 }
 
-function PaypalPanel({ status, onStatus }: { status: ProviderStatus; onStatus: (s: Status) => void }) {
+function PaypalPanel({ status, onStatus, bare = false }: { status: ProviderStatus; onStatus: (s: Status) => void; bare?: boolean }) {
   const [clientId, setClientId] = useState('');
   const [secret, setSecret] = useState('');
   const [mode, setMode] = useState<'live' | 'test'>('live');
@@ -246,9 +279,6 @@ function PaypalPanel({ status, onStatus }: { status: ProviderStatus; onStatus: (
       </div>
     </>
   );
-  return (
-    <Panel title="PayPal" desc="Visitors pay with their PayPal account, or a card through PayPal.">
-      {status.connected && !h.replacing ? <Connected p={status} name="PayPal" onCheck={() => void h.check()} onReplace={() => h.setReplacing(true)} onDisconnect={() => void h.disconnect()} /> : form}
-    </Panel>
-  );
+  const body = status.connected && !h.replacing ? <Connected p={status} name="PayPal" onCheck={() => void h.check()} onReplace={() => h.setReplacing(true)} onDisconnect={() => void h.disconnect()} /> : form;
+  return bare ? body : <Panel title="PayPal" desc="Visitors pay with their PayPal account, or a card through PayPal.">{body}</Panel>;
 }

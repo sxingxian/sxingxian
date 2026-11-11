@@ -249,10 +249,15 @@ export interface TelegramSetting {
   buttons: Record<EntryKind, string>;
 }
 
-/** One-time sponsor. Amounts are in cents (SGD). `methods` is kept by the server: which providers are connected. */
+/** One-time sponsor. Amounts are in cents (SGD). `methods` is kept by the server: which providers are connected.
+ *  PayPal is either a PayPal.Me link (`paypalMode: 'me'`, no keys; payments can't be confirmed) or the business API. */
 export interface SponsorSetting {
   enabled: boolean;
+  /** The card at the end of a page; `cardKinds` says which kinds of page get it. */
   storyCard: boolean;
+  cardKinds: EntryKind[];
+  paypalMode: 'me' | 'api';
+  paypalMe: string;
   footerLink: boolean;
   amounts: number[];
   defaultAmount: number;
@@ -319,13 +324,16 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   sponsor: {
     enabled: true,
     storyCard: true,
+    cardKinds: ['post', 'project', 'gallery', 'film'],
+    paypalMode: 'me',
+    paypalMe: '',
     footerLink: true,
     amounts: [500, 1000, 2000],
     defaultAmount: 1000,
     allowCustom: true,
     min: 300,
     max: 50000,
-    cardTitle: 'Enjoyed this story?',
+    cardTitle: 'Enjoyed {this}?',
     cardText: 'Everything here is free to read. If it was worth something to you, a one-time sponsor keeps the next one coming.',
     pageTitle: 'Sponsor the next story',
     pageText: 'Stories, photographs and films here are free, with no paywall. A one-time sponsor pays for the hosting and the time to make the next one. Thank you.',
@@ -333,9 +341,26 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   },
 };
 
-/** Whether the sponsor page, card and link show: switched on and at least one way to pay connected. */
+/** How PayPal works right now: a PayPal.Me link, the business API, or not at all. */
+export function paypalVia(s: SponsorSetting): 'me' | 'api' | null {
+  if (s.paypalMode === 'me') return /^[A-Za-z0-9]{1,20}$/.test(s.paypalMe ?? '') ? 'me' : null;
+  return s.methods.paypal ? 'api' : null;
+}
+
+/** Whether the sponsor page, card and link show: switched on and at least one way to pay set up. */
 export function sponsorLive(s: SponsorSetting): boolean {
-  return s.enabled && (s.methods.stripe || s.methods.paypal);
+  return s.enabled && (s.methods.stripe || paypalVia(s) !== null);
+}
+
+/** "this story", "this work", "these photos", "this film": fills {this} in the card's heading. */
+export const KIND_THIS: Record<EntryKind, string> = { post: 'this story', project: 'this work', gallery: 'these photos', film: 'this film' };
+/** "Back to the story" and friends, after paying or cancelling. */
+export const KIND_BACK: Record<EntryKind, string> = { post: 'Back to the story', project: 'Back to the work', gallery: 'Back to the photos', film: 'Back to the film' };
+
+/** The card's heading for one kind of page. A heading saved before {this} existed still reads right. */
+export function sponsorCardTitle(s: SponsorSetting, kind: EntryKind): string {
+  const t = s.cardTitle.trim() === 'Enjoyed this story?' ? 'Enjoyed {this}?' : s.cardTitle;
+  return t.replaceAll('{this}', KIND_THIS[kind]);
 }
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {

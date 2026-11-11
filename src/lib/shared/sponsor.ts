@@ -39,3 +39,9 @@ export function cleanMessage(input: string): string {
     .trim()
     .slice(0, MESSAGE_MAX);
 }
+
+/** A PayPal.Me link with the amount filled in: https://www.paypal.com/paypalme/name/12.50SGD. Only for a checked name. */
+export function paypalMeUrl(name: string, cents: number): string {
+  if (!/^[A-Za-z0-9]{1,20}$/.test(name) || !Number.isInteger(cents) || cents <= 0) return 'https://www.paypal.com/paypalme';
+  return `https://www.paypal.com/paypalme/${name}/${(cents / 100).toFixed(cents % 100 ? 2 : 0)}${SPONSOR_CURRENCY}`;
+}

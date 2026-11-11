@@ -77,9 +77,13 @@ const sponsorWords = (max: number) => z.string().trim().min(1).max(max);
 export const STRIPE_KEY_RE = /^(rk|sk)_(live|test)_[A-Za-z0-9]{20,240}$/;
 export const PAYPAL_ID_RE = /^[A-Za-z0-9_-]{20,128}$/;
 
+export const PAYPAL_ME_RE = /^[A-Za-z0-9]{0,20}$/;
 export const sponsorSettingSchema = z.object({
   enabled: z.boolean(),
   storyCard: z.boolean(),
+  cardKinds: z.array(z.enum(ENTRY_KINDS)).max(4).optional().default(['post', 'project', 'gallery', 'film']),
+  paypalMode: z.enum(['me', 'api']).optional().default('me'),
+  paypalMe: z.string().trim().regex(PAYPAL_ME_RE, 'A PayPal.Me name is letters and numbers, up to 20').optional().default(''),
   footerLink: z.boolean(),
   amounts: z.array(sponsorCents).min(1).max(4),
   defaultAmount: sponsorCents,
@@ -97,11 +101,17 @@ export const sponsorSettingSchema = z.object({
 
 /** A visitor going to pay: which way, how much (cents), an optional note, and the story they came from. */
 export const sponsorCheckoutSchema = z.object({
-  method: z.enum(['stripe', 'paypal']),
+  method: z.enum(['stripe', 'paypal', 'paypalme']),
   amount: z.number().int().min(100).max(1_000_000),
   message: z.string().max(600).optional().default(''),
   from: z.uuid().nullable().optional(),
 });
+
+/** Marking a PayPal.Me sponsor after checking PayPal: received (with the amount that arrived) or not. */
+export const sponsorMarkSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('received'), amount: z.number().int().min(100).max(1_000_000) }),
+  z.object({ action: z.literal('not-received') }),
+]);
 
 export const stripeConnectSchema = z.object({ key: z.string().trim().regex(STRIPE_KEY_RE, 'That doesn’t look like a Stripe key. It starts with rk_live_ or rk_test_') });
 export const paypalConnectSchema = z.object({
