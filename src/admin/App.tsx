@@ -56,17 +56,24 @@ function useRoute() {
 // so with the keyboard up the bar floats over the text. Decided by focus alone on touch screens: reading the
 // viewport size made the bar flicker as the keyboard, toolbars and scrolling resized it. Focus moving between
 // fields (title → editor) doesn't flash the bar, because the "show" is delayed slightly.
+// A focused field that is removed from the page (a dialog closing after a tap on Save: phones don't move focus
+// to tapped buttons) fires no focusout, so while the bar is hidden it re-checks that a field still has focus.
 function useKeyboardOpen() {
   useEffect(() => {
     const root = document.documentElement;
     const touch = window.matchMedia('(pointer: coarse)');
     let t: ReturnType<typeof setTimeout> | undefined;
+    let poll: ReturnType<typeof setInterval> | undefined;
     const editable = (el: Element | null) => {
       if (!(el instanceof HTMLElement)) return false;
       if (el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
       return el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color', 'image'].includes(el.type);
     };
-    const set = (on: boolean) => { if (root.classList.contains('kb-open') !== on) root.classList.toggle('kb-open', on); };
+    const set = (on: boolean) => {
+      if (root.classList.contains('kb-open') !== on) root.classList.toggle('kb-open', on);
+      if (on && !poll) poll = setInterval(() => { if (!editable(document.activeElement)) set(false); }, 400);
+      if (!on && poll) { clearInterval(poll); poll = undefined; }
+    };
     const onFocusIn = () => { clearTimeout(t); if (touch.matches && editable(document.activeElement)) set(true); };
     const onFocusOut = () => { clearTimeout(t); t = setTimeout(() => set(touch.matches && editable(document.activeElement)), 250); };
     document.addEventListener('focusin', onFocusIn);
@@ -75,6 +82,7 @@ function useKeyboardOpen() {
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
       clearTimeout(t);
+      clearInterval(poll);
       root.classList.remove('kb-open');
     };
   }, []);
