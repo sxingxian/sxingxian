@@ -5,6 +5,7 @@ import { api, errorText } from '../api';
 import { useToast } from './ui';
 import { Panel, Row, Segmented } from './kit';
 import { featuredIds, FEATURED_INTERVAL_S, MAX_FEATURED, type Entry, type FeaturedSetting } from '../../lib/shared/types';
+import { entryState, whenLabel } from '../../lib/shared/state';
 
 type Post = Omit<Entry, 'body'>;
 
@@ -14,7 +15,7 @@ export default function FeaturedEditor({ value, posts, onSaved }: { value: Featu
   const [order, setOrder] = useState<FeaturedSetting['order']>(value.order === 'custom' ? 'custom' : 'date');
   const [drag, setDrag] = useState<number | null>(null);
   const byId = new Map(posts.map((p) => [p.id, p]));
-  const isPublic = (p?: Post) => !!p && p.status === 'published' && p.is_public;
+  const isPublic = (p?: Post) => entryState(p) === 'published';
   // What the visitor sees: newest first, or the hand-made order.
   const shown = order === 'date'
     ? [...ids].sort((a, b) => new Date(byId.get(b)?.published_at ?? 0).getTime() - new Date(byId.get(a)?.published_at ?? 0).getTime())
@@ -69,7 +70,9 @@ export default function FeaturedEditor({ value, posts, onSaved }: { value: Featu
               <span className="feat-n">{i + 1}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span className="title" style={{ display: 'block' }}>{p?.title ?? 'A deleted story'}</span>
-                <span className="meta">{live ? `${fmt(p!.published_at)}${p!.topics?.length ? ` · ${p!.topics.join(', ')}` : ''}` : 'Not public: skipped until it is'}</span>
+                <span className="meta">{live
+                  ? `${fmt(p!.published_at)}${p!.topics?.length ? ` · ${p!.topics.join(', ')}` : ''}`
+                  : entryState(p) === 'scheduled' ? `Scheduled: shows from ${whenLabel(p!.published_at!)}` : p ? 'Draft: shows once it’s published' : 'Skipped'}</span>
               </span>
               <span className="row" style={{ gap: 4 }}>
                 {order === 'custom' && <>

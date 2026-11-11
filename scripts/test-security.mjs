@@ -29,7 +29,9 @@ await build({
                export { canonicalPath, isAdminPath } from './src/lib/server/paths.ts';
                export { topicFor, pickImage, safeImageUrl } from './src/lib/server/wptopic.ts';
                export { seriesInputSchema, entrySeriesSchema, viewInputSchema } from './src/lib/shared/schemas.ts';
-               export { featuredIds } from './src/lib/shared/types.ts';`,
+               export { featuredIds } from './src/lib/shared/types.ts';
+               export { entryContentSchema, entryStateSchema } from './src/lib/shared/schemas.ts';
+               export { entryState, untilLabel, whenLabel } from './src/lib/shared/state.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -45,7 +47,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -434,6 +436,29 @@ t('entry topics: cleaned, de-duplicated, capped; payload bounded', () => {
   assert.equal(entryInputSchema.safeParse({ ...base, topics: ['x'.repeat(31)] }).success, false);
   assert.equal(entryInputSchema.safeParse({ ...base, topics: [''] }).success, false);
   assert.equal(entryInputSchema.safeParse({ ...base, topic: 'Legacy' }).success, true);
+});
+t('publishing: autosave can never publish; only known actions; one state everywhere', () => {
+  const content = { kind: 'post', title: 'T', slug: 't', body: { type: 'doc', content: [] } };
+  // A save carrying status / visibility / date is accepted, but those fields are dropped.
+  const r = entryContentSchema.safeParse({ ...content, status: 'published', is_public: true, published_at: '2026-01-01T00:00:00Z' });
+  assert.equal(r.success, true);
+  assert.equal('status' in r.data || 'is_public' in r.data || 'published_at' in r.data, false);
+  assert.equal(entryStateSchema.safeParse({ action: 'publish' }).success, true);
+  assert.equal(entryStateSchema.safeParse({ action: 'schedule', at: '2026-11-12T01:00:00.000Z' }).success, true);
+  assert.equal(entryStateSchema.safeParse({ action: 'schedule', at: 'tomorrow' }).success, false);
+  assert.equal(entryStateSchema.safeParse({ action: 'delete' }).success, false);
+  assert.equal(entryStateSchema.safeParse({ action: 'publish', is_public: true }).data?.is_public, undefined);
+  const now = Date.parse('2026-11-11T02:30:00Z');
+  assert.equal(entryState({ status: 'draft', is_public: true, published_at: null }, now), 'draft');
+  assert.equal(entryState({ status: 'published', is_public: false, published_at: '2026-11-01T00:00:00Z' }, now), 'draft');
+  assert.equal(entryState({ status: 'published', is_public: true, published_at: '2026-11-11T15:00:00Z' }, now), 'scheduled');
+  assert.equal(entryState({ status: 'published', is_public: true, published_at: '2026-11-01T00:00:00Z' }, now), 'published');
+  assert.equal(entryState(null, now), 'draft');
+  assert.equal(untilLabel('2026-11-11T15:00:00Z', now), 'in 12 h'); // 12½ hours: never "in 1 day"
+  assert.equal(untilLabel('2026-11-11T02:50:00Z', now), 'in 20 min');
+  assert.equal(untilLabel('2026-11-14T02:30:00Z', now), 'in 3 days');
+  assert.equal(untilLabel('2026-11-10T02:30:00Z', now), '');
+  assert.match(whenLabel('2026-11-11T03:00:00Z', now), /^Today, /);
 });
 t('section topic lists are bounded', () => {
   const ok = { work: ['Web'], photos: [], film: [] };

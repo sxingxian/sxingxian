@@ -8,7 +8,8 @@ import { useToast } from '../components/ui';
 import { Field, Segmented, ToggleRow, TopBar } from '../components/kit';
 import { KIND_SECTION } from '../nav';
 import { slugify } from '../../lib/shared/safe';
-import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
+import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryEdits, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
+import { entryState, untilLabel, whenLabel, type EntryState } from '../../lib/shared/state';
 import SeriesField from '../components/SeriesField';
 import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
@@ -26,9 +27,20 @@ interface Draft {
   cover_media_id: string | null;
   video_url: string;
   meta: Record<string, string | number | boolean>;
-  status: 'draft' | 'published';
-  is_public: boolean;
-  published_at: string | null;
+}
+
+type Action = 'publish' | 'schedule' | 'unpublish' | 'update' | 'discard' | 'redate';
+interface Saved { entry: Entry; edits: EntryEdits | null }
+
+const fromSource = (kind: EntryKind, e: Pick<Entry, 'title' | 'slug' | 'dek' | 'topic' | 'topics' | 'body' | 'cover_media_id' | 'video_url' | 'meta'>): Draft => ({
+  kind, title: e.title, slug: e.slug, dek: e.dek, topics: e.topics ?? (e.topic ? [e.topic] : []), body: e.body, cover_media_id: e.cover_media_id,
+  video_url: e.video_url, meta: e.meta as Draft['meta'],
+});
+
+/** Tomorrow at 9:00 am local time: the first suggestion for a schedule. */
+function tomorrowMorning(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 9, 0, 0, 0).toISOString();
 }
 
 export default function EntryEditor({ id, kind: newKind, go }: { id: string | null; kind: EntryKind; go: (p: string) => void }) {
@@ -42,6 +54,13 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const [lists, setLists] = useState<TopicsSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
   const [sheet, setSheet] = useState(false);
+  // The entry as stored (its publishing state and live content), and whether a live entry has private edits.
+  const [entry, setEntry] = useState<Entry | null>(null);
+  const [hasEdits, setHasEdits] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [when, setWhen] = useState<'now' | 'later'>('now');
+  const [scheduleAt, setScheduleAt] = useState<string>(tomorrowMorning);
+  const [now, setNow] = useState(() => Date.now());
   const slugTouched = useRef(!!id);
   const toast = useToast();
 
@@ -50,14 +69,16 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     api.get<{ value: TopicsSetting }>('/api/admin/settings/topics').then((r) => setLists(r.value)).catch(() => {});
     api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
     if (id) {
-      api.get<{ entry: Entry }>(`/api/admin/entries/${id}`)
-        .then(({ entry: e }) => setDraft({
-          kind: e.kind, title: e.title, slug: e.slug, dek: e.dek, topics: e.topics ?? (e.topic ? [e.topic] : []), body: e.body, cover_media_id: e.cover_media_id,
-          video_url: e.video_url, meta: e.meta as Draft['meta'], status: e.status, is_public: e.is_public, published_at: e.published_at,
-        }))
+      api.get<Saved>(`/api/admin/entries/${id}`)
+        .then(({ entry: e, edits }) => {
+          setEntry(e);
+          setHasEdits(!!edits);
+          // A live entry with private edits opens on the edits; the site keeps showing the live version.
+          setDraft(fromSource(e.kind, edits ?? e));
+        })
         .catch((e) => setErr(errorText(e)));
     } else {
-      setDraft({ kind: newKind, title: '', slug: '', dek: '', topics: [], body: EMPTY, cover_media_id: null, video_url: '', meta: {}, status: 'draft', is_public: false, published_at: null });
+      setDraft({ kind: newKind, title: '', slug: '', dek: '', topics: [], body: EMPTY, cover_media_id: null, video_url: '', meta: {} });
     }
   }, [id, newKind]);
 
@@ -71,20 +92,24 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     const payload = { ...d, topic: d.topics[0] ?? '', title: d.title.trim() || 'Untitled', slug: d.slug || slugify(d.title || 'untitled') };
     const current = entryIdRef.current;
     const res = current
-      ? await api.put<{ entry: Entry }>(`/api/admin/entries/${current}`, payload)
-      : await api.post<{ entry: Entry }>('/api/admin/entries', payload);
+      ? await api.put<Saved>(`/api/admin/entries/${current}`, payload)
+      : await api.post<Saved>('/api/admin/entries', payload);
     if (!current) {
       entryIdRef.current = res.entry.id;
       setEntryId(res.entry.id);
       window.history.replaceState(null, '', `/admin/edit/${res.entry.id}`);
     }
-    // The server may adjust the slug (to keep it unique) and sets the publish date on first publish.
-    setDraft((cur) => (cur ? { ...cur, slug: cur.slug === d.slug ? res.entry.slug : cur.slug, published_at: cur.published_at === d.published_at ? res.entry.published_at : cur.published_at } : cur));
-    return JSON.stringify({ ...d, slug: res.entry.slug, published_at: res.entry.published_at });
+    setEntry(res.entry);
+    setHasEdits(!!res.edits);
+    const slug = res.edits?.slug ?? res.entry.slug;
+    setDraft((cur) => (cur ? { ...cur, slug: cur.slug === d.slug ? slug : cur.slug } : cur));
+    return JSON.stringify({ ...d, slug });
   }, []);
   const auto = useAutosave(draft ? JSON.stringify(draft) : null, persist);
   const { saveNow } = auto;
-  const patchNow = useCallback((p: Partial<Draft>) => { patch(p); saveNow(); }, [patch, saveNow]);
+
+  // Keep "in 12 h" and Scheduled → Published current while the editor is open.
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -94,6 +119,47 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
     return () => window.removeEventListener('keydown', onKey);
   }, [saveNow]);
 
+
+  // One publishing action. Saves what's typed first, so it acts on the latest content.
+  const act = async (action: Action, at?: string) => {
+    if (!draft || busy) return;
+    setBusy(true);
+    try {
+      if (!entryIdRef.current) await persist(JSON.stringify(draft)); // a brand-new entry: create it first
+      else await auto.flushNow();
+      const r = await api.post<Saved>(`/api/admin/entries/${entryIdRef.current}/state`, at ? { action, at } : { action });
+      setEntry(r.entry);
+      setHasEdits(!!r.edits);
+      setNow(Date.now());
+      if (action === 'discard') { auto.rebase(); setDraft(fromSource(r.entry.kind, r.entry)); }
+      const msg: Record<Action, string> = {
+        publish: 'Published', schedule: `Scheduled: goes live ${whenPhrase(r.entry.published_at ?? at ?? '', Date.now())}`, unpublish: 'Moved back to draft',
+        update: 'Live story updated', discard: 'Edits discarded', redate: 'Date changed',
+      };
+      toast(msg[action]);
+      if (action === 'publish' || action === 'schedule' || action === 'update') setSheet(false);
+    } catch (e) {
+      toast(errorText(e));
+    }
+    setBusy(false);
+  };
+
+  // Date pickers report every click; wait for a pause before acting on a new date.
+  const dateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const actLater = (action: 'schedule' | 'redate', at: string | null) => {
+    clearTimeout(dateTimer.current);
+    if (at) dateTimer.current = setTimeout(() => void act(action, at), 700);
+  };
+  useEffect(() => () => clearTimeout(dateTimer.current), []);
+
+  const unpublish = async () => {
+    const ok = await dialog.confirm({ title: 'Move back to draft?', body: state === 'scheduled' ? 'It won’t go live at the scheduled time.' : 'It disappears from the site until you publish it again.', confirmLabel: 'Move to draft' });
+    if (ok) void act('unpublish');
+  };
+  const discardEdits = async () => {
+    const ok = await dialog.confirm({ title: 'Discard your edits?', body: 'The editor goes back to the live version. This can’t be undone.', confirmLabel: 'Discard', danger: true });
+    if (ok) void act('discard');
+  };
 
   const remove = async () => {
     if (!entryId) return;
@@ -128,22 +194,29 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
 
   const featIds = featuredIds(featured);
   const isFeatured = !!entryId && featIds.includes(entryId);
-  const liveUrl = `${KIND_PATH[draft.kind]}/${draft.slug}`;
+  const liveUrl = `${KIND_PATH[draft.kind]}/${entry?.slug ?? draft.slug}`;
+  const state: EntryState = entryState(entry, now);
+  const at = entry?.published_at ?? null;
+  const edited = state === 'published' && hasEdits;
+  const saveLabel = auto.state === 'saved' && !auto.dirty && edited ? 'Edits not live' : auto.label;
 
   return (
     <>
       <TopBar section={KIND_SECTION[draft.kind]} here={draft.title.trim() || 'Untitled'} actions={<>
-          <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
-          {entryId && draft.status === 'published' && draft.is_public && <a className="btn" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
-          <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Publish…</button>
-          <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
+          <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{saveLabel}</span>
+          {state === 'published' && <a className="btn desktop-only" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
+          {edited && <button type="button" className="btn primary desktop-only" onClick={() => void act('update')} disabled={busy}>Update</button>}
+          {/* Phone: one button that names the state and opens the Publishing panel. */}
+          <button type="button" className={`btn publish-btn state-btn is-${edited ? 'edited' : state}`} onClick={() => setSheet(true)} aria-expanded={sheet} aria-haspopup="dialog">
+            {edited ? 'Update' : state === 'draft' ? 'Publish' : state === 'scheduled' ? <><ClockIcon />Scheduled</> : 'Published'}
+          </button>
         </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
         <div className="editor-main">
           <div className="doc">
             <textarea className="title-input" rows={1} placeholder="Untitled" value={draft.title} aria-label="Title"
-              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current || draft.status === 'published' ? {} : { slug: slugify(e.target.value) }) })}
+              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current || state !== 'draft' ? {} : { slug: slugify(e.target.value) }) })}
               onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
             <textarea className="dek-input" rows={1} placeholder="Summary" value={draft.dek} aria-label="Summary"
               onChange={(e) => patch({ dek: e.target.value })}
@@ -174,28 +247,84 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <span className="grip" aria-hidden="true" />
           <div className="side-head">
             <h2>Publishing</h2>
-            <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
+            <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Close</button>
           </div>
-          <Field label="Status" hint={draft.status === 'draft' ? 'Only you can see drafts.' : undefined}>
-            <Segmented label="Status" value={draft.status} onChange={(v) => patchNow({ status: v })} options={[['draft', 'Draft'], ['published', 'Published']] as const} />
-          </Field>
+          {state === 'draft' && (
+            <>
+              <div className="state-card is-draft"><span className="pill">Draft</span><span>Only you can see it.</span></div>
+              <Segmented label="When" value={when} onChange={setWhen} options={[['now', 'Now'], ['later', 'Schedule']] as const} />
+              {when === 'later' && (
+                <Field label="Goes live" hint="It goes live by itself at this time.">
+                  <DateTimePicker value={scheduleAt} onChange={(iso) => { if (iso) setScheduleAt(iso); }} label="Goes live" />
+                </Field>
+              )}
+              <button type="button" className="btn primary state-cta" disabled={busy}
+                onClick={() => void (when === 'later' ? act('schedule', scheduleAt) : act('publish'))}>
+                {when === 'later' ? 'Schedule' : 'Publish now'}
+              </button>
+            </>
+          )}
+          {state === 'scheduled' && at && (
+            <>
+              <div className="state-card is-scheduled">
+                <span className="state-line"><span className="pill sched">Scheduled</span><b>{whenLabel(at, now)}</b></span>
+                <span>Goes live by itself {untilLabel(at, now)}. Hidden until then.</span>
+              </div>
+              <Field label="Goes live">
+                <DateTimePicker value={at} onChange={(iso) => actLater('schedule', iso)} label="Goes live" />
+              </Field>
+              <div className="state-actions">
+                <button type="button" className="btn" disabled={busy} onClick={() => void unpublish()}>Back to draft</button>
+                <button type="button" className="btn primary" disabled={busy} onClick={() => void act('publish')}>Publish now</button>
+              </div>
+            </>
+          )}
+          {state === 'published' && (
+            <>
+              <div className="state-card is-published">
+                <span className="pill ok">Published</span>
+                <span className="state-date">{at ? whenLabel(at, now) : ''}</span>
+                <a href={liveUrl} target="_blank" rel="noopener">View ↗</a>
+              </div>
+              {edited && (
+                <div className="state-edits" role="status">
+                  <span>Your edits are saved but not live yet.</span>
+                  <div className="state-actions">
+                    <button type="button" className="btn" disabled={busy} onClick={() => void discardEdits()}>Discard edits</button>
+                    <button type="button" className="btn primary" disabled={busy} onClick={() => void act('update')}>Update live story</button>
+                  </div>
+                </div>
+              )}
+              <Field label="Date shown on it">
+                <DateTimePicker value={at} onChange={(iso) => actLater('redate', iso)} label="Date shown on it" />
+              </Field>
+            </>
+          )}
           <div className="side-toggles">
-            <ToggleRow label="Show publicly" hint={draft.is_public && draft.status === 'draft' ? 'Live once published' : undefined} checked={draft.is_public} onChange={(v) => patchNow({ is_public: v })} />
             {draft.kind === 'post' && (
-              <ToggleRow label="Feature on home page" hint={isFeatured ? `Featured · ${featIds.indexOf(entryId!) + 1} of ${featIds.length}` : undefined} checked={isFeatured} onChange={(v) => void setFeature(v)} />
+              <ToggleRow label="Feature on home page" checked={isFeatured} onChange={(v) => void setFeature(v)}
+                hint={isFeatured ? (state === 'published' ? `Featured · ${featIds.indexOf(entryId!) + 1} of ${featIds.length}` : state === 'scheduled' && at ? `Joins the carousel ${whenPhrase(at, now)}` : 'Shows once it’s published') : undefined} />
             )}
           </div>
           {draft.kind === 'post' && <SeriesField entryId={entryId} onManage={() => go('/admin/series')} />}
-          <Field label="Publish date" hint="Future date = scheduled.">
-            <DateTimePicker value={draft.published_at} onChange={(iso) => patch({ published_at: iso })} />
-          </Field>
-          <Field label="URL slug" hint={liveUrl} htmlFor="ed-slug">
+          <Field label="URL slug" hint={state === 'published' && draft.slug !== entry?.slug ? `Live: ${liveUrl} · changes with Update` : liveUrl} htmlFor="ed-slug">
             <input id="ed-slug" className="input mono" value={draft.slug} onChange={(e) => { slugTouched.current = true; patch({ slug: slugify(e.target.value) }); }} />
           </Field>
+          {state === 'published' && <button type="button" className="btn side-unpublish" disabled={busy} onClick={() => void unpublish()}>Unpublish (back to draft)</button>}
           {entryId && <button type="button" className="btn danger side-danger" onClick={remove}>Delete entry</button>}
         </aside>
       </div>
       {picker}
     </>
   );
+}
+
+/** "today, 11:00 pm" · "tomorrow, 9:00 am" · "on Thu 12 Nov, 9:00 am", to follow a verb. */
+function whenPhrase(iso: string, now: number): string {
+  const w = whenLabel(iso, now);
+  return /^(Today|Tomorrow|Yesterday)/.test(w) ? w[0].toLowerCase() + w.slice(1) : `on ${w}`;
+}
+
+function ClockIcon() {
+  return <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg>;
 }

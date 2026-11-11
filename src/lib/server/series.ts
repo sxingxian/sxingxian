@@ -102,8 +102,9 @@ export async function seriesForEntry(entryId: string): Promise<{ series: Series;
 export async function adminListSeries(): Promise<SeriesAdminRow[]> {
   const rows = await sql().query(
     `SELECT s.id, s.slug, s.title, s.description, s.planned_parts, s.is_public, s.created_at, s.updated_at,
-            count(e.id) FILTER (WHERE e.status = 'published')::int AS published,
-            count(e.id) FILTER (WHERE e.status <> 'published')::int AS drafts
+            count(e.id) FILTER (WHERE e.status = 'published' AND e.is_public AND e.published_at <= now())::int AS published,
+            count(e.id) FILTER (WHERE e.status = 'published' AND e.is_public AND e.published_at > now())::int AS scheduled,
+            count(e.id) FILTER (WHERE e.status <> 'published' OR NOT e.is_public)::int AS drafts
      FROM series s
      LEFT JOIN series_parts sp ON sp.series_id = s.id
      LEFT JOIN entries e ON e.id = sp.entry_id

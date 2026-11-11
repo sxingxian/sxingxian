@@ -25,6 +25,8 @@ export function useAutosave(snapshot: string | null, persist: (snapshot: string)
   const firstChange = useRef<number | null>(null);
   const [state, setState] = useState<AutosaveState>('saved');
   const [error, setError] = useState('');
+  const errorRef = useRef('');
+  errorRef.current = error;
 
   latest.current = snapshot;
   persistRef.current = persist;
@@ -91,9 +93,18 @@ export function useAutosave(snapshot: string | null, persist: (snapshot: string)
 
   /** Save now (Ctrl/Cmd+S, the Save button, or a deliberate switch like Draft → Published). */
   const saveNow = useCallback(() => { setTimeout(() => void flush(), 0); }, [flush]);
+  /** Save now and wait until everything typed so far is saved (before publishing). Throws if it can't save. */
+  const flushNow = useCallback(async (): Promise<void> => {
+    for (let i = 0; i < 100 && inflight.current; i++) await new Promise((r) => setTimeout(r, 50));
+    await flush();
+    for (let i = 0; i < 100 && inflight.current; i++) await new Promise((r) => setTimeout(r, 50));
+    if (latest.current !== null && latest.current !== saved.current) throw new Error(errorRef.current || 'Couldn’t save your changes');
+  }, [flush]);
+  /** Take the next snapshot as the saved baseline (the editor just loaded different content, e.g. after Discard edits). */
+  const rebase = useCallback(() => { clearTimeout(timer.current); saved.current = null; firstChange.current = null; setState('saved'); setError(''); }, []);
   /** Forget unsaved changes (e.g. after deleting the document). */
   const discard = useCallback(() => { clearTimeout(timer.current); saved.current = latest.current; firstChange.current = null; setState('saved'); setError(''); }, []);
   const dirty = snapshot !== null && snapshot !== saved.current;
   const label = state === 'error' ? 'Not saved · retrying' : state === 'saving' ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved';
-  return { state, error, dirty, label, saveNow, discard };
+  return { state, error, dirty, label, saveNow, flushNow, rebase, discard };
 }
