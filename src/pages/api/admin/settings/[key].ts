@@ -63,6 +63,11 @@ export const PUT: APIRoute = async ({ params, request }) => {
     const channels = v.channels.filter((c) => !seen.has(c.chat) && seen.add(c.chat)).map((c) => ({ ...c, kinds: [...new Set(c.kinds)], addedAt: before.get(c.chat) ?? now }));
     value = { ...v, channels } as SettingsMap[typeof key];
   }
+  if (key === 'sponsor') {
+    // Which ways to pay are connected is the server's to say (connecting and disconnecting set it).
+    const v = value as SettingsMap['sponsor'];
+    value = { ...v, amounts: [...v.amounts].sort((a, b) => a - b), methods: (await getSetting('sponsor')).methods } as SettingsMap[typeof key];
+  }
   if (key === 'featured') {
     // Also write the previous release's fields, so a rollback still shows the first featured story.
     const f = value as SettingsMap['featured'];

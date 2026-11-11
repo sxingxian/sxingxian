@@ -12,6 +12,7 @@ import { sql } from './db';
 import { healthCheck, log, reconcile, syncIncremental } from './wordpress';
 import { purgeAuthData } from './users';
 import { announceDue } from './telegram';
+import { tidySponsors } from './sponsor';
 
 // Seconds. Slightly under the nominal interval so a 5-minute cron never just misses.
 const EVERY = {
@@ -20,6 +21,7 @@ const EVERY = {
   'wp-reconcile': 86_000, // daily: remove posts deleted/trashed/private on WordPress
   'auth-purge': 86_000, // daily: expired sessions, sign-in history over 180 days
   'tg-due': 50, // Telegram: post entries whose schedule has come, and retry failed posts
+  'sponsor-tidy': 86_000, // daily: delete unfinished sponsor attempts (and their notes) after 2 days
 } as const;
 
 type Job = keyof typeof EVERY;
@@ -50,6 +52,7 @@ async function attempt(name: Job, fn: () => Promise<unknown>): Promise<void> {
 /** Runs every job that is due. Safe to call from many places at once. */
 export async function runMaintenance(): Promise<void> {
   await attempt('tg-due', () => announceDue());
+  await attempt('sponsor-tidy', () => tidySponsors());
   await attempt('wp-health', () => healthCheck());
   await attempt('wp-pull', async () => {
     if (await wordpressUp()) await syncIncremental();

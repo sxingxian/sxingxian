@@ -70,7 +70,48 @@ export const entryTelegramSchema = z.object({
 });
 export type EntryTelegramInput = z.infer<typeof entryTelegramSchema>;
 
+// ---------- sponsor ----------
+/** Cents, S$1 to S$10,000. */
+const sponsorCents = z.number().int().min(100).max(1_000_000);
+const sponsorWords = (max: number) => z.string().trim().min(1).max(max);
+export const STRIPE_KEY_RE = /^(rk|sk)_(live|test)_[A-Za-z0-9]{20,240}$/;
+export const PAYPAL_ID_RE = /^[A-Za-z0-9_-]{20,128}$/;
+
+export const sponsorSettingSchema = z.object({
+  enabled: z.boolean(),
+  storyCard: z.boolean(),
+  footerLink: z.boolean(),
+  amounts: z.array(sponsorCents).min(1).max(4),
+  defaultAmount: sponsorCents,
+  allowCustom: z.boolean(),
+  min: sponsorCents,
+  max: sponsorCents,
+  cardTitle: sponsorWords(80),
+  cardText: sponsorWords(300),
+  pageTitle: sponsorWords(80),
+  pageText: sponsorWords(600),
+  methods: z.object({ stripe: z.boolean(), paypal: z.boolean() }).optional(),
+}).refine((s) => new Set(s.amounts).size === s.amounts.length, { message: 'Each amount once', path: ['amounts'] })
+  .refine((s) => s.amounts.includes(s.defaultAmount), { message: 'The default must be one of the amounts', path: ['defaultAmount'] })
+  .refine((s) => s.min < s.max, { message: 'The minimum must be below the maximum', path: ['max'] });
+
+/** A visitor going to pay: which way, how much (cents), an optional note, and the story they came from. */
+export const sponsorCheckoutSchema = z.object({
+  method: z.enum(['stripe', 'paypal']),
+  amount: z.number().int().min(100).max(1_000_000),
+  message: z.string().max(600).optional().default(''),
+  from: z.uuid().nullable().optional(),
+});
+
+export const stripeConnectSchema = z.object({ key: z.string().trim().regex(STRIPE_KEY_RE, 'That doesn’t look like a Stripe key. It starts with rk_live_ or rk_test_') });
+export const paypalConnectSchema = z.object({
+  clientId: z.string().trim().regex(PAYPAL_ID_RE, 'That doesn’t look like a PayPal Client ID'),
+  secret: z.string().trim().regex(PAYPAL_ID_RE, 'That doesn’t look like a PayPal Secret'),
+  mode: z.enum(['live', 'test']),
+});
+
 export const settingsSchemas = {
+  sponsor: sponsorSettingSchema,
   telegram: z.object({
     channels: z.array(z.object({
       chat: z.string().trim().regex(TELEGRAM_CHAT_RE, 'A channel is @name or a -100… id'),

@@ -7,6 +7,7 @@ import '../styles/site.css';
 import { getSettings } from '../lib/server/repo';
 import { navItems } from '../lib/server/site';
 import { isSafeHref } from '../lib/shared/safe';
+import { sponsorLive } from '../lib/shared/types';
 import { adsFor } from '../lib/server/ads';
 import { getSetting, hasPrivacyPage } from '../lib/server/repo';
 
@@ -21,7 +22,7 @@ interface Props {
   intro?: boolean;
 }
 const { title, description, noindex = false, image, motion = false, intro = false } = Astro.props;
-const { site, sections, footer } = await getSettings(['site', 'sections', 'footer']);
+const { site, sections, footer, sponsor } = await getSettings(['site', 'sections', 'footer', 'sponsor']);
 const nav = navItems(sections);
 const path = Astro.url.pathname;
 const isCurrent = (href: string) => (href === '/' ? path === '/' || path.startsWith('/story') : path.startsWith(href));
@@ -37,6 +38,9 @@ const desc = description || footer.about;
 const year = String(new Date().getUTCFullYear());
 const columns = footer.columns.map((c) => ({ ...c, links: c.links.filter((l) => isSafeHref(l.url)) }));
 const hasRssLink = columns.some((c) => c.links.some((l) => l.url === '/rss.xml'));
+// "Sponsor" goes at the end of the footer's last column (or the automatic Follow column when that's last).
+const sponsorLink = sponsorLive(sponsor) && sponsor.footerLink && !columns.some((c) => c.links.some((l) => l.url === '/sponsor'));
+const autoFollow = footer.showRss && !hasRssLink;
 const canonical = new URL(path, Astro.site ?? Astro.url).toString();
 const ads = await adsFor(path);
 const showPrivacy = await hasPrivacyPage().catch(() => false);
@@ -165,7 +169,7 @@ import Favicons from '../components/Favicons.astro';
     <footer class="site-footer">
       <div class="wrap foot-grid">
         <div class="foot-about"><b>{site.title}</b><span>{footer.about}</span></div>
-        {columns.map((c) => (
+        {columns.map((c, i) => (
           <div class="col-links">
             <span class="lbl">{c.heading}</span>
             {c.links.map((l) => l.newTab ? (
@@ -173,10 +177,14 @@ import Favicons from '../components/Favicons.astro';
             ) : (
               <a href={l.url} rel={l.url.startsWith('https:') ? 'noopener noreferrer' : undefined}>{l.label}</a>
             ))}
+            {sponsorLink && !autoFollow && i === columns.length - 1 && <a class="foot-sponsor" href="/sponsor">Sponsor</a>}
           </div>
         ))}
-        {footer.showRss && !hasRssLink && (
-          <div class="col-links"><span class="lbl">Follow</span><a href="/rss.xml">RSS feed</a></div>
+        {autoFollow && (
+          <div class="col-links"><span class="lbl">Follow</span><a href="/rss.xml">RSS feed</a>{sponsorLink && <a class="foot-sponsor" href="/sponsor">Sponsor</a>}</div>
+        )}
+        {sponsorLink && !autoFollow && columns.length === 0 && (
+          <div class="col-links"><span class="lbl">Support</span><a class="foot-sponsor" href="/sponsor">Sponsor</a></div>
         )}
       </div>
       <div class="wrap foot-bottom">

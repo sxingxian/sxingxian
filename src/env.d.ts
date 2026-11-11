@@ -12,6 +12,7 @@ interface SxEnv {
   WEBHOOK_LIMITER?: RateLimit;
   LOGIN_LIMITER?: RateLimit;
   VIEW_LIMITER?: RateLimit;
+  SPONSOR_LIMITER?: RateLimit;
 
   // vars (non-secret)
   SITE_URL: string;

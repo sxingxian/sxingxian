@@ -249,6 +249,23 @@ export interface TelegramSetting {
   buttons: Record<EntryKind, string>;
 }
 
+/** One-time sponsor. Amounts are in cents (SGD). `methods` is kept by the server: which providers are connected. */
+export interface SponsorSetting {
+  enabled: boolean;
+  storyCard: boolean;
+  footerLink: boolean;
+  amounts: number[];
+  defaultAmount: number;
+  allowCustom: boolean;
+  min: number;
+  max: number;
+  cardTitle: string;
+  cardText: string;
+  pageTitle: string;
+  pageText: string;
+  methods: { stripe: boolean; paypal: boolean };
+}
+
 export interface SettingsMap {
   site: SiteSetting;
   topics: TopicsSetting;
@@ -259,6 +276,7 @@ export interface SettingsMap {
   ads: AdsSetting;
   protection: ProtectionSetting;
   telegram: TelegramSetting;
+  sponsor: SponsorSetting;
 }
 export type SettingKey = keyof SettingsMap;
 
@@ -298,7 +316,27 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     attachImage: true,
     buttons: { post: 'Read the story', project: 'See the work', gallery: 'See the photos', film: 'Watch the film' },
   },
+  sponsor: {
+    enabled: true,
+    storyCard: true,
+    footerLink: true,
+    amounts: [500, 1000, 2000],
+    defaultAmount: 1000,
+    allowCustom: true,
+    min: 300,
+    max: 50000,
+    cardTitle: 'Enjoyed this story?',
+    cardText: 'Everything here is free to read. If it was worth something to you, a one-time sponsor keeps the next one coming.',
+    pageTitle: 'Sponsor the next story',
+    pageText: 'Stories, photographs and films here are free, with no paywall. A one-time sponsor pays for the hosting and the time to make the next one. Thank you.',
+    methods: { stripe: false, paypal: false },
+  },
 };
+
+/** Whether the sponsor page, card and link show: switched on and at least one way to pay connected. */
+export function sponsorLive(s: SponsorSetting): boolean {
+  return s.enabled && (s.methods.stripe || s.methods.paypal);
+}
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {
   work: 'Work',

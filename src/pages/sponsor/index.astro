@@ -1,0 +1,165 @@
+---
+// The sponsor page: pick an amount (or type one), an optional note, then pay on Stripe's or PayPal's own page.
+// Shown only while sponsoring is switched on and at least one way to pay is connected.
+import Site from '../../layouts/Site.astro';
+import NotFound from '../../components/NotFound.astro';
+import { getPublicEntryById, getSetting } from '../../lib/server/repo';
+import { sponsorLive } from '../../lib/shared/types';
+import { formatMoney, MESSAGE_MAX } from '../../lib/shared/sponsor';
+
+const s = await getSetting('sponsor');
+const live = sponsorLive(s);
+if (!live) Astro.response.status = 404;
+
+// ?from=<story id> (the story's card) and ?amount=<cents> (coming back from "Try again").
+const fromParam = Astro.url.searchParams.get('from') ?? '';
+const from = /^[0-9a-f-]{36}$/i.test(fromParam) ? await getPublicEntryById(fromParam).catch(() => null) : null;
+const asked = Number.parseInt(Astro.url.searchParams.get('amount') ?? '', 10);
+const preset = s.amounts.includes(asked) ? asked : null;
+const custom = !preset && s.allowCustom && Number.isInteger(asked) && asked >= s.min && asked <= s.max ? asked : null;
+const picked = preset ?? (custom ? 'other' : s.defaultAmount);
+const startCents = preset ?? custom ?? s.defaultAmount;
+const customText = custom ? (custom / 100).toFixed(custom % 100 ? 2 : 0) : '';
+---
+{live ? (
+  <Site title={s.pageTitle} description={s.pageText}>
+    <div class="wrap sponsor-page">
+      <div class="sponsor-intro">
+        <h1>{s.pageTitle}</h1>
+        <p>{s.pageText}</p>
+        {from && <p class="sponsor-from">For <a href={`/story/${from.slug}`}>{from.title}</a></p>}
+        <p class="sponsor-safe">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>
+          <span>You pay on {s.methods.stripe && s.methods.paypal ? 'Stripe’s or PayPal’s' : s.methods.stripe ? 'Stripe’s' : 'PayPal’s'} own secure page. Your card and PayPal details never reach this site. One-time only; nothing recurring.</span>
+        </p>
+      </div>
+      <form class="sponsor-form" id="sponsor-form" novalidate
+        data-min={s.min} data-max={s.max} data-custom={s.allowCustom ? '1' : undefined} data-from={from?.id}>
+        <fieldset class="sponsor-amounts">
+          <legend>Amount (SGD)</legend>
+          <div class="amount-chips">
+            {s.amounts.map((c) => (
+              <label class="amount-chip"><input type="radio" name="amount" value={c} checked={picked === c} /><span>{formatMoney(c)}</span></label>
+            ))}
+            {s.allowCustom && <label class="amount-chip"><input type="radio" name="amount" value="other" checked={picked === 'other'} /><span>Other</span></label>}
+          </div>
+          {s.allowCustom && (
+            <label class="sponsor-other" id="sponsor-other" hidden={picked !== 'other'}>
+              <span class="hint">Other amount, {formatMoney(s.min)} to {formatMoney(s.max)}</span>
+              <span class="money-input"><span aria-hidden="true">S$</span><input type="text" name="other" inputmode="decimal" autocomplete="off" maxlength="10" value={customText} aria-label={`Other amount in Singapore dollars, ${formatMoney(s.min)} to ${formatMoney(s.max)}`} /></span>
+            </label>
+          )}
+        </fieldset>
+        <label class="sponsor-msg">
+          <span class="lbl">A message to me <span class="hint">(optional)</span></span>
+          <textarea name="message" rows="3" maxlength={MESSAGE_MAX} placeholder="Say hello, or what you enjoyed"></textarea>
+          <span class="hint" id="sponsor-count">Only I see it. Up to {MESSAGE_MAX} characters.</span>
+        </label>
+        <p class="sponsor-error" id="sponsor-error" role="alert" hidden></p>
+        <div class={`sponsor-pay${s.methods.stripe && s.methods.paypal ? ' two' : ''}`}>
+          {s.methods.stripe && (
+            <button type="submit" name="method" value="stripe" class="pay-card">
+              <span class="pay-l" data-pay="by card">Pay {formatMoney(startCents)} by card</span>
+              <span class="pay-sub">Card · Apple/Google Pay · PayNow</span>
+            </button>
+          )}
+          {s.methods.paypal && (
+            <button type="submit" name="method" value="paypal" class="pay-paypal"><span class="pay-l" data-pay="with PayPal">Pay {formatMoney(startCents)} with PayPal</span></button>
+          )}
+        </div>
+        <noscript><p class="sponsor-error">Paying needs JavaScript switched on in your browser.</p></noscript>
+      </form>
+    </div>
+  </Site>
+) : (
+  <NotFound />
+)}
+
+<script>
+  // Sends the choice to /api/sponsor/checkout and goes to the page Stripe or PayPal returns. The server checks
+  // the amount again; this only gives quick feedback. The note is kept in this tab (sessionStorage) so
+  // "Try again" after cancelling can fill it back in; it's cleared once paid.
+  const form = document.getElementById('sponsor-form') as HTMLFormElement | null;
+  if (form) {
+    const KEY = 'sx-sponsor-draft';
+    const err = document.getElementById('sponsor-error') as HTMLElement;
+    const other = document.getElementById('sponsor-other') as HTMLElement | null;
+    const otherInput = form.elements.namedItem('other') as HTMLInputElement | null;
+    const msg = form.elements.namedItem('message') as HTMLTextAreaElement;
+    const count = document.getElementById('sponsor-count') as HTMLElement;
+    const min = Number(form.dataset.min), max = Number(form.dataset.max);
+    const money = (c: number) => `S$${(c / 100).toLocaleString('en-SG', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+    const parse = (v: string): number | null => {
+      const t = v.trim().replace(/^S?\$\s*/i, '').replace(/,/g, '');
+      if (!/^\d{1,7}(\.\d{1,2})?$/.test(t)) return null;
+      const [d, f = ''] = t.split('.');
+      return Number(d) * 100 + Number((f + '00').slice(0, 2));
+    };
+    const choice = () => (form.querySelector('input[name="amount"]:checked') as HTMLInputElement | null)?.value ?? '';
+    const cents = (): number | null => (choice() === 'other' ? parse(otherInput?.value ?? '') : Number(choice()) || null);
+    const problem = (c: number | null): string => {
+      if (choice() !== 'other') return c ? '' : 'Pick an amount';
+      if (c === null) return 'Type an amount, like 15 or 15.50';
+      if (c < min) return `The smallest amount is ${money(min)}`;
+      if (c > max) return `The largest amount is ${money(max)}`;
+      return '';
+    };
+    const show = (text: string) => { err.textContent = text; err.hidden = !text; };
+    const refresh = () => {
+      if (other) other.hidden = choice() !== 'other';
+      const c = cents();
+      form.querySelectorAll<HTMLElement>('.pay-l').forEach((el) => { el.textContent = `Pay ${c && !problem(c) ? money(c) + ' ' : ''}${el.dataset.pay}`; });
+      const left = 280 - msg.value.length;
+      count.textContent = msg.value ? `Only I see it. ${left} characters left.` : 'Only I see it. Up to 280 characters.';
+    };
+    // Coming back with "Try again": fill the note back in.
+    try {
+      const d = JSON.parse(sessionStorage.getItem(KEY) ?? 'null') as { message?: string } | null;
+      if (d?.message && !msg.value) msg.value = d.message.slice(0, 280);
+    } catch { /* storage blocked: start empty */ }
+    form.addEventListener('change', () => { show(''); refresh(); });
+    form.addEventListener('input', refresh);
+    if (choice() === 'other' && otherInput && !otherInput.value) otherInput.focus();
+    refresh();
+
+    let busy = false;
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (busy) return;
+      const method = ((ev as SubmitEvent).submitter as HTMLButtonElement | null)?.value;
+      if (method !== 'stripe' && method !== 'paypal') return;
+      const c = cents();
+      const p = problem(c);
+      if (p) { show(p); (choice() === 'other' ? otherInput : form.querySelector('input[name="amount"]') as HTMLInputElement)?.focus(); return; }
+      busy = true;
+      const buttons = form.querySelectorAll<HTMLButtonElement>('.sponsor-pay button');
+      buttons.forEach((b) => (b.disabled = true));
+      const label = (ev as SubmitEvent).submitter?.querySelector('.pay-l');
+      const before = label?.textContent ?? '';
+      if (label) label.textContent = 'Opening the payment page…';
+      try { sessionStorage.setItem(KEY, JSON.stringify({ message: msg.value })); } catch { /* fine */ }
+      try {
+        const res = await fetch('/api/sponsor/checkout', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ method, amount: c, message: msg.value, from: form.dataset.from || null }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (res.ok && data.url && /^https:\/\//.test(data.url)) { window.location.assign(data.url); return; }
+        show(data.error || 'Payments aren’t working right now. Please try again later.');
+      } catch {
+        show('Couldn’t reach the site. Check your connection and try again.');
+      }
+      busy = false;
+      buttons.forEach((b) => (b.disabled = false));
+      if (label) label.textContent = before;
+    });
+    // Back button from Stripe/PayPal restores this page from the cache: let it be used again.
+    window.addEventListener('pageshow', (e) => {
+      if (!e.persisted) return;
+      busy = false;
+      form.querySelectorAll<HTMLButtonElement>('.sponsor-pay button').forEach((b) => (b.disabled = false));
+      refresh();
+    });
+  }
+</script>

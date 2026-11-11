@@ -772,3 +772,55 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button { flex-shrink: 0; white-space: nowrap; }
 }
+
+/* Settings → Sponsor and Site → Sponsors */
+.sp-amounts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0 12px; }
+.sp-amount { display: inline-flex; align-items: center; height: 40px; border-radius: 999px; border: 1px solid var(--field-line); background: var(--card); }
+.sp-amount.is-default { border-color: var(--accent); background: var(--accent-bg); }
+.sp-amount-pick { height: 38px; padding: 0 6px 0 14px; border: 0; background: none; border-radius: 999px 0 0 999px; font: 600 14.5px var(--sans); color: var(--ink); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sp-amount-pick small { font: 500 11px var(--sans); color: var(--accent); }
+.sp-amount-x { width: 34px; height: 38px; border: 0; background: none; border-radius: 0 999px 999px 0; color: var(--faint); font-size: 17px; cursor: pointer; }
+.sp-amount-x:hover { color: var(--danger, #b3402e); }
+.sp-amount-add { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px dashed var(--field-line-h); background: transparent; color: var(--muted); font: 500 13.5px var(--sans); cursor: pointer; }
+.sp-amount-add:hover { color: var(--ink); border-color: var(--ink); }
+.sp-amount-new { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.sp-amount-new .input { width: 96px; }
+.sp-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 180px)); gap: 14px; padding-top: 8px; }
+.sp-money { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.sp-money .input { flex: 1; min-width: 0; }
+.sp-words { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 12px 20px; align-items: start; }
+.sp-words > .field-l { padding-top: 10px; }
+.sp-words-c { display: flex; flex-direction: column; gap: 8px; }
+.sp-words-c textarea { resize: vertical; font: 14px/1.5 var(--sans); }
+.sp-providers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.sp-providers > .panel { margin: 0; }
+.sp-connected { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--accent-bg); border: 1px solid var(--accent-line); font-size: 14px; margin-bottom: 12px; }
+.sp-connected > span:first-child { display: flex; align-items: center; gap: 8px; }
+.sp-connected svg { color: var(--accent); flex: none; }
+.sp-test { font-size: 13px; color: var(--warn-ink, #8a5a00); }
+.sp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.sp-stat { padding: 16px 18px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sp-stat > span { font-size: 13px; color: var(--muted); }
+.sp-stat b { font-size: 24px; font-weight: 600; }
+.sp-stat b.sp-top { font: 500 18px/1.3 var(--serif); overflow-wrap: anywhere; }
+.sp-table td { vertical-align: top; }
+.sp-table .sp-when { white-space: nowrap; }
+.sp-table .sp-amt { white-space: nowrap; }
+.sp-table .sp-msg { max-width: 300px; line-height: 1.5; overflow-wrap: anywhere; }
+.sp-table .sp-who a { color: var(--muted); overflow-wrap: anywhere; }
+.sp-refunded, .sp-testpill { margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 500; border: 1px solid; }
+.sp-refunded { color: var(--danger, #b3402e); border-color: currentColor; }
+.sp-testpill { color: var(--muted); border-color: var(--line); }
+@media (max-width: 900px) { .sp-providers { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .sp-words { grid-template-columns: 1fr; gap: 6px; }
+  .sp-words > .field-l { padding-top: 6px; }
+  .sp-stats { grid-template-columns: 1fr 1fr; }
+  .sp-stats .sp-stat:last-child { grid-column: 1 / -1; }
+  .sp-table tr { grid-template-columns: minmax(0, 1fr) auto !important; }
+  .sp-table td.sp-amt { grid-column: 2; grid-row: 1; text-align: right; }
+  .sp-table td.sp-when { grid-column: 1; grid-row: 1; color: var(--muted); font-size: 13px; }
+  .sp-table td.sp-who, .sp-table td.sp-msg, .sp-table td.sp-src, .sp-table td.sp-via { grid-column: 1 / -1; }
+  .sp-table td.sp-src, .sp-table td.sp-via { font-size: 13px; color: var(--muted); }
+  .sp-table td.sp-msg .hint { display: none; }
+}
