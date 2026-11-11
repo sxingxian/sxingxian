@@ -14,6 +14,7 @@ import SeriesField from '../components/SeriesField';
 import SaveButton from '../components/SaveButton';
 import TelegramSection from '../components/TelegramSection';
 import TopicsPicker from '../components/TopicsPicker';
+import AutoTextarea from '../components/AutoTextarea';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
 
@@ -218,12 +219,10 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
       <div className="editor-layout">
         <div className="editor-main">
           <div className="doc">
-            <textarea className="title-input" rows={1} placeholder="Untitled" value={draft.title} aria-label="Title"
-              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current || state !== 'draft' ? {} : { slug: slugify(e.target.value) }) })}
-              onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
-            <textarea className="dek-input" rows={1} placeholder="Summary" value={draft.dek} aria-label="Summary"
-              onChange={(e) => patch({ dek: e.target.value })}
-              onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
+            <AutoTextarea className="title-input" placeholder="Untitled" value={draft.title} aria-label="Title"
+              onChange={(e) => patch({ title: e.target.value, ...(slugTouched.current || state !== 'draft' ? {} : { slug: slugify(e.target.value) }) })} />
+            <AutoTextarea className="dek-input" placeholder="Summary" value={draft.dek} aria-label="Summary"
+              onChange={(e) => patch({ dek: e.target.value })} />
             <div className="props">
               <div className="prop prop-topics"><span>Topics</span>
                 <TopicsPicker value={draft.topics} listName={TOPIC_LIST_LABEL[TOPIC_LIST[draft.kind]]}
