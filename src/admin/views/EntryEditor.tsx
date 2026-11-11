@@ -207,11 +207,11 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{saveLabel}</span>
           {state === 'published' && <a className="btn desktop-only" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
           {edited && <button type="button" className="btn primary desktop-only" onClick={() => void act('update')} disabled={busy}>Update</button>}
-          <SaveButton auto={auto} />
           {/* Phone: one button that names the state and opens the Publishing panel. */}
           <button type="button" className={`btn publish-btn state-btn is-${edited ? 'edited' : state}`} onClick={() => setSheet(true)} aria-expanded={sheet} aria-haspopup="dialog">
             {edited ? 'Update' : state === 'draft' ? 'Publish' : state === 'scheduled' ? <><ClockIcon />Scheduled</> : 'Published'}
           </button>
+          <SaveButton auto={auto} />
         </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">
