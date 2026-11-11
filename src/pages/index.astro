@@ -28,7 +28,11 @@ const [feed, work, galleries, films, popular, series] = await Promise.all([
 const latestFilm = films[0];
 const many = featured.length > 1;
 const featuredKeys = new Set(featured.map((f) => `n:${f.id}`));
-const vt = (id: string) => `view-transition-name:c-${id.replace(/[^a-zA-Z0-9-]/g, '')}`;
+const vtName = (id: string) => `c-${id.replace(/[^a-zA-Z0-9-]/g, '')}`;
+// Only the slide on screen carries its transition name (the carousel script moves it). A named element is
+// painted above the page during a page transition, ignoring the track's clipping, so a named slide off to
+// the side would flash into view when the page opens or a topic is picked.
+const vt = (id: string) => `view-transition-name:${vtName(id)}`;
 // 1–2 galleries fill the card instead of leaving empty cells: one wide photo, or two squares.
 const photoCols = Math.min(galleries.length, 3);
 const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.topics.length ? topicLabel(latestFilm.topics) : ''].filter(Boolean).join(' · ') : '';
@@ -43,7 +47,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
           const Title = first ? 'h1' : 'h2';
           return (
             <article class="featured feat-slide" role={many ? 'group' : undefined} aria-roledescription={many ? 'slide' : undefined} aria-label={many ? `${i + 1} of ${featured.length}` : undefined}>
-              {(f.cover_media_id || site.defaultCoverId) && <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
+              {(f.cover_media_id || site.defaultCoverId) && <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id && first ? vt(f.id) : undefined} data-vt={f.cover_media_id ? vtName(f.id) : undefined}>
                 <span class="par"><Thumb image={f.cover_media_id ? { kind: 'media', id: f.cover_media_id } : null} eager={first} /></span>
               </a>}
               {!f.cover_media_id && !site.defaultCoverId && (
@@ -308,6 +312,10 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
         void segs[i].offsetWidth; // restart the fill animation
         segs[i].classList.add('on');
         count.textContent = (i + 1) + ' / ' + n;
+        slides.forEach(function (sl, k) {
+          var c = sl.querySelector('[data-vt]');
+          if (c) c.style.viewTransitionName = k === i ? c.getAttribute('data-vt') : '';
+        });
       }
       function go(i, instant) {
         i = (i + n) % n;
