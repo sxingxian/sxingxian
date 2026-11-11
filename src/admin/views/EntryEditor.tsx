@@ -11,6 +11,7 @@ import { slugify } from '../../lib/shared/safe';
 import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryEdits, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
 import { entryState, untilLabel, whenLabel, type EntryState } from '../../lib/shared/state';
 import SeriesField from '../components/SeriesField';
+import SaveButton from '../components/SaveButton';
 import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
@@ -210,6 +211,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <button type="button" className={`btn publish-btn state-btn is-${edited ? 'edited' : state}`} onClick={() => setSheet(true)} aria-expanded={sheet} aria-haspopup="dialog">
             {edited ? 'Update' : state === 'draft' ? 'Publish' : state === 'scheduled' ? <><ClockIcon />Scheduled</> : 'Published'}
           </button>
+          <SaveButton auto={auto} />
         </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">

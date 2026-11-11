@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import SaveButton from '../components/SaveButton';
 import { api, errorText } from '../api';
 import { ToggleRow, TopBar } from '../components/kit';
 import Editor from '../editor/Editor';
@@ -107,7 +108,7 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
           <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{auto.label}</span>
           <a className="btn" href={`/${slug}`} target="_blank" rel="noopener">Preview ↗</a>
           <button type="button" className="btn publish-btn" onClick={() => setSheet(true)} aria-expanded={sheet}>Page…</button>
-          <button type="button" className="btn primary" onClick={saveNow} disabled={!auto.dirty && auto.state !== 'error'} title="Changes save automatically · Ctrl/⌘ S saves now">Save</button>
+          <SaveButton auto={auto} />
         </>} />
       {(err || auto.error) && <div className="page" style={{ paddingBottom: 0 }}><div className="alert err" role="alert">{err || `Couldn’t save: ${auto.error}. Retrying automatically.`}</div></div>}
       <div className="editor-layout">

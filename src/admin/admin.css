@@ -719,3 +719,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .row-note { display: inline-block; margin-left: 8px; font-size: 12px; color: var(--warn-ink); }
 .c-go { width: 1%; text-align: right; }
 .c-go a { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--faint); }
+
+/* Save button: the label is the save state (SaveButton.tsx) */
+.save-btn { gap: 6px; min-width: 76px; justify-content: center; }
+.save-btn.is-dirty { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.save-btn.is-saved:disabled, .save-btn.is-saving:disabled { opacity: 1; cursor: default; color: var(--muted); }
+.save-btn.is-saved svg { color: var(--accent); }
+.save-btn.is-error { border-color: var(--danger, #c4553a); color: var(--danger, #c4553a); }
