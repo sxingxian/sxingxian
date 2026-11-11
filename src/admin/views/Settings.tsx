@@ -6,6 +6,7 @@ import { logoActive, watermarkHasContent } from '../../lib/shared/watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
 import FeaturedEditor from '../components/FeaturedEditor';
 import { useMediaPicker } from '../components/useMediaPicker';
+import SafeImg from '../components/SafeImg';
 import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
@@ -86,8 +87,10 @@ function SiteSettings() {
   const toast = useToast();
   const { pickMedia, picker } = useMediaPicker();
 
+  const [coverHost, setCoverHost] = useState<string | null>(null);
+
   useEffect(() => {
-    api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); }).catch(() => {});
+    api.get<{ value: SiteSetting; coverHost: string | null }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); setCoverHost(r.coverHost); }).catch(() => {});
   }, []);
   if (!s || !saved) return <Loading />;
 
@@ -95,7 +98,8 @@ function SiteSettings() {
   const setCover = async (id: string | null) => {
     try {
       const fresh = await api.get<{ value: SiteSetting }>('/api/admin/settings/site');
-      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', { ...fresh.value, defaultCoverId: id });
+      const r = await api.put<{ value: SiteSetting; coverHost: string | null }>('/api/admin/settings/site', { ...fresh.value, defaultCoverId: id });
+      setCoverHost(r.coverHost);
       setS({ ...s, defaultCoverId: r.value.defaultCoverId ?? null });
       setSaved({ ...saved, defaultCoverId: r.value.defaultCoverId ?? null });
       toast(id ? 'Default cover set' : 'Default cover removed');
@@ -133,12 +137,15 @@ function SiteSettings() {
       <Row label="Default cover" hint="Shown for any story, WordPress post, work or film without its own picture, and in link previews">
         <span className="cover-pick">
           {s.defaultCoverId
-            ? <img src={`/media/${s.defaultCoverId}`} alt="Current default cover" />
+            ? <SafeImg className="cover-img" src={`/media/${s.defaultCoverId}`} alt="Current default cover" />
             : <span className="cover-none">None: posts without a picture show their topic</span>}
           <span className="row" style={{ gap: 6 }}>
             <button type="button" className="btn" onClick={async () => { const m = await pickMedia(); if (m) void setCover(m.id); }}>{s.defaultCoverId ? 'Change' : 'Choose photo'}</button>
             {s.defaultCoverId && <button type="button" className="btn" onClick={() => void setCover(null)}>Remove</button>}
           </span>
+          {s.defaultCoverId && coverHost === 'nas' && (
+            <span className="cover-warn" role="note">This photo is stored on the home NAS. If the NAS is off, it fails along with the pictures it stands in for. Upload it to Cloudflare R2 and choose it again.</span>
+          )}
         </span>
       </Row>
       <SaveBar dirty={dirty} busy={busy} onSave={save} disabled={!s.title.trim()} />

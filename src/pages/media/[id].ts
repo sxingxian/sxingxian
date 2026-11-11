@@ -8,13 +8,22 @@
 //    is refused. Link previews and feed readers (which send no Sec-Fetch headers) still work.
 import type { APIRoute } from 'astro';
 import { getMedia, getSetting } from '../../lib/server/repo';
-import { getObject } from '../../lib/server/storage';
+import { getObject, StorageUnavailable } from '../../lib/server/storage';
 import { UUID_RE } from '../../lib/shared/safe';
 import { watermarkSig, watermarkable } from '../../lib/shared/watermark';
 import { isDocMime } from '../../lib/shared/files';
 import { contentDisposition } from '../../lib/server/filetypes';
 
 const SAFE_TYPES = /^(image\/(jpeg|png|webp|gif|avif)|video\/(mp4|webm))$/;
+
+// The NAS (or B2) is off or unreachable: say so, and let nobody cache it, so pictures return with the host.
+// The page swaps the failed picture for the default cover.
+function unavailable(): Response {
+  return new Response('This file is temporarily unavailable.', {
+    status: 503,
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '60', 'x-content-type-options': 'nosniff' },
+  });
+}
 
 function refused(): Response {
   return new Response('This image can only be viewed on the page it belongs to.', {
@@ -47,7 +56,13 @@ export const GET: APIRoute = async ({ params, request }) => {
     mime = item.wm_mime;
   }
 
-  const res = await getObject(item.provider, key, request);
+  let res: Response | null;
+  try {
+    res = await getObject(item.provider, key, request);
+  } catch (e) {
+    if (e instanceof StorageUnavailable) return unavailable();
+    throw e;
+  }
   if (!res) return new Response('Not found', { status: 404 });
 
   const headers = new Headers(res.headers);

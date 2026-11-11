@@ -9,10 +9,20 @@ function isKey(k: string): k is SettingKey {
   return Object.prototype.hasOwnProperty.call(settingsSchemas, k);
 }
 
+// Site settings also report where the default cover is stored, so Settings can warn when it's on the NAS
+// (if the NAS is off, the fallback picture fails along with everything else).
+async function respond(key: SettingKey): Promise<Response> {
+  const value = await getSetting(key);
+  if (key !== 'site') return json({ value });
+  const id = (value as SettingsMap['site']).defaultCoverId;
+  const coverHost = id ? ((await getMedia(id))?.provider ?? null) : null;
+  return json({ value, coverHost });
+}
+
 export const GET: APIRoute = async ({ params }) => {
   const key = params.key ?? '';
   if (!isKey(key)) return error(404, 'Unknown setting');
-  return json({ value: await getSetting(key) });
+  return respond(key);
 };
 
 export const PUT: APIRoute = async ({ params, request }) => {
@@ -50,5 +60,5 @@ export const PUT: APIRoute = async ({ params, request }) => {
     value = { entryIds: f.entryIds, order: f.order, mode: f.entryIds.length ? 'manual' : 'latest', entryId: f.entryIds[0] ?? null } as SettingsMap[typeof key];
   }
   await putSetting(key, value);
-  return json({ value: await getSetting(key) });
+  return respond(key);
 };
