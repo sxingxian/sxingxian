@@ -52,35 +52,56 @@ function useRoute() {
   return { loc, go };
 }
 
-// Phones: hide the bottom tab bar while typing. iOS/Android keep fixed bars attached to the layout viewport,
-// so with the keyboard up the bar floats over the text. Decided by focus alone on touch screens: reading the
-// viewport size made the bar flicker as the keyboard, toolbars and scrolling resized it. Focus moving between
-// fields (title → editor) doesn't flash the bar, because the "show" is delayed slightly.
-// A focused field that is removed from the page (a dialog closing after a tap on Save: phones don't move focus
-// to tapped buttons) fires no focusout, so while the bar is hidden it re-checks that a field still has focus.
+// Phones: hide the bottom tab bar while the on-screen keyboard is up. iOS/Android keep fixed bars attached to
+// the layout viewport, so with the keyboard up the bar floats over the text.
+// Hidden only when BOTH hold:
+//  - a text field has focus, and
+//  - the visible area is clearly shorter than the tallest seen at this width (a keyboard takes 200+ px; browser
+//    toolbars sliding in and out while scrolling change it by ~60 px, so they never flip the bar).
+// Focus alone isn't enough: Android's back gesture and iOS's "Done" close the keyboard but leave the cursor in
+// the field, which in the story editor is most of the time. Pinch-zoom is factored out (height × scale).
+// Without visualViewport (old browsers) it falls back to focus alone.
+// A focused field removed from the page (a dialog closing after a tap on Save: phones don't move focus to tapped
+// buttons) fires no focusout, so while the bar is hidden it re-checks every 400 ms.
+const KEYBOARD_MIN = 150;
 function useKeyboardOpen() {
   useEffect(() => {
     const root = document.documentElement;
     const touch = window.matchMedia('(pointer: coarse)');
+    const vv = window.visualViewport;
     let t: ReturnType<typeof setTimeout> | undefined;
     let poll: ReturnType<typeof setInterval> | undefined;
+    let width = 0;
+    let tallest = 0;
     const editable = (el: Element | null) => {
       if (!(el instanceof HTMLElement)) return false;
       if (el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
       return el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color', 'image'].includes(el.type);
     };
+    const keyboardUp = () => {
+      if (!vv) return true;
+      const w = Math.round(window.innerWidth);
+      const h = vv.height * vv.scale;
+      if (w !== width) { width = w; tallest = 0; } // rotated: start over
+      tallest = Math.max(tallest, h);
+      return tallest - h > KEYBOARD_MIN;
+    };
+    const want = () => touch.matches && editable(document.activeElement) && keyboardUp();
     const set = (on: boolean) => {
       if (root.classList.contains('kb-open') !== on) root.classList.toggle('kb-open', on);
-      if (on && !poll) poll = setInterval(() => { if (!editable(document.activeElement)) set(false); }, 400);
+      if (on && !poll) poll = setInterval(() => { if (!want()) set(false); }, 400);
       if (!on && poll) { clearInterval(poll); poll = undefined; }
     };
-    const onFocusIn = () => { clearTimeout(t); if (touch.matches && editable(document.activeElement)) set(true); };
-    const onFocusOut = () => { clearTimeout(t); t = setTimeout(() => set(touch.matches && editable(document.activeElement)), 250); };
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', onFocusOut);
+    // Hide straight away; show after a short pause so moving between fields (title → editor) doesn't flash the bar.
+    const update = () => { clearTimeout(t); if (want()) set(true); else t = setTimeout(() => set(want()), 250); };
+    keyboardUp(); // record the starting height
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', update);
+    vv?.addEventListener('resize', update);
     return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('focusin', update);
+      document.removeEventListener('focusout', update);
+      vv?.removeEventListener('resize', update);
       clearTimeout(t);
       clearInterval(poll);
       root.classList.remove('kb-open');
