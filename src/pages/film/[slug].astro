@@ -1,4 +1,7 @@
 ---
 import EntryPage from '../../components/EntryPage.astro';
+import { loadPublicEntry } from '../../lib/server/entry-page';
+const entry = await loadPublicEntry('film', 'film', Astro.params.slug);
+if (!entry) Astro.response.status = 404;
 ---
-<EntryPage kind="film" section="film" kicker="Film" />
+<EntryPage entry={entry} kicker="Film" />

@@ -4,6 +4,7 @@ import {
   cleanTopics,
   DEFAULT_SETTINGS,
   type Entry,
+  type EntryEdits,
   type EntryKind,
   type ExternalPost,
   type MediaItem,
@@ -11,7 +12,7 @@ import {
   type SettingKey,
   type SettingsMap,
 } from '../shared/types';
-import type { EntryInput } from '../shared/schemas';
+import type { EntryContent } from '../shared/schemas';
 import { readMinutes } from './text';
 
 // ---------------- settings ----------------
@@ -81,7 +82,7 @@ export async function queryEntries(text: string, params: unknown[]): Promise<unk
 }
 
 /** Topics to store for an entry: cleaned topics[], or the legacy single topic from older clients. */
-function inputTopics(input: EntryInput): string[] {
+function inputTopics(input: EntryContent): string[] {
   return cleanTopics(input.topics ?? (input.topic ? [input.topic] : []));
 }
 
@@ -117,14 +118,22 @@ export async function getPublicEntryById(id: string): Promise<Entry | null> {
   return (rows[0] as Entry) ?? null;
 }
 
+// entry_edits (migration 0010) may not exist yet for a few minutes after a release: code goes live first.
+function isMissingEdits(e: unknown): boolean {
+  return (e as { code?: string })?.code === '42P01' && /entry_edits/.test(String((e as Error)?.message ?? ''));
+}
+
 export async function adminListEntries(kind?: EntryKind): Promise<Omit<Entry, 'body'>[]> {
-  const rows = await readEntries(
-    `SELECT id, kind, title, slug, dek, topic, ${TOPICS_COL}, cover_media_id, video_url, meta, read_minutes, status, is_public,
-            published_at, created_at, updated_at
-     FROM entries WHERE ($1::text IS NULL OR kind = $1) ORDER BY updated_at DESC LIMIT 500`,
-    [kind ?? null],
-  );
-  return rows as Omit<Entry, 'body'>[];
+  const q = (edits: boolean) => `SELECT id, kind, title, slug, dek, topic, ${TOPICS_COL}, cover_media_id, video_url, meta, read_minutes, status, is_public,
+            published_at, created_at, updated_at,
+            ${edits ? 'EXISTS (SELECT 1 FROM entry_edits x WHERE x.entry_id = entries.id)' : 'false'} AS has_edits
+     FROM entries WHERE ($1::text IS NULL OR kind = $1) ORDER BY updated_at DESC LIMIT 500`;
+  try {
+    return (await readEntries(q(true), [kind ?? null])) as Omit<Entry, 'body'>[];
+  } catch (e) {
+    if (!isMissingEdits(e)) throw e;
+    return (await readEntries(q(false), [kind ?? null])) as Omit<Entry, 'body'>[];
+  }
 }
 
 export async function adminGetEntry(id: string): Promise<Entry | null> {
@@ -132,40 +141,108 @@ export async function adminGetEntry(id: string): Promise<Entry | null> {
   return (rows[0] as Entry) ?? null;
 }
 
-export async function createEntry(input: EntryInput): Promise<Entry> {
-  const publishedAt = input.status === 'published' ? input.published_at ?? new Date().toISOString() : input.published_at;
+/** The fields an editor save writes, cleaned (topics, legacy topic, reading time). */
+export function contentFields(input: EntryContent): EntryEdits {
   const topics = inputTopics(input);
+  return {
+    title: input.title, slug: input.slug, dek: input.dek, topic: topics[0] ?? '', topics, body: input.body,
+    cover_media_id: input.cover_media_id, video_url: input.video_url, meta: input.meta, read_minutes: readMinutes(input.body),
+  };
+}
+
+/** A new entry always starts as a draft. */
+export async function createEntry(input: EntryContent): Promise<Entry> {
+  const c = contentFields(input);
   const rows = await sql().query(
     `INSERT INTO entries (kind, title, slug, dek, topic, topics, body, cover_media_id, video_url, meta, read_minutes, status, is_public, published_at)
-     VALUES ($1,$2,$3,$4,$5,$6::text[],$7::jsonb,$8,$9,$10::jsonb,$11,$12,$13,$14)
+     VALUES ($1,$2,$3,$4,$5,$6::text[],$7::jsonb,$8,$9,$10::jsonb,$11,'draft',false,NULL)
      RETURNING ${ENTRY_COLS}`,
-    [
-      input.kind, input.title, input.slug, input.dek, topics[0] ?? '', topics, JSON.stringify(input.body),
-      input.cover_media_id, input.video_url, JSON.stringify(input.meta), readMinutes(input.body),
-      input.status, input.is_public, publishedAt,
-    ],
+    [input.kind, c.title, c.slug, c.dek, c.topic, c.topics, JSON.stringify(c.body), c.cover_media_id, c.video_url, JSON.stringify(c.meta), c.read_minutes],
   );
   return rows[0] as Entry;
 }
 
-export async function updateEntry(id: string, input: EntryInput): Promise<Entry | null> {
-  const publishedAt = input.status === 'published' ? input.published_at ?? new Date().toISOString() : input.published_at;
-  const topics = inputTopics(input);
+/** Content straight into the entry (drafts and scheduled entries: nobody sees them yet). */
+export async function updateEntryContent(id: string, c: EntryEdits): Promise<Entry | null> {
   const rows = await sql().query(
-    `UPDATE entries SET kind=$2, title=$3, slug=$4, dek=$5, topic=$6, topics=$7::text[], body=$8::jsonb, cover_media_id=$9, video_url=$10,
-       meta=$11::jsonb, read_minutes=$12, status=$13, is_public=$14, published_at=$15, updated_at=now()
+    `UPDATE entries SET title=$2, slug=$3, dek=$4, topic=$5, topics=$6::text[], body=$7::jsonb, cover_media_id=$8, video_url=$9,
+       meta=$10::jsonb, read_minutes=$11, updated_at=now()
      WHERE id = $1 RETURNING ${ENTRY_COLS}`,
-    [
-      id, input.kind, input.title, input.slug, input.dek, topics[0] ?? '', topics, JSON.stringify(input.body),
-      input.cover_media_id, input.video_url, JSON.stringify(input.meta), readMinutes(input.body),
-      input.status, input.is_public, publishedAt,
-    ],
+    [id, c.title, c.slug, c.dek, c.topic, c.topics, JSON.stringify(c.body), c.cover_media_id, c.video_url, JSON.stringify(c.meta), c.read_minutes],
   );
   return (rows[0] as Entry) ?? null;
 }
 
-export async function setEntryVisibility(id: string, isPublic: boolean): Promise<void> {
-  await sql()`UPDATE entries SET is_public = ${isPublic}, updated_at = now() WHERE id = ${id}`;
+export async function slugTaken(kind: EntryKind, slug: string, exceptId: string): Promise<boolean> {
+  const rows = await sql()`SELECT 1 FROM entries WHERE kind = ${kind} AND slug = ${slug} AND id <> ${exceptId} LIMIT 1`;
+  return rows.length > 0;
+}
+
+export async function getEntryEdits(id: string): Promise<EntryEdits | null> {
+  try {
+    const rows = await sql()`SELECT data FROM entry_edits WHERE entry_id = ${id}`;
+    return (rows[0]?.data as EntryEdits) ?? null;
+  } catch (e) {
+    if (isMissingEdits(e)) return null;
+    throw e;
+  }
+}
+
+/** Keep edits to a live entry private. false = the table isn't there yet (the caller saves straight to the entry). */
+export async function putEntryEdits(id: string, c: EntryEdits): Promise<boolean> {
+  try {
+    await sql()`INSERT INTO entry_edits (entry_id, data, updated_at) VALUES (${id}, ${JSON.stringify(c)}::jsonb, now())
+      ON CONFLICT (entry_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`;
+    await sql()`UPDATE entries SET updated_at = now() WHERE id = ${id}`;
+    return true;
+  } catch (e) {
+    if (isMissingEdits(e)) return false;
+    throw e;
+  }
+}
+
+export async function deleteEntryEdits(id: string): Promise<void> {
+  try {
+    await sql()`DELETE FROM entry_edits WHERE entry_id = ${id}`;
+  } catch (e) {
+    if (!isMissingEdits(e)) throw e;
+  }
+}
+
+/**
+ * Move private edits into the entry and drop them, in one statement (a slug clash fails the whole thing,
+ * leaving the edits in place). Returns whether there were edits to apply.
+ */
+export async function applyEntryEdits(id: string): Promise<boolean> {
+  try {
+    const rows = await sql().query(
+      `WITH d AS (DELETE FROM entry_edits WHERE entry_id = $1 RETURNING data)
+       UPDATE entries e SET
+         title = d.data->>'title', slug = d.data->>'slug', dek = d.data->>'dek', topic = d.data->>'topic',
+         topics = ARRAY(SELECT jsonb_array_elements_text(d.data->'topics')), body = d.data->'body',
+         cover_media_id = NULLIF(d.data->>'cover_media_id', '')::uuid, video_url = d.data->>'video_url',
+         meta = d.data->'meta', read_minutes = (d.data->>'read_minutes')::int, updated_at = now()
+       FROM d WHERE e.id = $1 RETURNING e.id`,
+      [id],
+    );
+    return rows.length > 0;
+  } catch (e) {
+    if (isMissingEdits(e)) return false;
+    throw e;
+  }
+}
+
+/** Set the publishing state. Publishing or scheduling also makes the entry public (the old visibility switch). */
+export async function setEntryState(id: string, status: 'draft' | 'published', publishedAt: string | null): Promise<void> {
+  if (status === 'published') {
+    await sql()`UPDATE entries SET status = 'published', is_public = true, published_at = ${publishedAt}, updated_at = now() WHERE id = ${id}`;
+  } else {
+    await sql()`UPDATE entries SET status = 'draft', updated_at = now() WHERE id = ${id}`;
+  }
+}
+
+export async function setEntryDate(id: string, publishedAt: string): Promise<void> {
+  await sql()`UPDATE entries SET published_at = ${publishedAt}, updated_at = now() WHERE id = ${id}`;
 }
 
 export async function deleteEntry(id: string): Promise<void> {

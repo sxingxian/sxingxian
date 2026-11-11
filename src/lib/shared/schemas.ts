@@ -35,6 +35,16 @@ export const entryInputSchema = z.object({
 });
 export type EntryInput = z.infer<typeof entryInputSchema>;
 
+/** What the editor saves: content only. Draft / Scheduled / Published changes go through entryStateSchema. */
+export const entryContentSchema = entryInputSchema.omit({ status: true, is_public: true, published_at: true });
+export type EntryContent = z.infer<typeof entryContentSchema>;
+
+/** One publishing action. `at` is the go-live time for schedule, the shown date for redate. */
+export const entryStateSchema = z.object({
+  action: z.enum(['publish', 'schedule', 'unpublish', 'update', 'discard', 'redate']),
+  at: z.iso.datetime({ offset: true }).optional(),
+});
+
 export const pageInputSchema = z.object({
   title: z.string().max(200).default(''),
   body: docSchema,

@@ -123,7 +123,7 @@ export default function SeriesList() {
                 <span style={{ minWidth: 0 }}>
                   <button type="button" className="title linklike" onClick={() => open(s)}>{s.title}</button>
                   <span className="meta" style={{ display: 'block' }}>
-                    /series/{s.slug} · {s.published} published{s.drafts ? `, ${s.drafts} draft${s.drafts === 1 ? '' : 's'}` : ''}{s.planned_parts ? ` · ${s.planned_parts} planned` : ''}
+                    /series/{s.slug} · {s.published} published{s.scheduled ? `, ${s.scheduled} scheduled` : ''}{s.drafts ? `, ${s.drafts} draft${s.drafts === 1 ? '' : 's'}` : ''}{s.planned_parts ? ` · ${s.planned_parts} planned` : ''}
                   </span>
                 </span>
                 <span className="row" style={{ gap: 8 }}>

@@ -277,6 +277,31 @@ import Favicons from '../components/Favicons.astro';
     })();
     </script>
 
+    <!-- Sideways chip rows (topics, years) on phones: fade the edge where more chips continue, and bring
+         the selected chip into view. Only classes change; without script the row still scrolls. -->
+    <script is:inline>
+    (function () {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('.topics'));
+      if (!rows.length) return;
+      function edge(r) {
+        var max = r.scrollWidth - r.clientWidth;
+        r.classList.toggle('fade-l', max > 2 && r.scrollLeft > 2);
+        r.classList.toggle('fade-r', max > 2 && r.scrollLeft < max - 2);
+      }
+      rows.forEach(function (r) {
+        var on = r.querySelector('[aria-current="true"], [aria-current="page"]');
+        if (on && r.scrollWidth > r.clientWidth) {
+          var left = on.offsetLeft - r.offsetLeft;
+          if (left + on.offsetWidth > r.clientWidth - 40) r.scrollLeft = left - 24;
+        }
+        edge(r);
+        r.addEventListener('scroll', function () { edge(r); }, { passive: true });
+      });
+      var t;
+      window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(function () { rows.forEach(edge); }, 100); });
+    })();
+    </script>
+
     <!-- Photo lightbox and save blockers. Captions are set with textContent (never as HTML). -->
     <script is:inline>
     (function () {

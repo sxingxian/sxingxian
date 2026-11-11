@@ -33,6 +33,22 @@ export interface Entry {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Admin list only: a live entry has edits saved privately that aren't live yet. */
+  has_edits?: boolean;
+}
+
+/** Edits to a live entry, saved privately until Update (stored in entry_edits). */
+export interface EntryEdits {
+  title: string;
+  slug: string;
+  dek: string;
+  topic: string;
+  topics: string[];
+  body: DocNode;
+  cover_media_id: string | null;
+  video_url: string;
+  meta: Record<string, unknown>;
+  read_minutes: number;
 }
 
 export interface Page {
@@ -295,9 +311,10 @@ export interface Series {
   updated_at: string;
 }
 
-/** Admin list row: a series plus how many of its stories are published / drafts. */
+/** Admin list row: a series plus how many of its stories are published (live) / scheduled / drafts. */
 export interface SeriesAdminRow extends Series {
   published: number;
+  scheduled: number;
   drafts: number;
 }
 

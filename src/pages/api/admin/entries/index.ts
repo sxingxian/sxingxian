@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { adminListEntries, createEntry } from '../../../../lib/server/repo';
 import { error, isUniqueViolation, json, readBody } from '../../../../lib/server/http';
-import { entryInputSchema } from '../../../../lib/shared/schemas';
+import { entryContentSchema } from '../../../../lib/shared/schemas';
 import type { EntryKind } from '../../../../lib/shared/types';
 
 const KINDS = new Set(['post', 'project', 'gallery', 'film']);
@@ -12,11 +12,12 @@ export const GET: APIRoute = async ({ url }) => {
   return json({ entries: await adminListEntries((kind as EntryKind) ?? undefined) });
 };
 
+// A new entry is always a draft; publishing is a separate step (POST /api/admin/entries/:id/state).
 export const POST: APIRoute = async ({ request }) => {
-  const body = await readBody(request, entryInputSchema);
+  const body = await readBody(request, entryContentSchema);
   if (!body.ok) return body.res;
   try {
-    return json({ entry: await createEntry(body.data) }, { status: 201 });
+    return json({ entry: await createEntry(body.data), edits: null }, { status: 201 });
   } catch (e) {
     if (isUniqueViolation(e)) return error(409, 'That slug is already used');
     throw e;

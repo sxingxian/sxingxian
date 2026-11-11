@@ -1,5 +1,6 @@
 // Modern date + time picker (popover). Value is an ISO string or null; shown in local time.
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { untilLabel } from '../../lib/shared/state';
 
 interface Props {
   value: string | null;
@@ -16,12 +17,9 @@ function fmt(d: Date): string {
   return d.toLocaleString('en-SG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// "in 40 min", "in 12 h", "in 3 days": 12½ hours away is "in 12 h", never "in 1 day".
 function relative(d: Date): string {
-  const diff = d.getTime() - Date.now();
-  const days = Math.round(diff / 86_400_000);
-  if (Math.abs(diff) < 60_000) return 'now';
-  if (diff > 0) return days >= 1 ? `in ${days} day${days === 1 ? '' : 's'}` : `in ${Math.max(1, Math.round(diff / 3_600_000))} h`;
-  return '';
+  return Math.abs(d.getTime() - Date.now()) < 60_000 ? 'now' : untilLabel(d.toISOString());
 }
 
 /** 42 cells (6 weeks), Monday first. */
