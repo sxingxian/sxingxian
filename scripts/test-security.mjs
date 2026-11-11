@@ -186,7 +186,7 @@ t('map input parsing: coordinates and map links', () => {
 
 console.log('AdSense');
 t('ads never run in the admin, API, CV, About, Privacy or feeds', () => {
-  for (const p of ['/admin', '/admin/stories', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt']) assert.equal(adsAllowedOn(p), false, p);
+  for (const p of ['/admin', '/admin/stories', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt', '/sponsor', '/sponsor/thanks', '/sponsor/cancelled']) assert.equal(adsAllowedOn(p), false, p);
   for (const p of ['/', '/story', '/story/a-post', '/photos', '/aboutme']) assert.equal(adsAllowedOn(p), true, p);
 });
 t('ads need a valid publisher ID and the switch on', () => {

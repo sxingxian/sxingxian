@@ -592,7 +592,7 @@ function AdsSettings() {
 
   return (
     <>
-      <Panel title="Google AdSense" desc="Never shown in the admin, CV, About or Privacy.">
+      <Panel title="Google AdSense" desc="Never shown in the admin, CV, About, Privacy or the sponsor pages.">
         <ToggleRow label="Show ads" hint={ADSENSE_CLIENT_RE.test(saved.client) ? undefined : 'Save a publisher ID first'}
           checked={saved.enabled} disabled={!ADSENSE_CLIENT_RE.test(saved.client)} onChange={(v) => save({ ...saved, enabled: v })} />
         <Row label="Publisher ID" hint="ca-pub-…" htmlFor="ads-client">
