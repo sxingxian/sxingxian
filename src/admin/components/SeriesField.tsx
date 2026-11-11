@@ -50,6 +50,18 @@ export default function SeriesField({ entryId, onManage }: { entryId: string | n
   const others = taken.filter((t) => t.entry_id !== entryId);
   const next = others.reduce((m, t) => Math.max(m, t.part), 0) + 1;
   const clash = others.find((t) => String(t.part) === part);
+  // "1–3, 5": the part numbers the other stories in this series already use.
+  const used = [...new Set(others.map((t) => t.part))].sort((a, b) => a - b).reduce<[number, number][]>((runs, n) => {
+    const last = runs[runs.length - 1];
+    if (last && n === last[1] + 1) last[1] = n; else runs.push([n, n]);
+    return runs;
+  }, []).map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a}–${b}`)).join(', ');
+  const useNext = <button type="button" className="linklike" onClick={() => { setPart(String(next)); void save(seriesId, next); }}>Use Part {next}</button>;
+  const partHint = clash
+    ? <>Part {part} is taken. {useNext}</>
+    : !others.length
+      ? (part ? 'First in this series' : <>First in this series. {useNext}</>)
+      : part ? `Other parts: ${used}` : <>Other parts: {used}. {useNext}</>;
 
   return (
     <>
@@ -61,7 +73,7 @@ export default function SeriesField({ entryId, onManage }: { entryId: string | n
         </select>
       </Field>
       {seriesId && (
-        <Field label="Part" htmlFor="ed-part" hint={clash ? `Part ${part} is “${clash.title}”` : `Next free: ${next}`}>
+        <Field label="Part" htmlFor="ed-part" hint={partHint}>
           <input id="ed-part" className="input" inputMode="numeric" style={{ maxWidth: 100 }} value={part}
             onChange={(e) => setPart(e.target.value.replace(/\D/g, '').slice(0, 2))}
             onBlur={() => { const n = Number(part); if (Number.isInteger(n) && n >= 1 && n <= 99) void save(seriesId, n); else setPart(''); }}
