@@ -55,7 +55,33 @@ const topicList = z.array(z.string().trim().min(1).max(MAX_TOPIC_LEN)).max(MAX_L
 
 const safeUrl = z.string().max(2048).refine(isSafeHref, 'Use https://…, a page on this site (/cv) or mailto:');
 
+/** A Telegram chat the bot can post to: a public "@name" or a private channel's "-100…" id. */
+export const TELEGRAM_CHAT_RE = /^(@[A-Za-z][A-Za-z0-9_]{3,31}|-100\d{6,14})$/;
+/** BotFather token: "<bot id>:<secret>". */
+export const TELEGRAM_TOKEN_RE = /^\d{5,12}:[A-Za-z0-9_-]{30,60}$/;
+const ENTRY_KINDS = ['post', 'project', 'gallery', 'film'] as const;
+const telegramButton = z.string().trim().min(1, 'Add the button text').max(40);
+
+/** One entry's Telegram options. message null = use the default message. image: cover, none, or a library photo. */
+export const entryTelegramSchema = z.object({
+  announce: z.boolean(),
+  message: z.string().max(4000).nullable(),
+  image: z.union([z.enum(['cover', 'none']), z.uuid()]),
+});
+export type EntryTelegramInput = z.infer<typeof entryTelegramSchema>;
+
 export const settingsSchemas = {
+  telegram: z.object({
+    channels: z.array(z.object({
+      chat: z.string().trim().regex(TELEGRAM_CHAT_RE, 'A channel is @name or a -100… id'),
+      title: z.string().trim().max(128),
+      kinds: z.array(z.enum(ENTRY_KINDS)).max(4),
+      addedAt: z.iso.datetime({ offset: true }).optional(),
+    })).max(10),
+    template: z.string().max(2000),
+    attachImage: z.boolean(),
+    buttons: z.object({ post: telegramButton, project: telegramButton, gallery: telegramButton, film: telegramButton }),
+  }),
   protection: z.object({
     watermark: z.boolean(),
     text: z.string().trim().max(60),

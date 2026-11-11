@@ -11,10 +11,11 @@ import { error, isUniqueViolation, json, readBody } from '../../../../../lib/ser
 import { entryStateSchema } from '../../../../../lib/shared/schemas';
 import { UUID_RE } from '../../../../../lib/shared/safe';
 import { entryState } from '../../../../../lib/shared/state';
+import { announceEntry, clearPosts } from '../../../../../lib/server/telegram';
 
 const SLACK_MS = 30_000; // a schedule must be at least this far ahead
 
-export const POST: APIRoute = async ({ params, request }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
   if (!UUID_RE.test(params.id ?? '')) return error(404, 'Not found');
   const body = await readBody(request, entryStateSchema, 1000);
   if (!body.ok) return body.res;
@@ -30,6 +31,8 @@ export const POST: APIRoute = async ({ params, request }) => {
         if (state === 'published') return error(409, 'It’s already live');
         await applyEntryEdits(cur.id);
         await setEntryState(cur.id, 'published', new Date().toISOString());
+        // Telegram: post right after this response.
+        locals.cfContext?.waitUntil(announceEntry(cur.id).catch(() => {}));
         break;
       case 'schedule':
         if (state === 'published') return error(409, 'It’s live. Unpublish it first to schedule it');
@@ -41,6 +44,7 @@ export const POST: APIRoute = async ({ params, request }) => {
         if (state === 'draft') return error(409, 'It’s already a draft');
         await applyEntryEdits(cur.id);
         await setEntryState(cur.id, 'draft', cur.published_at);
+        await clearPosts(cur.id); // publishing again posts again
         break;
       case 'update':
         if (state !== 'published') return error(409, 'Only a live entry has edits to apply');

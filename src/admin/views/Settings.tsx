@@ -5,6 +5,7 @@ import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImag
 import { logoActive, watermarkHasContent } from '../../lib/shared/watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
 import FeaturedEditor from '../components/FeaturedEditor';
+import TelegramSettings from './TelegramSettings';
 import { useMediaPicker } from '../components/useMediaPicker';
 import SafeImg from '../components/SafeImg';
 import { useDialog } from '../components/dialog';
@@ -14,8 +15,8 @@ import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../com
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
 import { SECTION_LABELS, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
-type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'ads';
-const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['ads', 'Ads']];
+type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'telegram' | 'ads';
+const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['telegram', 'Telegram'], ['ads', 'Ads']];
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>(() => {
@@ -33,6 +34,7 @@ export default function Settings() {
       {tab === 'topics' && <TopicSettings />}
       {tab === 'footer' && <FooterSettings />}
       {tab === 'photos' && <PhotoSettings />}
+      {tab === 'telegram' && <TelegramSettings />}
       {tab === 'ads' && <AdsSettings />}
     </Page>
   );

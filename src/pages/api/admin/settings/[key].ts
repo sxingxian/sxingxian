@@ -54,6 +54,15 @@ export const PUT: APIRoute = async ({ params, request }) => {
     if (!watermarkHasContent(p)) return error(400, 'Add watermark text or a logo');
     value = p as SettingsMap[typeof key];
   }
+  if (key === 'telegram') {
+    // One row per channel; a channel added now only gets entries published from now on.
+    const v = value as SettingsMap['telegram'];
+    const before = new Map((await getSetting('telegram')).channels.map((c) => [c.chat, c.addedAt]));
+    const seen = new Set<string>();
+    const now = new Date().toISOString();
+    const channels = v.channels.filter((c) => !seen.has(c.chat) && seen.add(c.chat)).map((c) => ({ ...c, kinds: [...new Set(c.kinds)], addedAt: before.get(c.chat) ?? now }));
+    value = { ...v, channels } as SettingsMap[typeof key];
+  }
   if (key === 'featured') {
     // Also write the previous release's fields, so a rollback still shows the first featured story.
     const f = value as SettingsMap['featured'];

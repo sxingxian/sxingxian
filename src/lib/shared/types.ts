@@ -231,6 +231,24 @@ export interface ProtectionSetting {
   logoHash: string | null;
 }
 
+/** A Telegram channel the bot posts to, and which kinds of entry it gets. */
+export interface TelegramChannel {
+  chat: string; // "@name", or "-100…" for a private channel
+  title: string;
+  kinds: EntryKind[];
+  /** Only entries published after this are posted here (a new channel doesn't get old posts). */
+  addedAt: string;
+}
+
+/** Telegram announcements. The bot token is NOT here: it is stored encrypted in telegram_bot (server only). */
+export interface TelegramSetting {
+  channels: TelegramChannel[];
+  /** Default message, in simple markdown, with {title} {excerpt} {topics} {series} fill-ins. */
+  template: string;
+  attachImage: boolean;
+  buttons: Record<EntryKind, string>;
+}
+
 export interface SettingsMap {
   site: SiteSetting;
   topics: TopicsSetting;
@@ -240,6 +258,7 @@ export interface SettingsMap {
   wordpress: WordPressSetting;
   ads: AdsSetting;
   protection: ProtectionSetting;
+  telegram: TelegramSetting;
 }
 export type SettingKey = keyof SettingsMap;
 
@@ -273,6 +292,12 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   wordpress: { autoShow: false, includeInRss: true, hideWhenDown: true, categoryMap: {} },
   ads: { enabled: false, client: '', homeSlot: '', articleSlot: '' },
   protection: { watermark: false, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true, logo: true, logoTint: 'original', logoHash: null },
+  telegram: {
+    channels: [],
+    template: '**{title}**\n\n{excerpt}',
+    attachImage: true,
+    buttons: { post: 'Read the story', project: 'See the work', gallery: 'See the photos', film: 'Watch the film' },
+  },
 };
 
 export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {

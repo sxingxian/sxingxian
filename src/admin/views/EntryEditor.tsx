@@ -12,6 +12,7 @@ import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type
 import { entryState, untilLabel, whenLabel, type EntryState } from '../../lib/shared/state';
 import SeriesField from '../components/SeriesField';
 import SaveButton from '../components/SaveButton';
+import TelegramSection from '../components/TelegramSection';
 import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
@@ -302,6 +303,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
               </Field>
             </>
           )}
+          <TelegramSection entryId={entryId} state={state} refreshKey={`${state}|${at ?? ''}`} pickMedia={pickMedia} />
           <div className="side-toggles">
             {draft.kind === 'post' && (
               <ToggleRow label="Feature on home page" checked={isFeatured} onChange={(v) => void setFeature(v)}
