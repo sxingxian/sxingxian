@@ -11,6 +11,7 @@ import { slugify } from '../../lib/shared/safe';
 import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryEdits, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
 import { entryState, untilLabel, whenLabel, type EntryState } from '../../lib/shared/state';
 import SeriesField from '../components/SeriesField';
+import SaveButton from '../components/SaveButton';
 import TopicsPicker from '../components/TopicsPicker';
 import SafeImg from '../components/SafeImg';
 import { useAutosave } from '../autosave';
@@ -206,6 +207,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           <span className={`status${auto.state === 'error' ? ' err' : ''}`} role="status" aria-live="polite">{saveLabel}</span>
           {state === 'published' && <a className="btn desktop-only" href={liveUrl} target="_blank" rel="noopener">View ↗</a>}
           {edited && <button type="button" className="btn primary desktop-only" onClick={() => void act('update')} disabled={busy}>Update</button>}
+          <SaveButton auto={auto} />
           {/* Phone: one button that names the state and opens the Publishing panel. */}
           <button type="button" className={`btn publish-btn state-btn is-${edited ? 'edited' : state}`} onClick={() => setSheet(true)} aria-expanded={sheet} aria-haspopup="dialog">
             {edited ? 'Update' : state === 'draft' ? 'Publish' : state === 'scheduled' ? <><ClockIcon />Scheduled</> : 'Published'}
