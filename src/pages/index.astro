@@ -243,18 +243,21 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
         e.preventDefault();
         if (a.getAttribute('aria-current') === 'true') return;
         var topic = new URL(a.href, location.href).searchParams.get('topic') || '';
-        if (ctl) ctl.abort();
+        if (ctl) { ctl.abort(); if (window.sxLoad) window.sxLoad.done(); }
         ctl = new AbortController();
+        // Answer the tap straight away: the chip turns on now, the list follows when it arrives.
+        nav.querySelectorAll('a.topic').forEach(function (x) { if (x === a) x.setAttribute('aria-current', 'true'); else x.removeAttribute('aria-current'); });
+        if (head) head.textContent = topic || 'Latest';
         feed.setAttribute('aria-busy', 'true');
+        if (window.sxLoad) window.sxLoad.start();
+        if (status) status.textContent = 'Loading' + (topic ? ' ' + topic : '') + '…';
         fetch('/partials/home-feed?topic=' + encodeURIComponent(topic), { signal: ctl.signal, credentials: 'same-origin', headers: { Accept: 'text/html' } })
           .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
           .then(function (html) {
             var tpl = new DOMParser().parseFromString(html, 'text/html').querySelector('template[data-topic]');
             if (!tpl) throw new Error('bad fragment');
             var apply = function () {
-              nav.querySelectorAll('a.topic').forEach(function (x) { if (x === a) x.setAttribute('aria-current', 'true'); else x.removeAttribute('aria-current'); });
               feed.replaceChildren(document.importNode(tpl.content, true));
-              if (head) head.textContent = topic || 'Latest';
               if (all) all.setAttribute('href', tpl.getAttribute('data-all') || '/story');
             };
             // One transition at a time: a quick second click finishes the first one instantly.
@@ -269,7 +272,7 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
             if (status) status.textContent = n ? 'Showing ' + n + (n === 1 ? ' story' : ' stories') + (topic ? ' in ' + topic : '') : 'No stories' + (topic ? ' in ' + topic : '');
           })
           .catch(function (err) { if (err && err.name === 'AbortError') return; location.href = a.href; })
-          .finally(function () { feed.removeAttribute('aria-busy'); });
+          .finally(function () { feed.removeAttribute('aria-busy'); if (window.sxLoad) window.sxLoad.done(); });
       });
     })();
 

@@ -69,6 +69,31 @@ import Favicons from '../components/Favicons.astro';
     {/* Broken images: swap in the site's placeholder. Registered before any <img> so it catches every failure
          (error events don't bubble, so it listens in the capture phase). No inline onerror: the CSP forbids it. */}
     <script is:inline>(function(){function ph(img){var alt=img.getAttribute('alt')||'';var n=document.createElement('div');n.className='placeholder-cover is-broken';if(alt){n.setAttribute('role','img');n.setAttribute('aria-label',alt);}else{n.setAttribute('aria-hidden','true');}return n;}document.addEventListener('error',function(e){var img=e.target;if(!img||img.tagName!=='IMG'||img.hasAttribute('data-ph'))return;if(img.classList.contains('lb-img')){var st=img.parentNode;if(st&&img.getAttribute('src')){st.classList.add('is-broken');img.addEventListener('load',function(){st.classList.remove('is-broken');},{once:true});}return;}var dc=document.documentElement.getAttribute('data-default-cover');if(dc&&!img.hasAttribute('data-default')&&!img.closest('.lb')){img.setAttribute('data-default','');img.alt='';img.src=dc;return;}img.setAttribute('data-ph','');var lb=img.closest('.lb');if(lb){lb.removeAttribute('data-lightbox');lb.setAttribute('data-broken','');lb.disabled=true;lb.setAttribute('aria-label','Photo unavailable');}img.replaceWith(ph(img));},true);})();</script>
+    {/* Loading feedback. (1) A thin bar at the top while the next page or a list is loading: shown only if it
+         takes longer than 150 ms, so quick loads don't flash. window.sxLoad.start()/done() for in-page loads.
+         (2) Pictures fade in over their placeholder once they have arrived (img.fade, only when this runs). */}
+    <script is:inline>(function(){
+      var d=document.documentElement,t=0,n=0;
+      function bar(){return document.querySelector('.load-bar');}
+      var api=window.sxLoad={
+        start:function(){n++;clearTimeout(t);t=setTimeout(function(){var b=bar();if(b){b.classList.remove('done');b.classList.add('on');}},150);},
+        done:function(){n=Math.max(0,n-1);if(n)return;clearTimeout(t);var b=bar();if(b&&b.classList.contains('on')){b.classList.add('done');setTimeout(function(){b.classList.remove('on','done');},300);}}
+      };
+      document.addEventListener('click',function(e){
+        if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+        var a=e.target.closest&&e.target.closest('a[href]');
+        if(!a||a.target&&a.target!=='_self'||a.hasAttribute('download'))return;
+        var u=new URL(a.href,location.href);
+        if(u.origin!==location.origin||u.pathname.indexOf('/media/')===0||/\.(xml|pdf)$/.test(u.pathname))return;
+        if(u.pathname===location.pathname&&u.search===location.search)return; // same page or #anchor
+        api.start();
+      });
+      window.addEventListener('pageshow',function(){n=0;clearTimeout(t);var b=bar();if(b)b.classList.remove('on','done');});
+      function show(img){img.classList.add('in');}
+      document.addEventListener('load',function(e){var i=e.target;if(i&&i.tagName==='IMG'&&i.classList.contains('fade'))show(i);},true);
+      d.classList.add('fade-ok');
+      window.addEventListener('load',function(){document.querySelectorAll('img.fade:not(.in)').forEach(function(i){if(i.complete)show(i);});});
+    })();</script>
     <script is:inline>(function(){var d=document.documentElement;d.classList.add('js');try{var t=localStorage.getItem('sx-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
     {/* Before first paint: hide reveal targets and decide on the intro. The first home visit in a session gets the
          intro (unless reduced motion); later visits are 'returning'. Fails open after 3 s if the page script never ran. */}
@@ -77,6 +102,7 @@ import Favicons from '../components/Favicons.astro';
     )}
   </head>
   <body>
+    <div class="load-bar" aria-hidden="true"></div>
     {intro && (
       <div class="intro-curtain" aria-hidden="true">
         <span class="cur-mark"><span class="cur-word">{curtainLetters.map((l) => <span class={l.cls}><span>{l.ch}</span></span>)}</span>{tagline && <span class="cur-sub">{tagline}</span>}</span>

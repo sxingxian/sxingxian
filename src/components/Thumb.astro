@@ -22,7 +22,7 @@ if (!src) {
 }
 ---
 {src ? (
-  <img src={src} alt={fallback ? '' : alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" data-default={fallback ? '' : undefined} />
+  <img class="fade" src={src} alt={fallback ? '' : alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" data-default={fallback ? '' : undefined} />
 ) : (
   <div class="placeholder-cover" aria-hidden="true">{label && <span>{label}</span>}</div>
 )}
