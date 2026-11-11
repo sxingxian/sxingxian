@@ -9,9 +9,23 @@ const SERIES_COLS = 'id, slug, title, description, planned_parts, is_public, cre
 // The visibility rule for a story, used everywhere a part is shown publicly.
 const PUBLIC_POST = `e.kind = 'post' AND e.status = 'published' AND e.is_public = true AND e.published_at <= now()`;
 
+// The next scheduled part of series `s`: number and time only.
+const NEXT_PART = `LEFT JOIN LATERAL (
+    SELECT sp2.part, e2.published_at AS at
+    FROM series_parts sp2 JOIN entries e2 ON e2.id = sp2.entry_id
+    WHERE sp2.series_id = s.id AND e2.kind = 'post' AND e2.status = 'published' AND e2.is_public = true AND e2.published_at > now()
+    ORDER BY e2.published_at, sp2.part LIMIT 1
+  ) nx ON true`;
+const MAX_COVERS = 6;
+
 function isMissingTable(e: unknown): boolean {
   return (e as { code?: string })?.code === '42P01';
 }
+async function nextPart(seriesId: string): Promise<NextPart | null> {
+  const rows = await sql().query(`SELECT nx.part, nx.at FROM (SELECT $1::uuid AS id) s ${NEXT_PART}`, [seriesId]);
+  return rows[0]?.part ? { part: Number(rows[0].part), at: new Date(rows[0].at as string).toISOString() } : null;
+}
+
 async function readOr<T>(fallback: T, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
@@ -21,11 +35,25 @@ async function readOr<T>(fallback: T, run: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * The next part that is scheduled (published with a future date). Only its number and time are ever shown
+ * publicly, never its title or anything else about it.
+ */
+export interface NextPart {
+  part: number;
+  at: string;
+}
+
 export interface PublicSeries extends Series {
   /** Published, public parts. */
   published: number;
-  /** Cover of the latest part, for cards. */
+  /** Highest published part number (parts can skip numbers). */
+  last_part: number;
+  /** Cover of the latest part. */
   cover_media_id: string | null;
+  /** Covers of the published parts in part order (parts without one are skipped), for the card's crossfade. */
+  covers: string[];
+  next: NextPart | null;
 }
 
 export interface SeriesPart {
@@ -45,23 +73,31 @@ export async function listPublicSeries(limit = 24): Promise<PublicSeries[]> {
     const rows = await sql().query(
       `SELECT s.id, s.slug, s.title, s.description, s.planned_parts, s.is_public, s.created_at, s.updated_at,
               count(e.id)::int AS published,
+              max(sp.part)::int AS last_part,
               (array_agg(e.cover_media_id ORDER BY sp.part DESC) FILTER (WHERE e.cover_media_id IS NOT NULL))[1] AS cover_media_id,
+              (array_agg(e.cover_media_id ORDER BY sp.part) FILTER (WHERE e.cover_media_id IS NOT NULL))[1:${MAX_COVERS}] AS covers,
+              max(nx.part) AS next_part, max(nx.at) AS next_at,
               max(e.published_at) AS last_published
        FROM series s
        JOIN series_parts sp ON sp.series_id = s.id
        JOIN entries e ON e.id = sp.entry_id AND ${PUBLIC_POST}
+       ${NEXT_PART}
        WHERE s.is_public = true
        GROUP BY s.id
        ORDER BY last_published DESC
        LIMIT $1`,
       [Math.min(Math.max(limit, 1), 100)],
     );
-    return rows as PublicSeries[];
+    return rows.map(({ next_part, next_at, covers, ...r }) => ({
+      ...r,
+      covers: [...new Set((covers as string[] | null) ?? [])],
+      next: next_part ? { part: Number(next_part), at: new Date(next_at as string).toISOString() } : null,
+    })) as PublicSeries[];
   });
 }
 
 /** A public series and its published parts in order, or null. */
-export async function getPublicSeries(slug: string): Promise<{ series: Series; parts: SeriesPart[] } | null> {
+export async function getPublicSeries(slug: string): Promise<{ series: Series; parts: SeriesPart[]; next: NextPart | null } | null> {
   return readOr(null, async () => {
     const s = await sql().query(`SELECT ${SERIES_COLS} FROM series WHERE slug = $1 AND is_public = true`, [slug]);
     if (!s[0]) return null;
@@ -72,12 +108,12 @@ export async function getPublicSeries(slug: string): Promise<{ series: Series; p
       [s[0].id],
     );
     if (!parts.length) return null;
-    return { series: s[0] as Series, parts: parts as SeriesPart[] };
+    return { series: s[0] as Series, parts: parts as SeriesPart[], next: await nextPart(s[0].id as string) };
   });
 }
 
 /** The series a public story is part of, with its published parts, or null. */
-export async function seriesForEntry(entryId: string): Promise<{ series: Series; parts: SeriesPart[]; part: number } | null> {
+export async function seriesForEntry(entryId: string): Promise<{ series: Series; parts: SeriesPart[]; part: number; next: NextPart | null } | null> {
   return readOr(null, async () => {
     const own = await sql().query(
       `SELECT s.id, s.slug, s.title, s.description, s.planned_parts, s.is_public, s.created_at, s.updated_at, sp.part
@@ -93,7 +129,7 @@ export async function seriesForEntry(entryId: string): Promise<{ series: Series;
        WHERE sp.series_id = $1 ORDER BY sp.part`,
       [series.id],
     );
-    return { series, parts: parts as SeriesPart[], part };
+    return { series, parts: parts as SeriesPart[], part, next: await nextPart(series.id) };
   });
 }
 

@@ -219,11 +219,11 @@ html[data-theme='dark'] .i-moon { display: none; }
 .sec-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .sec-head a { font-size: 14px; color: var(--accent); }
 .series-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.series-card { display: flex; flex-direction: column; gap: 10px; }
+.series-card { display: flex; flex-direction: column; }
 .series-card:hover .series-t { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 .series-t { font: 500 22px/1.2 var(--serif); }
 .series-d { font-size: 14px; color: var(--muted); }
-.series-bar { display: flex; gap: 4px; margin-top: auto; padding-top: 4px; }
+.series-bar { display: flex; gap: 4px; margin-top: auto; padding-top: 6px; }
 .series-bar span { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
 .series-bar span.on { background: var(--accent); }
 .series-box { margin-top: 40px; border: 0; background: var(--accent-bg); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; font-family: var(--sans); }
@@ -242,17 +242,31 @@ html[data-theme='dark'] .i-moon { display: none; }
 .part-nav a:hover b { color: var(--accent); }
 .part-kicker { color: var(--accent); }
 .part-kicker:hover { text-decoration: underline; }
-.series-parts { margin-top: 18px; }
-.series-part { display: grid; grid-template-columns: 56px 150px minmax(0, 1fr); gap: 20px; align-items: center; padding: 20px 0;  }
-.series-part .num { font: 30px/1 var(--serif); color: var(--line-strong); }
-.series-part .thumb { aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden; background: var(--ph); }
-.series-part .thumb img { width: 100%; height: 100%; object-fit: cover; }
-.series-part .t { font: 500 22px/1.2 var(--serif); }
-.series-part .d { font: 16px/1.45 var(--serif); color: var(--muted); }
-.series-part.planned { color: var(--faint); }
-.series-part.planned .thumb { background: none; border: 1px dashed var(--line); }
-.series-part:hover .t { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-.series-head-bar { max-width: 280px; margin-top: 14px; }
+.series-page { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 64px; align-items: start; padding-top: 48px; }
+.series-head { position: sticky; top: 88px; display: flex; flex-direction: column; }
+.series-head h1 { margin: 0; font: 500 38px/1.12 var(--serif); }
+.series-desc { margin: 14px 0 0; font-size: 16px; line-height: 1.55; color: var(--muted); }
+.series-head .meta { margin-top: 16px; }
+.series-head .series-bar { margin-top: 12px; padding-top: 0; }
+.series-start { align-self: flex-start; margin-top: 18px; padding: 8px 0; font-size: 15px; font-weight: 500; color: var(--accent); }
+.series-start:hover { text-decoration: underline; text-underline-offset: 4px; }
+.series-parts { list-style: none; margin: 0; padding: 0; }
+.series-parts > li:first-child .post-row { padding-top: 0; }
+/* The scheduled part and the "still to come" line sit in the text column, with no picture box. */
+.series-soon, .series-later { display: grid; grid-template-columns: 180px minmax(0, 1fr); column-gap: 22px; }
+.series-soon::before, .series-later::before { content: ''; grid-row: 1 / span 2; }
+.series-soon { padding: 18px 0; row-gap: 6px; }
+.series-soon .t { font: 500 23px/1.2 var(--serif); color: var(--faint); }
+.series-soon .soon { font-size: 13.5px; color: var(--accent); }
+.series-later { padding: 6px 0 18px; font-size: 14.5px; color: var(--faint); }
+/* Series cards: the parts' covers crossfade (script in Site.astro); the body keeps the card's padding. */
+.series-card { padding: 0; overflow: hidden; }
+.series-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px 18px; flex: 1; }
+.series-cover { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--ph); }
+.series-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(1.04); transition: opacity 1.2s ease, transform 7s linear; }
+.series-cover img.on { opacity: 1; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .series-cover img { transition: none; transform: none; } }
+.part-nav .soon { border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; background: var(--card); text-align: right; grid-column: 2; color: var(--faint); font-size: 15px; }
 
 /* stories archive: years in the sidebar, pages at the bottom */
 .archive { padding-top: 16px; }
@@ -442,9 +456,15 @@ a.pg:hover { border-color: var(--line-strong); }
   .feat.is-live .feat-bar { position: static; width: auto; margin-top: 14px; }
   .feat-btn { width: 40px; height: 40px; }
   .series-sec { padding-top: 48px; }
-  .series-part { grid-template-columns: 36px 96px minmax(0, 1fr); gap: 14px; }
-  .series-part .num { font-size: 24px; }
-  .series-part .d { display: none; }
+  .series-page { display: block; padding-top: 28px; }
+  .series-head { position: static; }
+  .series-head h1 { font-size: 30px; }
+  .series-head .series-bar { max-width: 280px; }
+  .series-parts { margin-top: 8px; }
+  .series-parts > li:first-child .post-row { padding-top: 18px; }
+  .series-soon, .series-later { display: block; }
+  .series-soon .t, .series-soon .soon { display: block; }
+  .series-soon .t { font-size: 19px; margin-bottom: 6px; }
   .part-nav { grid-template-columns: minmax(0, 1fr); }
   .part-nav .next { grid-column: 1; }
   /* archive: years become a sideways row of chips above the list */

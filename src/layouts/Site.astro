@@ -277,6 +277,65 @@ import Favicons from '../components/Favicons.astro';
     })();
     </script>
 
+    <!-- Series: (1) cards crossfade through their parts' covers, one card at a time, only while on screen and never
+         with reduced motion; a cover that fails to load is dropped (the card goes text-only if none are left).
+         (2) "Out tonight, 11:00 pm" is rendered in Singapore time; redo it in the reader's own time zone. -->
+    <script is:inline>
+    (function () {
+      document.addEventListener('error', function (e) {
+        var img = e.target;
+        if (!img || img.tagName !== 'IMG' || !img.parentNode || !img.parentNode.classList || !img.parentNode.classList.contains('series-cover')) return;
+        var box = img.parentNode, was = img.classList.contains('on');
+        img.remove();
+        var left = box.querySelectorAll('img');
+        if (!left.length) { box.remove(); return; }
+        if (was) left[0].classList.add('on');
+      }, true);
+
+      var times = document.querySelectorAll('time[data-out]');
+      if (times.length) {
+        var fmt = function (o) { return new Intl.DateTimeFormat(undefined, o); };
+        var dayNo = function (d) { return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5); };
+        Array.prototype.forEach.call(times, function (t) {
+          var d = new Date(t.getAttribute('datetime'));
+          if (isNaN(d)) return;
+          var diff = dayNo(d) - dayNo(new Date());
+          var time = fmt({ hour: 'numeric', minute: '2-digit' }).format(d).replace(/\s?([AP]M)$/i, function (m, ap) { return ' ' + ap.toLowerCase(); });
+          var when = diff <= 0 ? (d.getHours() >= 18 ? 'tonight' : 'today') : diff === 1 ? 'tomorrow' : diff < 7 ? fmt({ weekday: 'long' }).format(d) : fmt({ day: 'numeric', month: 'short' }).format(d);
+          t.textContent = (t.getAttribute('data-out') || '') + when + ', ' + time;
+        });
+      }
+
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('.series-cover[data-covers]'));
+      var still = false;
+      try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+      if (!boxes.length || still) return;
+      var seen = new WeakSet();
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (es) { es.forEach(function (x) { if (x.isIntersecting) seen.add(x.target); else seen.delete(x.target); }); }, { threshold: 0.3 });
+        boxes.forEach(function (b) { io.observe(b); });
+      } else boxes.forEach(function (b) { seen.add(b); });
+      // One card changes at a time, taking turns, so a row of cards never flips all at once.
+      var turn = 0;
+      setInterval(function () {
+        if (document.hidden) return;
+        for (var n = 0; n < boxes.length; n++) {
+          var b = boxes[(turn + n) % boxes.length];
+          var imgs = b.isConnected ? b.querySelectorAll('img') : [];
+          if (!seen.has(b) || imgs.length < 2) continue;
+          var i = 0;
+          for (; i < imgs.length; i++) if (imgs[i].classList.contains('on')) break;
+          var nx = imgs[(i + 1) % imgs.length];
+          if (!nx.complete || !nx.naturalWidth) continue; // not loaded yet: try next round
+          if (imgs[i]) imgs[i].classList.remove('on');
+          nx.classList.add('on');
+          turn = (turn + n + 1) % boxes.length;
+          return;
+        }
+      }, 3500);
+    })();
+    </script>
+
     <!-- Sideways chip rows (topics, years) on phones: fade the edge where more chips continue, and bring
          the selected chip into view. Only classes change; without script the row still scrolls. -->
     <script is:inline>

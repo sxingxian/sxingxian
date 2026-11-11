@@ -31,7 +31,8 @@ await build({
                export { seriesInputSchema, entrySeriesSchema, viewInputSchema } from './src/lib/shared/schemas.ts';
                export { featuredIds } from './src/lib/shared/types.ts';
                export { entryContentSchema, entryStateSchema } from './src/lib/shared/schemas.ts';
-               export { entryState, untilLabel, whenLabel } from './src/lib/shared/state.ts';`,
+               export { entryState, untilLabel, whenLabel } from './src/lib/shared/state.ts';
+               export { partsLabel, laterParts, outWhen } from './src/lib/shared/series-text.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -47,7 +48,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -459,6 +460,22 @@ t('publishing: autosave can never publish; only known actions; one state everywh
   assert.equal(untilLabel('2026-11-14T02:30:00Z', now), 'in 3 days');
   assert.equal(untilLabel('2026-11-10T02:30:00Z', now), '');
   assert.match(whenLabel('2026-11-11T03:00:00Z', now), /^Today, /);
+});
+t('series wording: one label everywhere; a scheduled part shows only when', () => {
+  assert.equal(partsLabel(2, 5), '2 of 5 parts');
+  assert.equal(partsLabel(3, null), '3 parts');
+  assert.equal(partsLabel(1, 1), '1 part');
+  assert.equal(partsLabel(2, 2, 4), '2 of 4 parts'); // a gap in part numbers still counts
+  assert.equal(laterParts(3, 5), 'Parts 4 and 5');
+  assert.equal(laterParts(4, 5), 'Part 5');
+  assert.equal(laterParts(3, 9), 'Parts 4–9');
+  assert.equal(laterParts(5, 5), '');
+  const now = Date.parse('2026-11-11T07:00:00Z'); // 3 pm in Singapore
+  assert.equal(outWhen('2026-11-11T15:00:00Z', now, 'Asia/Singapore'), 'tonight, 11:00 pm');
+  assert.equal(outWhen('2026-11-11T08:00:00Z', now, 'Asia/Singapore'), 'today, 4:00 pm');
+  assert.equal(outWhen('2026-11-12T01:00:00Z', now, 'Asia/Singapore'), 'tomorrow, 9:00 am');
+  assert.equal(outWhen('2026-11-14T01:00:00Z', now, 'Asia/Singapore'), 'Saturday, 9:00 am');
+  assert.equal(outWhen('2026-11-30T01:00:00Z', now, 'Asia/Singapore'), '30 Nov, 9:00 am');
 });
 t('section topic lists are bounded', () => {
   const ok = { work: ['Web'], photos: [], film: [] };

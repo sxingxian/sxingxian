@@ -1,49 +1,53 @@
 ---
+// A series: its details (sticky on the left on desktop, on top on phones) and its parts in the same row style
+// as every story list. The next scheduled part shows only its number and when it comes out. Planned parts are
+// a line of text, never an empty box.
 import Site from '../../layouts/Site.astro';
-import Thumb from '../../components/Thumb.astro';
+import PostRow from '../../components/PostRow.astro';
 import NotFound from '../../components/NotFound.astro';
 import { getPublicSeries } from '../../lib/server/series';
-import { formatDate } from '../../lib/server/text';
 import { isSlug } from '../../lib/shared/safe';
+import { laterParts, outWhen, partsLabel } from '../../lib/shared/series-text';
+import type { FeedItem } from '../../lib/server/site';
 
 const slug = Astro.params.slug ?? '';
 const data = isSlug(slug) ? await getPublicSeries(slug) : null;
 if (!data) Astro.response.status = 404;
-const published = data?.parts.length ?? 0;
-const total = data ? Math.max(data.series.planned_parts ?? published, published) : 0;
-const label = total > published ? `${published} of ${total} parts` : `${published} ${published === 1 ? 'part' : 'parts'}`;
-const planned = Math.max(0, total - published);
+const parts = data?.parts ?? [];
+const next = data?.next ?? null;
+const lastPart = parts.reduce((m, p) => Math.max(m, p.part), 0);
+const total = data ? Math.max(data.series.planned_parts ?? 0, parts.length, lastPart, next?.part ?? 0) : 0;
+const label = data ? partsLabel(parts.length, total, lastPart) : '';
+const minutes = parts.reduce((n, p) => n + (p.read_minutes || 0), 0);
+const later = laterParts(Math.max(lastPart, next?.part ?? 0), total);
+const toItem = (p: (typeof parts)[number]): FeedItem => ({
+  key: `n:${p.id}`, source: 'native', title: p.title, dek: p.dek, topics: [`Part ${p.part}`], url: `/story/${p.slug}`,
+  external: false, date: p.published_at, readMinutes: p.read_minutes,
+  image: p.cover_media_id ? { kind: 'media', id: p.cover_media_id } : null,
+});
+const now = Date.now();
 ---
 {data ? (
-  <Site title={data.series.title} description={data.series.description || `A series in ${published} parts.`}>
-    <section class="wrap" style="max-width:900px">
-      <header class="page-head">
+  <Site title={data.series.title} description={data.series.description || `A series in ${parts.length} parts.`}>
+    <section class="wrap series-page">
+      <header class="series-head">
         <h1>{data.series.title}</h1>
-        {data.series.description && <p>{data.series.description}</p>}
-        <p class="meta" style="margin-top:10px">A series · {label}</p>
-        <span class="series-bar series-head-bar" role="img" aria-label={label}>
-          {Array.from({ length: Math.min(total, 24) }, (_, i) => <span class:list={{ on: i < published }}></span>)}
+        {data.series.description && <p class="series-desc">{data.series.description}</p>}
+        <p class="meta"><span>{label}</span>{minutes > 0 && <span>{minutes} min in all</span>}</p>
+        <span class="series-bar" role="img" aria-label={label}>
+          {Array.from({ length: Math.min(total, 24) }, (_, i) => <span class:list={{ on: i < Math.min(parts.length, 24) }}></span>)}
         </span>
+        <a class="series-start" href={`/story/${parts[0].slug}`}>Start with Part {parts[0].part} <span class="arrow" aria-hidden="true">→</span></a>
       </header>
-      <ol class="series-parts" style="list-style:none;padding:0;margin-bottom:0">
-        {data.parts.map((p) => (
-          <li>
-            <a class="series-part" href={`/story/${p.slug}`}>
-              <span class="thumb"><Thumb image={p.cover_media_id ? { kind: 'media', id: p.cover_media_id } : null} /></span>
-              <span style="display:flex;flex-direction:column;gap:4px;min-width:0">
-                <span class="meta">Part {p.part} · {formatDate(p.published_at)} · {p.read_minutes} min</span>
-                <span class="t">{p.title}</span>
-                {p.dek && <span class="d">{p.dek}</span>}
-              </span>
-            </a>
-          </li>
-        ))}
-        {planned > 0 && (
-          <li class="series-part planned">
-            <span class="thumb" aria-hidden="true"></span>
-            <span>{planned === 1 ? 'One more part planned' : `${planned} more parts planned`}</span>
+      <ol class="series-parts">
+        {parts.map((p) => <li><PostRow item={toItem(p)} /></li>)}
+        {next && (
+          <li class="series-soon">
+            <span class="t">Part {next.part}</span>
+            <span class="soon"><time datetime={next.at} data-out="Out ">Out {outWhen(next.at, now, 'Asia/Singapore')}</time></span>
           </li>
         )}
+        {later && <li class="series-later">{later} {later.startsWith('Parts') ? 'are' : 'is'} still to come.</li>}
       </ol>
     </section>
   </Site>
