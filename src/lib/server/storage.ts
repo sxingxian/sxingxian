@@ -126,6 +126,31 @@ export async function putObject(provider: StorageProvider, key: string, body: Ar
   throw new StorageError(explain(provider, res.status, err.code, err.fromCloudflare));
 }
 
+/**
+ * The host answered with an outage (NAS off, tunnel down, timeout), not "no such file". The public media route
+ * turns this into a 503 that nobody caches, so pictures come back as soon as the host does.
+ */
+export class StorageUnavailable extends Error {}
+
+// Reads from the NAS/B2 fail fast: the page swaps a failed picture for the default cover, so waiting longer only
+// keeps an empty box on screen. aws4fetch's own loop (10 retries with growing pauses) held each picture for
+// 14–32 s when the NAS was off, so reads are signed here and sent at most twice.
+const READ_TIMEOUT_MS = 4000;
+const RETRY_PAUSE_MS = 250;
+// After a failed read, skip that host for a minute instead of trying it again for every picture on the page.
+// Kept per Worker instance (each instance learns from one failure), never shared with visitors.
+const SKIP_AFTER_FAILURE_MS = 60_000;
+const downUntil: Partial<Record<'nas' | 'b2', number>> = {};
+
+async function readOnce(c: S3Config, provider: 'nas' | 'b2', key: string): Promise<{ res?: Response; timedOut?: boolean }> {
+  const signed = await client(c).sign(objectUrl(c, key), { method: 'GET', headers: accessHeaders(provider) });
+  try {
+    return { res: await fetch(signed, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) }) };
+  } catch (e) {
+    return { timedOut: (e as Error)?.name === 'TimeoutError' }; // timeout or dropped connection
+  }
+}
+
 export async function getObject(provider: StorageProvider, key: string, request: Request): Promise<Response | null> {
   if (provider === 'r2') {
     const obj = await env.MEDIA.get(key, { onlyIf: request.headers });
@@ -138,9 +163,24 @@ export async function getObject(provider: StorageProvider, key: string, request:
   }
   const c = s3Config(provider);
   if (!c) return null;
-  const res = await client(c).fetch(objectUrl(c, key), { method: 'GET', headers: accessHeaders(provider) });
-  if (!res.ok || !res.body) return null;
-  return new Response(res.body, { headers: { 'content-type': res.headers.get('content-type') ?? 'application/octet-stream' } });
+  if ((downUntil[provider] ?? 0) > Date.now()) throw new StorageUnavailable(`${LABEL[provider]} is unreachable`);
+
+  let r = await readOnce(c, provider, key);
+  // One quick retry for an error answered straight away (a blip), never after waiting out the timeout.
+  if (!r.timedOut && (!r.res || r.res.status >= 500 || r.res.status === 429)) {
+    await r.res?.body?.cancel();
+    await new Promise((done) => setTimeout(done, RETRY_PAUSE_MS));
+    r = await readOnce(c, provider, key);
+  }
+  const res = r.res;
+  if (res && res.ok && res.body) {
+    delete downUntil[provider];
+    return new Response(res.body, { headers: { 'content-type': res.headers.get('content-type') ?? 'application/octet-stream' } });
+  }
+  if (res && (res.status === 404 || res.status === 410)) return null; // the host is up; the file isn't there
+  await res?.body?.cancel();
+  downUntil[provider] = Date.now() + SKIP_AFTER_FAILURE_MS;
+  throw new StorageUnavailable(`${LABEL[provider]} is unreachable`);
 }
 
 export async function deleteObject(provider: StorageProvider, key: string): Promise<void> {

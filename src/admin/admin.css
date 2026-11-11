@@ -682,5 +682,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 
 /* Settings → Site → Default cover */
 .cover-pick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cover-pick img { width: 120px; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; background: var(--ph, #ecebe6); display: block; }
+.cover-pick img, .cover-pick .cover-img { width: 120px; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; background: var(--ph, #ecebe6); display: block; }
+.cover-pick .img-ph.cover-img { display: grid; place-items: center; font-size: 12px; overflow: hidden; }
 .cover-pick .cover-none { font-size: 13px; color: var(--faint); max-width: 220px; }
+.cover-pick .cover-warn { flex-basis: 100%; max-width: 46ch; font-size: 13px; line-height: 1.45; color: var(--warn-ink); background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 8px 10px; }

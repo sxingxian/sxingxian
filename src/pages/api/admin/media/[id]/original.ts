@@ -2,7 +2,7 @@
 // draw a watermarked copy. The public /media/:id route never serves it while the watermark is on.
 import type { APIRoute } from 'astro';
 import { getMedia } from '../../../../../lib/server/repo';
-import { getObject } from '../../../../../lib/server/storage';
+import { getObject, StorageUnavailable } from '../../../../../lib/server/storage';
 import { error } from '../../../../../lib/server/http';
 import { UUID_RE } from '../../../../../lib/shared/safe';
 import { watermarkable } from '../../../../../lib/shared/watermark';
@@ -14,7 +14,13 @@ export const GET: APIRoute = async ({ params, request }) => {
   if (!item || !item.object_key || !watermarkable(item.mime) || (item.provider !== 'r2' && item.provider !== 'nas' && item.provider !== 'b2')) {
     return error(404, 'Not found');
   }
-  const res = await getObject(item.provider, item.object_key, new Request(request.url));
+  let res: Response | null;
+  try {
+    res = await getObject(item.provider, item.object_key, new Request(request.url));
+  } catch (e) {
+    if (e instanceof StorageUnavailable) return error(503, `${item.provider === 'nas' ? 'The home NAS' : 'Backblaze B2'} isn't reachable right now. Try again once it's back.`);
+    throw e;
+  }
   if (!res || !res.body) return error(404, 'Not found');
   return new Response(res.body, {
     headers: { 'content-type': item.mime, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" },
