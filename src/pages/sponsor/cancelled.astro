@@ -4,11 +4,12 @@
 import Site from '../../layouts/Site.astro';
 import { cancelReturn } from '../../lib/server/sponsor';
 import { getSetting } from '../../lib/server/repo';
+import { paypalVia } from '../../lib/shared/types';
 
 Astro.response.headers.set('cache-control', 'no-store');
 const via = Astro.url.searchParams.get('via');
 const ref = Astro.url.searchParams.get('ref') ?? '';
-let r: Awaited<ReturnType<typeof cancelReturn>> = { paid: false, amount: null, back: '/', from: null };
+let r: Awaited<ReturnType<typeof cancelReturn>> = { paid: false, amount: null, back: '/', backLabel: 'Back to the site', from: null };
 if (via === 'stripe' || via === 'paypal') {
   try {
     r = await cancelReturn(ref, via);
@@ -19,8 +20,8 @@ const again = new URLSearchParams();
 if (r.amount) again.set('amount', String(r.amount));
 if (r.from) again.set('from', r.from);
 const tryAgain = `/sponsor${again.size ? `?${again}` : ''}`;
-const both = await getSetting('sponsor').then((s) => s.methods.stripe && s.methods.paypal).catch(() => false);
-const backLabel = r.back.startsWith('/story/') ? 'Back to the story' : 'Back to the site';
+const both = await getSetting('sponsor').then((s) => s.methods.stripe && paypalVia(s) !== null).catch(() => false);
+const backLabel = r.backLabel;
 ---
 <Site title="No payment made" noindex>
   <div class="wrap sponsor-done">

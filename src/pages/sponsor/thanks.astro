@@ -7,16 +7,16 @@ import { finishReturn, type ReturnView } from '../../lib/server/sponsor';
 Astro.response.headers.set('cache-control', 'no-store');
 const via = Astro.url.searchParams.get('via');
 const ref = Astro.url.searchParams.get('ref') ?? '';
-let view: ReturnView = { state: 'unknown', amount: null, back: '/', via: 'stripe' };
+let view: ReturnView = { state: 'unknown', amount: null, back: '/', backLabel: 'Back to the site', via: 'stripe' };
 if (via === 'stripe' || via === 'paypal') {
   try {
     view = await finishReturn(ref, via);
   } catch {
-    view = { state: 'unknown', amount: null, back: '/', via };
+    view = { state: 'unknown', amount: null, back: '/', backLabel: 'Back to the site', via };
   }
 }
 const who = view.via === 'paypal' ? 'PayPal' : 'Stripe';
-const backLabel = view.back.startsWith('/story/') ? 'Back to the story' : 'Back to the site';
+const backLabel = view.backLabel;
 ---
 <Site title={view.state === 'paid' ? 'Thank you' : 'Your sponsor'} noindex>
   <div class="wrap sponsor-done">

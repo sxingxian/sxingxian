@@ -66,7 +66,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
   if (key === 'sponsor') {
     // Which ways to pay are connected is the server's to say (connecting and disconnecting set it).
     const v = value as SettingsMap['sponsor'];
-    value = { ...v, amounts: [...v.amounts].sort((a, b) => a - b), methods: (await getSetting('sponsor')).methods } as SettingsMap[typeof key];
+    value = { ...v, amounts: [...v.amounts].sort((a, b) => a - b), cardKinds: [...new Set(v.cardKinds)], methods: (await getSetting('sponsor')).methods } as SettingsMap[typeof key];
   }
   if (key === 'featured') {
     // Also write the previous release's fields, so a rollback still shows the first featured story.
