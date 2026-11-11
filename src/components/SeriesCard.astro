@@ -1,20 +1,33 @@
 ---
-// A series card: parts out of planned, title, description, progress bar. Home page and /series.
+// A series card (home page and /series): the parts' covers crossfading one after another (one cover: still;
+// none: text only), title, one meta line, description, progress bar.
 import type { PublicSeries } from '../lib/server/series';
+import { outWhen, partsLabel } from '../lib/shared/series-text';
 interface Props {
   series: PublicSeries;
   reveal?: boolean;
 }
 const { series: s, reveal = false } = Astro.props;
-const total = Math.max(s.planned_parts ?? s.published, s.published);
-const label = total > s.published ? `${s.published} of ${total} parts` : `${s.published} ${s.published === 1 ? 'part' : 'parts'}`;
+const total = Math.max(s.planned_parts ?? 0, s.published, s.last_part ?? 0, s.next?.part ?? 0);
+const label = partsLabel(s.published, total, s.last_part);
 const bars = Math.min(total, 24);
+const covers = s.covers ?? [];
 ---
 <a class:list={['card', 'series-card', { rv: reveal }]} data-rv={reveal ? 'side' : undefined} href={`/series/${s.slug}`}>
-  <span class="series-t">{s.title}</span>
-  {s.description && <span class="series-d">{s.description}</span>}
-  <span class="meta">{label}</span>
-  <span class="series-bar" role="img" aria-label={label}>
-    {Array.from({ length: bars }, (_, i) => <span class:list={{ on: i < Math.min(s.published, bars) }}></span>)}
+  {covers.length > 0 && (
+    <span class="series-cover" data-covers={covers.length > 1 ? String(covers.length) : undefined} aria-hidden="true">
+      {covers.map((id, i) => <img class:list={{ on: i === 0 }} src={`/media/${id}`} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-ph="" />)}
+    </span>
+  )}
+  <span class="series-body">
+    <span class="series-t">{s.title}</span>
+    <span class="meta">
+      <span>{label}</span>
+      {s.next && <span>Part {s.next.part} out <time datetime={s.next.at} data-out="">{outWhen(s.next.at, Date.now(), 'Asia/Singapore')}</time></span>}
+    </span>
+    {s.description && <span class="series-d">{s.description}</span>}
+    <span class="series-bar" role="img" aria-label={label}>
+      {Array.from({ length: bars }, (_, i) => <span class:list={{ on: i < Math.min(s.published, bars) }}></span>)}
+    </span>
   </span>
 </a>

@@ -23,8 +23,15 @@ const inSeries = entry.kind === 'post' ? await seriesForEntry(entry.id) : null;
 const partIdx = inSeries ? inSeries.parts.findIndex((p) => p.id === entry.id) : -1;
 const prevPart = inSeries && partIdx > 0 ? inSeries.parts[partIdx - 1] : null;
 const nextPart = inSeries && partIdx >= 0 ? inSeries.parts[partIdx + 1] ?? null : null;
-const seriesTotal = inSeries ? Math.max(inSeries.series.planned_parts ?? inSeries.parts.length, inSeries.parts.length, inSeries.part) : 0;
-const morePlanned = inSeries ? Math.max(0, seriesTotal - Math.max(inSeries.parts.length, inSeries.part)) : 0;
+import { laterParts, outWhen, partsLabel } from '../lib/shared/series-text';
+const seriesNext = inSeries?.next ?? null;
+const lastPart = inSeries ? inSeries.parts.reduce((m, p) => Math.max(m, p.part), inSeries.part) : 0;
+const seriesTotal = inSeries ? Math.max(inSeries.series.planned_parts ?? 0, inSeries.parts.length, lastPart, seriesNext?.part ?? 0) : 0;
+const seriesLabel = inSeries ? partsLabel(inSeries.parts.length, seriesTotal, lastPart) : '';
+const laterLabel = inSeries ? laterParts(Math.max(lastPart, seriesNext?.part ?? 0), seriesTotal) : '';
+// The scheduled part comes straight after this one: the "next" link says when it's out instead.
+const nextSoon = !nextPart && seriesNext && seriesNext.part > (inSeries?.part ?? 0) ? seriesNext : null;
+const outAt = (iso: string) => `Out ${outWhen(iso, Date.now(), 'Asia/Singapore')}`;
 ---
 <Site title={entry.title} description={entry.dek} image={ogImage}>
   <article class="article" data-read={entry.kind === 'post' ? `n:${entry.id}` : undefined}>
@@ -50,21 +57,23 @@ const morePlanned = inSeries ? Math.max(0, seriesTotal - Math.max(inSeries.parts
     {inSeries && (
       <section class="series-box" id="series" aria-label={`Series: ${inSeries.series.title}`}>
         <div class="card-head"><h2 class="series-t">{inSeries.series.title}</h2><a href={`/series/${inSeries.series.slug}`}>Series page <span class="arrow" aria-hidden="true">→</span></a></div>
-        <span class="meta">A series · {inSeries.parts.length} of {seriesTotal} parts out</span>
+        <span class="meta">{seriesLabel}</span>
         <ol>
           {inSeries.parts.map((p) => p.id === entry.id ? (
-            <li aria-current="page"><span class="pn">Part {p.part}</span><span>{p.title}</span><span class="meta">{p.read_minutes} min</span></li>
+            <li aria-current="page"><span class="pn">Part {p.part}</span><span>{p.title}</span><span class="meta">Reading</span></li>
           ) : (
             <li><span class="pn">Part {p.part}</span><a href={`/story/${p.slug}`}>{p.title}</a><span class="meta">{p.read_minutes} min</span></li>
           ))}
-          {morePlanned > 0 && <li class="planned"><span class="pn">Next</span><span>{morePlanned === 1 ? 'One more part planned' : `${morePlanned} more parts planned`}</span><span></span></li>}
+          {seriesNext && <li class="planned"><span class="pn">Part {seriesNext.part}</span><time datetime={seriesNext.at} data-out="Out ">{outAt(seriesNext.at)}</time><span></span></li>}
+          {laterLabel && <li class="planned"><span class="pn">Later</span><span>{laterLabel}</span><span></span></li>}
         </ol>
       </section>
     )}
-    {(prevPart || nextPart) && (
+    {(prevPart || nextPart || nextSoon) && (
       <nav class="part-nav" aria-label="Series navigation">
         {prevPart && <a href={`/story/${prevPart.slug}`} rel="prev"><span class="meta">← Part {prevPart.part}</span><b>{prevPart.title}</b></a>}
         {nextPart && <a class="next" href={`/story/${nextPart.slug}`} rel="next"><span class="meta">Part {nextPart.part} →</span><b>{nextPart.title}</b></a>}
+        {nextSoon && <span class="next soon"><span class="meta">Part {nextSoon.part}</span><time datetime={nextSoon.at} data-out="Out ">{outAt(nextSoon.at)}</time></span>}
       </nav>
     )}
     <AdSlot slot="article" />
