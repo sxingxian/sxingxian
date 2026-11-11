@@ -34,7 +34,11 @@ await build({
                export { entryState, untilLabel, whenLabel } from './src/lib/shared/state.ts';
                export { partsLabel, laterParts, outWhen } from './src/lib/shared/series-text.ts';
                export { markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX } from './src/lib/shared/telegram-format.ts';
-               export { TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, settingsSchemas as SETTINGS_SCHEMAS } from './src/lib/shared/schemas.ts';`,
+               export { TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, settingsSchemas as SETTINGS_SCHEMAS } from './src/lib/shared/schemas.ts';
+               export { sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema } from './src/lib/shared/schemas.ts';
+               export { parseMoney, formatMoney, amountProblem, cleanMessage } from './src/lib/shared/sponsor.ts';
+               export { verifyStripeSignature } from './src/lib/server/stripe-sig.ts';
+               export { DEFAULT_SETTINGS, sponsorLive } from './src/lib/shared/types.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -50,7 +54,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -630,6 +634,74 @@ t('default cover: a media id only', () => {
   assert.equal(settingsSchemas.site.safeParse(site('0d038776-413a-41e2-9840-e86da034c682')).success, true);
   assert.equal(settingsSchemas.site.safeParse(site(null)).success, true);
   for (const bad of ['../media/x', 'https://evil.example/x.jpg', '0d038776', 42]) assert.equal(settingsSchemas.site.safeParse(site(bad)).success, false, String(bad));
+});
+
+t('sponsor: amounts are whole cents, checked against the settings, never trusted from the browser', () => {
+  assert.equal(parseMoney('15'), 1500);
+  assert.equal(parseMoney('15.5'), 1550);
+  assert.equal(parseMoney('S$15.50'), 1550);
+  assert.equal(parseMoney(' 1,000 '), 100000);
+  for (const bad of ['-5', '1e3', '15.555', '0x10', 'ten', '', '15.', 'NaN', 'Infinity', '99999999']) assert.equal(parseMoney(bad), null, bad);
+  assert.equal(formatMoney(1000), 'S$10');
+  assert.equal(formatMoney(1250), 'S$12.50');
+  const s = { ...DEFAULT_SETTINGS.sponsor, amounts: [500, 1000, 2000], allowCustom: true, min: 300, max: 50000 };
+  assert.equal(amountProblem(s, 1000), null);
+  assert.equal(amountProblem(s, 1550), null, 'custom in range');
+  assert.notEqual(amountProblem(s, 299), null, 'below the minimum');
+  assert.notEqual(amountProblem(s, 50001), null, 'above the maximum');
+  for (const bad of [0, -500, 1000.5, NaN, Infinity]) assert.notEqual(amountProblem(s, bad), null, String(bad));
+  assert.notEqual(amountProblem({ ...s, allowCustom: false }, 1550), null, 'custom off: only the listed amounts');
+  assert.equal(amountProblem({ ...s, allowCustom: false }, 2000), null);
+  // What a page may send to start a payment.
+  const ok = { method: 'stripe', amount: 1000, message: 'hi', from: null };
+  assert.equal(sponsorCheckoutSchema.safeParse(ok).success, true);
+  for (const bad of [{ ...ok, amount: 10.5 }, { ...ok, amount: '1000' }, { ...ok, amount: 0 }, { ...ok, amount: 99 }, { ...ok, amount: 2_000_000 }, { ...ok, method: 'bitcoin' },
+    { ...ok, message: 'x'.repeat(601) }, { ...ok, from: '../../etc' }, { ...ok, from: 'javascript:alert(1)' }]) {
+    assert.equal(sponsorCheckoutSchema.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 60));
+  }
+  // Sponsoring shows only when switched on AND a way to pay is connected.
+  assert.equal(sponsorLive({ ...s, enabled: true, methods: { stripe: false, paypal: false } }), false);
+  assert.equal(sponsorLive({ ...s, enabled: false, methods: { stripe: true, paypal: true } }), false);
+  assert.equal(sponsorLive({ ...s, enabled: true, methods: { stripe: false, paypal: true } }), true);
+});
+t('sponsor: notes are plain text, no control or direction-flipping characters, at most 280', () => {
+  assert.equal(cleanMessage('  hello\u0000 there\u202E  '), 'hello there');
+  assert.equal(cleanMessage('a\r\n\n\n\nb'), 'a\n\nb');
+  assert.equal(cleanMessage('x'.repeat(500)).length, 280);
+  assert.equal(cleanMessage('<script>alert(1)</script>'), '<script>alert(1)</script>', 'kept as text; React and Astro escape it when shown');
+});
+await ta('sponsor: Stripe webhooks need a fresh, valid signature', async () => {
+  const secret = 'whsec_test_123';
+  const body = '{"type":"checkout.session.completed"}';
+  const now = 1_800_000_000;
+  const sign = async (t, b, key = secret) => {
+    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return Buffer.from(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(`${t}.${b}`))).toString('hex');
+  };
+  const good = await sign(now, body);
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${good}`, body, now), true);
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${'0'.repeat(64)},v1=${good}`, body, now), true, 'any listed v1 may match');
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${good}`, body.replace('completed', 'expired'), now), false, 'body changed');
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${good}`, body, now + 301), false, 'too old: replay');
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${good}`, body, now - 301), false, 'from the future');
+  assert.equal(await verifyStripeSignature(secret, `t=${now},v1=${await sign(now, body, 'whsec_other')}`, body, now), false, 'other secret');
+  assert.equal(await verifyStripeSignature(secret, `t=${now + 1},v1=${good}`, body, now), false, 'timestamp swapped');
+  for (const h of [null, '', `v1=${good}`, `t=${now}`, `t=abc,v1=${good}`, `t=${now},v0=${good}`, 'x'.repeat(2000)]) assert.equal(await verifyStripeSignature(secret, h, body, now), false, String(h).slice(0, 30));
+  assert.equal(await verifyStripeSignature('', `t=${now},v1=${good}`, body, now), false, 'no secret stored');
+});
+t('sponsor: settings hold no keys, and amounts stay consistent', () => {
+  const sch = SETTINGS_SCHEMAS.sponsor;
+  const base = { ...DEFAULT_SETTINGS.sponsor };
+  assert.equal(sch.safeParse(base).success, true);
+  assert.equal(JSON.stringify(Object.keys(base)).match(/key|secret|token/i), null);
+  for (const bad of [{ ...base, defaultAmount: 1500 }, { ...base, min: 5000, max: 300 }, { ...base, amounts: [500, 1000, 1500, 2000, 2500] }, { ...base, amounts: [] },
+    { ...base, amounts: [1000, 1000], defaultAmount: 1000 }, { ...base, amounts: [50], defaultAmount: 50 }, { ...base, pageTitle: '' }, { ...base, cardText: 'x'.repeat(301) }]) {
+    assert.equal(sch.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 80));
+  }
+  assert.equal(stripeConnectSchema.safeParse({ key: 'rk_live_' + 'a'.repeat(30) }).success, true);
+  for (const k of ['pk_live_' + 'a'.repeat(30), 'rk_live_short', 'rk_live_' + 'a'.repeat(30) + '/../x', 'whsec_abc']) assert.equal(stripeConnectSchema.safeParse({ key: k }).success, false, k);
+  assert.equal(paypalConnectSchema.safeParse({ clientId: 'A'.repeat(40), secret: 'B'.repeat(40), mode: 'live' }).success, true);
+  assert.equal(paypalConnectSchema.safeParse({ clientId: 'A'.repeat(40), secret: 'B b'.repeat(20), mode: 'live' }).success, false);
 });
 
 console.log(`\n${passed} security tests passed.`);

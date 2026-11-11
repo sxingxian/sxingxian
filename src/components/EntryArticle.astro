@@ -20,6 +20,10 @@ const ogImage = entry.cover_media_id ? new URL(`/media/${entry.cover_media_id}`,
 import PdfViewer from './PdfViewer.astro';
 import { seriesForEntry } from '../lib/server/series';
 const inSeries = entry.kind === 'post' ? await seriesForEntry(entry.id) : null;
+import { getSetting } from '../lib/server/repo';
+import { sponsorLive } from '../lib/shared/types';
+const sponsor = await getSetting('sponsor');
+const sponsorCard = entry.kind === 'post' && sponsorLive(sponsor) && sponsor.storyCard;
 const partIdx = inSeries ? inSeries.parts.findIndex((p) => p.id === entry.id) : -1;
 const prevPart = inSeries && partIdx > 0 ? inSeries.parts[partIdx - 1] : null;
 const nextPart = inSeries && partIdx >= 0 ? inSeries.parts[partIdx + 1] ?? null : null;
@@ -75,6 +79,15 @@ const outAt = (iso: string) => `Out ${outWhen(iso, Date.now(), 'Asia/Singapore')
         {nextPart && <a class="next" href={`/story/${nextPart.slug}`} rel="next"><span class="meta">Part {nextPart.part} →</span><b>{nextPart.title}</b></a>}
         {nextSoon && <span class="next soon"><span class="meta">Part {nextSoon.part}</span><time datetime={nextSoon.at} data-out="Out ">{outAt(nextSoon.at)}</time></span>}
       </nav>
+    )}
+    {sponsorCard && (
+      <aside class="sponsor-card" aria-label="Sponsor">
+        <div class="sponsor-card-text">
+          <h2>{sponsor.cardTitle}</h2>
+          <p>{sponsor.cardText}</p>
+        </div>
+        <a class="sponsor-btn" href={`/sponsor?from=${entry.id}`}>Sponsor <span aria-hidden="true">→</span></a>
+      </aside>
     )}
     <AdSlot slot="article" />
   </article>

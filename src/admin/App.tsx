@@ -12,6 +12,7 @@ import PageEditor from './views/PageEditor';
 import Settings from './views/Settings';
 import MediaLibrary from './views/MediaLibrary';
 import WordPress from './views/WordPress';
+import Sponsors from './views/Sponsors';
 import Account from './views/Account';
 import Users from './views/Users';
 import SeriesList from './views/SeriesList';
@@ -24,7 +25,7 @@ interface Me {
 
 const LIST_ROUTES: Record<string, EntryKind> = { stories: 'post', journal: 'post', work: 'project', photos: 'gallery', film: 'film' };
 const KINDS = new Set<EntryKind>(['post', 'project', 'gallery', 'film']);
-const MORE_SECTIONS = new Set(['series', 'photos', 'film', 'pages', 'wordpress', 'account', 'users']);
+const MORE_SECTIONS = new Set(['series', 'photos', 'film', 'pages', 'wordpress', 'sponsors', 'account', 'users']);
 
 const svg = (d: ReactNode) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">{d}</svg>
@@ -156,6 +157,8 @@ export default function App() {
     view = <MediaLibrary />;
   } else if (section === 'wordpress') {
     view = <WordPress onAddressChanged={loadMe} wpBaseUrl={me?.wpBaseUrl ?? 'https://hey.sxingxian.com'} wpAdminUrl={me?.wpAdminUrl ?? 'https://hey.sxingxian.com/admin'} />;
+  } else if (section === 'sponsors') {
+    view = <Sponsors />;
   } else if (section === 'settings') {
     view = <Settings />;
   } else {
@@ -192,6 +195,7 @@ export default function App() {
             <span className="group">Site</span>
             {link('/admin/media', 'Media', 'media')}
             {link('/admin/wordpress', 'WordPress', 'wordpress')}
+            {link('/admin/sponsors', 'Sponsors', 'sponsors')}
             {link('/admin/settings', 'Settings', 'settings')}
             <span className="group">You</span>
             {link('/admin/account', 'Account', 'account')}
@@ -220,7 +224,7 @@ export default function App() {
               <span className="grip" aria-hidden="true" />
               <div className="sheet-list">
                 {[['/admin/series', 'Series', 'series'], ['/admin/photos', 'Photos', 'photos'], ['/admin/film', 'Film', 'film'], ['/admin/pages/cv', 'CV', 'cv'], ['/admin/pages/about', 'About', 'about'], ['/admin/pages/privacy', 'Privacy', 'privacy'],
-                  ['/admin/wordpress', 'WordPress', 'wordpress'], ['/admin/account', 'Account', 'account'], ...(me?.user.role === 'owner' ? [['/admin/users', 'Users', 'users']] : [])]
+                  ['/admin/wordpress', 'WordPress', 'wordpress'], ['/admin/sponsors', 'Sponsors', 'sponsors'], ['/admin/account', 'Account', 'account'], ...(me?.user.role === 'owner' ? [['/admin/users', 'Users', 'users']] : [])]
                   .map(([to, label, key]) => (
                     <a key={to} href={to} aria-current={section === key || (section === 'pages' && parts[1] === key) ? 'page' : undefined}
                       onClick={(e) => { e.preventDefault(); go(to); }}>{label}</a>

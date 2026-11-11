@@ -36,7 +36,8 @@
     { "name": "WEBHOOK_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },
     { "name": "LOGIN_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
     // "Most read" counting: at most 20 reads a minute from one address.
-    { "name": "VIEW_LIMITER", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } }
+    { "name": "VIEW_LIMITER", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
+    { "name": "SPONSOR_LIMITER", "namespace_id": "1004", "simple": { "limit": 5, "period": 60 } }
   ],
 
   // No cron triggers: the Workers free plan allows only 5 per account, shared by all your

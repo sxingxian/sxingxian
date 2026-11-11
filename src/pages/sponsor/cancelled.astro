@@ -1,0 +1,36 @@
+---
+// Where Stripe and PayPal send a visitor who backed out. Closes the attempt (an open Stripe page is expired,
+// so it can't be paid later by accident). If it turns out it was paid after all, go to the thank-you page.
+import Site from '../../layouts/Site.astro';
+import { cancelReturn } from '../../lib/server/sponsor';
+import { getSetting } from '../../lib/server/repo';
+
+Astro.response.headers.set('cache-control', 'no-store');
+const via = Astro.url.searchParams.get('via');
+const ref = Astro.url.searchParams.get('ref') ?? '';
+let r: Awaited<ReturnType<typeof cancelReturn>> = { paid: false, amount: null, back: '/', from: null };
+if (via === 'stripe' || via === 'paypal') {
+  try {
+    r = await cancelReturn(ref, via);
+  } catch { /* show the page anyway: nothing was charged here */ }
+  if (r.paid) return Astro.redirect(`/sponsor/thanks?via=${via}&ref=${encodeURIComponent(ref)}`, 303);
+}
+const again = new URLSearchParams();
+if (r.amount) again.set('amount', String(r.amount));
+if (r.from) again.set('from', r.from);
+const tryAgain = `/sponsor${again.size ? `?${again}` : ''}`;
+const both = await getSetting('sponsor').then((s) => s.methods.stripe && s.methods.paypal).catch(() => false);
+const backLabel = r.back.startsWith('/story/') ? 'Back to the story' : 'Back to the site';
+---
+<Site title="No payment made" noindex>
+  <div class="wrap sponsor-done">
+    <span class="done-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4L2.5 7.5 6 11" /><path d="M3 7.5h6.5a3.5 3.5 0 0 1 0 7H8" /></svg></span>
+    <h1>No payment made</h1>
+    <p>You left the payment page before paying, so nothing was charged. Your amount and message are still filled in if you’d like to try again.</p>
+    <div class="done-actions">
+      <a class="sponsor-btn" href={tryAgain}>Try again</a>
+      <a class="sponsor-btn ghost" href={r.back}><span aria-hidden="true">←</span> {backLabel}</a>
+    </div>
+    {both && <p class="hint">Had a problem paying? Try the other way to pay (card or PayPal) on the sponsor page.</p>}
+  </div>
+</Site>

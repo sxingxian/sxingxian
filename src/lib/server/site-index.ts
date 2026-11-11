@@ -3,7 +3,7 @@
 // left out (they live on their own site, which has its own sitemap).
 import { getPage, getSettings, listPublicIndex } from './repo';
 import { listPublicSeries } from './series';
-import { KIND_PATH, type EntryKind, type SectionsSetting } from '../shared/types';
+import { KIND_PATH, sponsorLive, type EntryKind, type SectionsSetting } from '../shared/types';
 
 export interface IndexedUrl {
   path: string;
@@ -18,8 +18,8 @@ const KIND_SECTION: Record<EntryKind, keyof SectionsSetting | null> = { post: nu
 const KIND_GROUP: Record<EntryKind, IndexedUrl['group']> = { post: 'Stories', project: 'Work', gallery: 'Photos', film: 'Film' };
 
 export async function siteIndex(): Promise<IndexedUrl[]> {
-  const [{ sections }, entries, series, cv, about, privacy] = await Promise.all([
-    getSettings(['sections']),
+  const [{ sections, sponsor }, entries, series, cv, about, privacy] = await Promise.all([
+    getSettings(['sections', 'sponsor']),
     listPublicIndex(),
     listPublicSeries(100).catch(() => []),
     getPage('cv'), getPage('about'), getPage('privacy'),
@@ -33,6 +33,7 @@ export async function siteIndex(): Promise<IndexedUrl[]> {
   for (const [page, enabled] of [[cv, sections.cv], [about, sections.about], [privacy, true]] as const) {
     if (page && enabled && !page.noindex) urls.push({ path: `/${page.slug}`, title: page.title || page.slug, group: 'Pages', lastmod: page.updated_at });
   }
+  if (sponsorLive(sponsor)) urls.push({ path: '/sponsor', title: sponsor.pageTitle, description: sponsor.pageText, group: 'Pages' });
   for (const s of series) urls.push({ path: `/series/${s.slug}`, title: s.title, description: s.description, lastmod: s.updated_at, image: s.cover_media_id ?? undefined, group: 'Series' });
   for (const e of entries) {
     if (!on(e.kind)) continue;

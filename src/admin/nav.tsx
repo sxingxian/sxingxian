@@ -6,7 +6,7 @@ import type { EntryKind } from '../lib/shared/types';
 export type SectionKey =
   | 'stories' | 'series' | 'work' | 'photos' | 'film'
   | 'cv' | 'about' | 'privacy'
-  | 'media' | 'wordpress' | 'settings'
+  | 'media' | 'wordpress' | 'sponsors' | 'settings'
   | 'account' | 'users';
 
 export const SECTIONS: Record<SectionKey, { group: string; label: string; path: string }> = {
@@ -20,6 +20,7 @@ export const SECTIONS: Record<SectionKey, { group: string; label: string; path: 
   privacy: { group: 'Pages', label: 'Privacy', path: '/admin/pages/privacy' },
   media: { group: 'Site', label: 'Media', path: '/admin/media' },
   wordpress: { group: 'Site', label: 'WordPress', path: '/admin/wordpress' },
+  sponsors: { group: 'Site', label: 'Sponsors', path: '/admin/sponsors' },
   settings: { group: 'Site', label: 'Settings', path: '/admin/settings' },
   account: { group: 'You', label: 'Account', path: '/admin/account' },
   users: { group: 'You', label: 'Users', path: '/admin/users' },
