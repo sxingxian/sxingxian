@@ -3,8 +3,9 @@ import { getSetting } from './repo';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE } from '../shared/safe';
 import type { AdsSetting } from '../shared/types';
 
-// Never: the admin, the API, and the pages that stand for you professionally.
-const NO_ADS = ['/admin', '/api', '/cv', '/about', '/privacy', '/media', '/rss.xml', '/ads.txt'];
+// Never: the admin, the API, the pages that stand for you professionally, and the sponsor pages (ads next to
+// payment buttons look untrustworthy and pull clicks away from paying).
+const NO_ADS = ['/admin', '/api', '/cv', '/about', '/privacy', '/sponsor', '/media', '/rss.xml', '/ads.txt'];
 
 export function adsAllowedOn(path: string): boolean {
   return !NO_ADS.some((p) => path === p || path.startsWith(`${p}/`));
