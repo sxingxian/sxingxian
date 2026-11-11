@@ -42,7 +42,7 @@ const base = KIND_PATH[kind];
         <div class="tiles">
           {items.map((e) => (
             <a class="tile" href={`${base}/${e.slug}`}>
-              <span class="th"><Thumb image={e.cover_media_id ? { kind: 'media', id: e.cover_media_id } : null} alt="" /></span>
+              <span class="th"><Thumb image={e.cover_media_id ? { kind: 'media', id: e.cover_media_id } : null} alt="" label={e.topics[0] ?? ''} /></span>
               <b>{e.title}</b>
               {e.dek && <span>{e.dek}</span>}
               {e.topics.length > 0 && <span class="meta">{topicLabel(e.topics)}</span>}

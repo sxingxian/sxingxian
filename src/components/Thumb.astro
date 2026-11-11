@@ -1,16 +1,28 @@
 ---
-// Renders a cover image from our media route or an external WordPress image.
+// A cover: the entry's own picture; otherwise the site's default cover (Settings → Site); otherwise a flat
+// tile with the topic set in type. Used by every list, card and row.
 import type { FeedItem } from '../lib/server/site';
+import { getSetting } from '../lib/server/repo';
 interface Props {
   image: FeedItem['image'];
   alt?: string;
   eager?: boolean;
+  /** Shown on the typeset tile when there is no picture and no default cover (usually the topic). */
+  label?: string;
 }
-const { image, alt = '', eager = false } = Astro.props;
-const src = image ? (image.kind === 'media' ? `/media/${image.id}` : image.url) : null;
+const { image, alt = '', eager = false, label = '' } = Astro.props;
+let src = image ? (image.kind === 'media' ? `/media/${image.id}` : image.url) : null;
+let fallback = false;
+if (!src) {
+  const { defaultCoverId } = await getSetting('site');
+  if (defaultCoverId) {
+    src = `/media/${defaultCoverId}`;
+    fallback = true;
+  }
+}
 ---
 {src ? (
-  <img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" />
+  <img src={src} alt={fallback ? '' : alt} loading={eager ? 'eager' : 'lazy'} decoding="async" referrerpolicy="no-referrer" data-default={fallback ? '' : undefined} />
 ) : (
-  <div class="placeholder-cover" aria-hidden="true"></div>
+  <div class="placeholder-cover" aria-hidden="true">{label && <span>{label}</span>}</div>
 )}

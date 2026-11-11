@@ -5,6 +5,7 @@ import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImag
 import { logoActive, watermarkHasContent } from '../../lib/shared/watermark';
 import TopicsEditor, { type TopicChange } from '../components/TopicsEditor';
 import FeaturedEditor from '../components/FeaturedEditor';
+import { useMediaPicker } from '../components/useMediaPicker';
 import { useDialog } from '../components/dialog';
 import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
@@ -83,11 +84,25 @@ function SiteSettings() {
   const [s, setS] = useState<SiteSetting | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const { pickMedia, picker } = useMediaPicker();
 
   useEffect(() => {
     api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => { setS(r.value); setSaved(r.value); }).catch(() => {});
   }, []);
   if (!s || !saved) return <Loading />;
+
+  // The default cover saves straight away (like the switches), keeping unsaved name/tagline edits in the form.
+  const setCover = async (id: string | null) => {
+    try {
+      const fresh = await api.get<{ value: SiteSetting }>('/api/admin/settings/site');
+      const r = await api.put<{ value: SiteSetting }>('/api/admin/settings/site', { ...fresh.value, defaultCoverId: id });
+      setS({ ...s, defaultCoverId: r.value.defaultCoverId ?? null });
+      setSaved({ ...saved, defaultCoverId: r.value.defaultCoverId ?? null });
+      toast(id ? 'Default cover set' : 'Default cover removed');
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
 
   const dirty = s.title !== saved.title || s.tagline !== saved.tagline;
 
@@ -115,7 +130,19 @@ function SiteSettings() {
         <input id="site-tagline" className="input" value={s.tagline} maxLength={60} placeholder="stories, photos, cv…" onChange={(e) => setS({ ...s, tagline: e.target.value })} />
         <span className="brand-preview" aria-hidden="true"><b>{s.title || 'sxingxian'}</b><i>{s.tagline.trim() || 'stories'}</i></span>
       </Row>
+      <Row label="Default cover" hint="Shown for any story, WordPress post, work or film without its own picture, and in link previews">
+        <span className="cover-pick">
+          {s.defaultCoverId
+            ? <img src={`/media/${s.defaultCoverId}`} alt="Current default cover" />
+            : <span className="cover-none">None: posts without a picture show their topic</span>}
+          <span className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn" onClick={async () => { const m = await pickMedia(); if (m) void setCover(m.id); }}>{s.defaultCoverId ? 'Change' : 'Choose photo'}</button>
+            {s.defaultCoverId && <button type="button" className="btn" onClick={() => void setCover(null)}>Remove</button>}
+          </span>
+        </span>
+      </Row>
       <SaveBar dirty={dirty} busy={busy} onSave={save} disabled={!s.title.trim()} />
+      {picker}
     </Panel>
   );
 }

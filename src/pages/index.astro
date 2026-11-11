@@ -43,10 +43,10 @@ const filmMeta = latestFilm ? [formatDate(latestFilm.published_at), latestFilm.t
           const Title = first ? 'h1' : 'h2';
           return (
             <article class="featured feat-slide" role={many ? 'group' : undefined} aria-roledescription={many ? 'slide' : undefined} aria-label={many ? `${i + 1} of ${featured.length}` : undefined}>
-              {f.cover_media_id && <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
-                <span class="par"><Thumb image={{ kind: 'media', id: f.cover_media_id }} eager={first} /></span>
+              {(f.cover_media_id || site.defaultCoverId) && <a class:list={['cover', { 'rv-cover': first }]} data-rv={first ? 'fcover' : undefined} href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true" style={f.cover_media_id ? vt(f.id) : undefined}>
+                <span class="par"><Thumb image={f.cover_media_id ? { kind: 'media', id: f.cover_media_id } : null} eager={first} /></span>
               </a>}
-              {!f.cover_media_id && (
+              {!f.cover_media_id && !site.defaultCoverId && (
                 <a class="cover cover-type" href={`/story/${f.slug}`} tabindex="-1" aria-hidden="true">
                   <span>{f.dek || f.title}</span>
                 </a>

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getSetting, putSetting } from '../../../../lib/server/repo';
+import { getMedia, getSetting, putSetting } from '../../../../lib/server/repo';
 import { error, json, readBody } from '../../../../lib/server/http';
 import { settingsSchemas } from '../../../../lib/shared/schemas';
 import { watermarkHasContent } from '../../../../lib/shared/watermark';
@@ -27,7 +27,12 @@ export const PUT: APIRoute = async ({ params, request }) => {
   }
   if (key === 'site') {
     const v = value as SettingsMap['site'];
-    value = { ...v, topics: cleanTopics(v.topics, MAX_LIST_TOPICS) } as SettingsMap[typeof key];
+    // The default cover must be a photo in the library (it is shown wherever a picture is missing).
+    if (v.defaultCoverId) {
+      const m = await getMedia(v.defaultCoverId);
+      if (!m || !m.mime.startsWith('image/')) return error(422, 'Pick a photo from the library for the default cover');
+    }
+    value = { ...v, topics: cleanTopics(v.topics, MAX_LIST_TOPICS), defaultCoverId: v.defaultCoverId ?? null } as SettingsMap[typeof key];
   }
   if (key === 'topics') {
     const v = value as SettingsMap['topics'];
