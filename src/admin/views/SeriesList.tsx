@@ -1,6 +1,6 @@
 // Content → Series: create, edit and delete series. Stories are put into a series from the
 // story editor (Publishing → Series and Part).
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
 import { useDialog } from '../components/dialog';
@@ -8,13 +8,32 @@ import { Empty, Field, Loading, Page, Panel, Segmented } from '../components/kit
 import { Modal } from '../components/Modal';
 import { slugify } from '../../lib/shared/safe';
 import type { SeriesAdminRow } from '../../lib/shared/types';
+import { Pager, setUrlParams, usePaging } from '../components/Pager';
+import { pageCount } from '../../lib/shared/paging';
+
+type Show = 'all' | 'public' | 'hidden';
+const SHOWS = new Set<Show>(['all', 'public', 'hidden']);
+interface SeriesPage { series: SeriesAdminRow[]; total: number; counts: Record<Show, number>; notReady?: string }
 
 interface Form { title: string; slug: string; description: string; planned: string; is_public: boolean }
 const EMPTY: Form = { title: '', slug: '', description: '', planned: '', is_public: true };
 
 export default function SeriesList() {
-  const [rows, setRows] = useState<SeriesAdminRow[] | null>(null);
+  const params = new URL(window.location.href).searchParams;
+  const [data, setData] = useState<SeriesPage | null>(null);
+  const [loading, setLoading] = useState(true);
   const [notReady, setNotReady] = useState('');
+  const [show, setShowState] = useState<Show>(() => (SHOWS.has(params.get('show') as Show) ? (params.get('show') as Show) : 'all'));
+  const [q, setQ] = useState(() => (params.get('q') ?? '').slice(0, 100));
+  const [query, setQuery] = useState(q.trim()); // the search actually sent, a moment after typing stops
+  const paging = usePaging('series');
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 760px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 760px)');
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -24,11 +43,32 @@ export default function SeriesList() {
   const toast = useToast();
   const dialog = useDialog();
 
+  // Same as the Stories list: a new search or filter starts again at page 1; all three live in the address.
+  const setShow = (v: Show) => { setShowState(v); setUrlParams({ show: v === 'all' ? null : v }); paging.reset(); };
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = q.trim();
+      if (next === query) return;
+      setQuery(next);
+      setUrlParams({ q: next || null });
+      paging.reset();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, query, paging]);
+
+  const seq = useRef(0);
   const load = useCallback(() => {
-    api.get<{ series: SeriesAdminRow[]; notReady?: string }>('/api/admin/series')
-      .then((r) => { setRows(r.series); setNotReady(r.notReady ?? ''); })
-      .catch((e) => setErr(errorText(e)));
-  }, []);
+    const mine = ++seq.current; // only the latest request may fill the list
+    setLoading(true);
+    const qs = new URLSearchParams({ page: String(paging.page), size: String(paging.size), show });
+    if (query) qs.set('q', query);
+    api.get<SeriesPage>(`/api/admin/series?${qs}`).then((r) => {
+      if (mine !== seq.current) return;
+      // Past the last page (series deleted, or an old link): show the last page instead.
+      if (r.series.length === 0 && r.total > 0 && paging.page > 1) { paging.setPage(pageCount(r.total, paging.size)); return; }
+      setData(r); setNotReady(r.notReady ?? ''); setErr(''); setLoading(false);
+    }).catch((e) => { if (mine === seq.current) { setErr(errorText(e)); setLoading(false); } });
+  }, [paging, show, query]);
   useEffect(load, [load]);
 
   const open = (s: SeriesAdminRow | null) => {
@@ -47,11 +87,13 @@ export default function SeriesList() {
     const body = { title: form.title.trim(), slug: form.slug, description: form.description.trim(), planned_parts: planned, is_public: form.is_public };
     setBusy(true);
     try {
-      if (editing === 'new') await api.post('/api/admin/series', body);
+      const created = editing === 'new';
+      if (created) await api.post('/api/admin/series', body);
       else await api.put(`/api/admin/series/${editing}`, body);
       toast('Saved');
       close();
-      load();
+      // A new series is the newest edit, so it is first on page 1.
+      if (created && paging.page !== 1) paging.setPage(1); else load();
     } catch (e2) { toast(errorText(e2)); }
     setBusy(false);
   };
@@ -72,7 +114,9 @@ export default function SeriesList() {
     } catch (e) { toast(errorText(e)); }
   };
 
-  if (!rows) return <Page title="Series" section="series" width="narrow"><Loading error={err} /></Page>;
+  if (!data) return <Page title="Series" section="series" width="narrow"><Loading error={err} /></Page>;
+  const rows = data.series;
+  const counts = data.counts;
   const current = rows.find((r) => r.id === editing) ?? null;
 
   return (
@@ -113,11 +157,18 @@ export default function SeriesList() {
           </div>
         </Modal>
       )}
-      <Panel title="All series" flush>
+      <Panel title="All series" flush
+        actions={!notReady && counts.all > 0 && (
+          <>
+            <input className="input search-input" type="search" placeholder="Search" aria-label="Search series" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="entry-filter cols-3"><Segmented label="Show" value={show} onChange={setShow}
+              options={[['all', 'All'], ['public', `Public${narrow ? '' : ` ${counts.public}`}`], ['hidden', `Hidden${narrow ? '' : ` ${counts.hidden}`}`]] as const} /></div>
+          </>
+        )}>
         {rows.length === 0 ? (
-          <Empty>No series yet.</Empty>
+          <Empty>{counts.all === 0 ? 'No series yet.' : show !== 'all' && !query ? `No ${show} series.` : 'No matches.'}</Empty>
         ) : (
-          <div className="list-rows">
+          <div className={`list-rows${loading ? ' is-loading' : ''}`} aria-busy={loading}>
             {rows.map((s) => (
               <div key={s.id} className="list-row">
                 <span style={{ minWidth: 0 }}>
@@ -134,6 +185,7 @@ export default function SeriesList() {
             ))}
           </div>
         )}
+        <Pager paging={paging} total={data.total} label="Series pages" />
       </Panel>
     </Page>
   );

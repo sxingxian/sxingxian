@@ -720,6 +720,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (max-width: 760px) {
   .entry-filter .segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; box-sizing: border-box; }
   .entry-filter .segmented button { padding: 0 4px; white-space: nowrap; }
+  .entry-filter.cols-3 .segmented { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .c-status .when { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .row-note { display: inline-block; margin-left: 8px; font-size: 12px; color: var(--warn-ink); }
