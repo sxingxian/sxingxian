@@ -303,7 +303,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             {state === 'draft' && (
               <>
                 <p className="side-bar-note" role="status">
-                  Goes live <b>{when === 'later' ? whenPhrase(scheduleAt, now) : 'now'}</b>{tgTargets && <> · posts to {tgTargets}</>}
+                  Goes live <b>{when === 'later' ? whenPhrase(scheduleAt, now) : 'now'}</b>{tgTargets && <> · posts {tgTargets}</>}
                 </p>
                 <button type="button" className="btn primary state-cta" disabled={busy}
                   onClick={() => void (when === 'later' ? act('schedule', scheduleAt) : act('publish'))}>
@@ -313,7 +313,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
             )}
             {state === 'scheduled' && at && (
               <>
-                <p className="side-bar-note" role="status">Goes live by itself <b>{untilLabel(at, now)}</b>{tgTargets && <> · posts to {tgTargets}</>}</p>
+                <p className="side-bar-note" role="status">Goes live by itself <b>{untilLabel(at, now)}</b>{tgTargets && <> · posts {tgTargets}</>}</p>
                 <div className="state-actions">
                   <button type="button" className="btn" disabled={busy} onClick={() => void unpublish()}>Back to draft</button>
                   <button type="button" className="btn primary" disabled={busy} onClick={() => void act('publish')}>Publish now</button>

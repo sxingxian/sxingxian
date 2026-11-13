@@ -246,6 +246,8 @@ export interface TelegramSetting {
   /** Default message, in simple markdown, with {title} {excerpt} {topics} {series} fill-ins. */
   template: string;
   attachImage: boolean;
+  /** Post without a notification sound (Telegram's disable_notification). Each entry can change it. */
+  silent: boolean;
   buttons: Record<EntryKind, string>;
 }
 
@@ -319,6 +321,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     channels: [],
     template: '**{title}**\n\n{excerpt}',
     attachImage: true,
+    silent: false,
     buttons: { post: 'Read the story', project: 'See the work', gallery: 'See the photos', film: 'Watch the film' },
   },
   sponsor: {

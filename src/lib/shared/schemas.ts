@@ -67,6 +67,8 @@ export const entryTelegramSchema = z.object({
   announce: z.boolean(),
   message: z.string().max(4000).nullable(),
   image: z.union([z.enum(['cover', 'none']), z.uuid()]),
+  /** null = follow the default in Settings → Telegram. */
+  silent: z.boolean().nullable().default(null),
 });
 export type EntryTelegramInput = z.infer<typeof entryTelegramSchema>;
 
@@ -131,6 +133,7 @@ export const settingsSchemas = {
     })).max(10),
     template: z.string().max(2000),
     attachImage: z.boolean(),
+    silent: z.boolean().default(false),
     buttons: z.object({ post: telegramButton, project: telegramButton, gallery: telegramButton, film: telegramButton }),
   }),
   protection: z.object({

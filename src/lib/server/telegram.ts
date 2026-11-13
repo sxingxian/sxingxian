@@ -145,12 +145,20 @@ export async function sendTest(chat: string): Promise<void> {
 // ---------- one entry's options and the post ----------
 
 export interface EntryTelegram extends EntryTelegramInput {}
-const DEFAULT_OPTIONS: EntryTelegram = { announce: true, message: null, image: 'cover' };
+const DEFAULT_OPTIONS: EntryTelegram = { announce: true, message: null, image: 'cover', silent: null };
+
+/** The silent column arrives with migration 0014; until then entries follow the default (code deploys first). */
+function missingSilent(e: unknown): boolean {
+  return (e as { code?: string })?.code === '42703' && /silent/.test(String((e as Error)?.message ?? ''));
+}
 
 export async function getEntryTelegram(entryId: string): Promise<EntryTelegram> {
   try {
-    const rows = await sql()`SELECT announce, message, image FROM entry_telegram WHERE entry_id = ${entryId}`;
-    return rows[0] ? { announce: !!rows[0].announce, message: (rows[0].message as string) ?? null, image: rows[0].image as EntryTelegram['image'] } : DEFAULT_OPTIONS;
+    const rows = await sql()`SELECT announce, message, image, silent FROM entry_telegram WHERE entry_id = ${entryId}`
+      .catch((e) => { if (missingSilent(e)) return sql()`SELECT announce, message, image, NULL::boolean AS silent FROM entry_telegram WHERE entry_id = ${entryId}`; throw e; });
+    return rows[0]
+      ? { announce: !!rows[0].announce, message: (rows[0].message as string) ?? null, image: rows[0].image as EntryTelegram['image'], silent: rows[0].silent === null || rows[0].silent === undefined ? null : !!rows[0].silent }
+      : DEFAULT_OPTIONS;
   } catch (e) {
     if (missingTable(e)) return DEFAULT_OPTIONS;
     throw e;
@@ -158,8 +166,19 @@ export async function getEntryTelegram(entryId: string): Promise<EntryTelegram> 
 }
 
 export async function putEntryTelegram(entryId: string, o: EntryTelegram): Promise<void> {
-  await sql()`INSERT INTO entry_telegram (entry_id, announce, message, image, updated_at) VALUES (${entryId}, ${o.announce}, ${o.message}, ${o.image}, now())
-    ON CONFLICT (entry_id) DO UPDATE SET announce = EXCLUDED.announce, message = EXCLUDED.message, image = EXCLUDED.image, updated_at = now()`;
+  try {
+    await sql()`INSERT INTO entry_telegram (entry_id, announce, message, image, silent, updated_at) VALUES (${entryId}, ${o.announce}, ${o.message}, ${o.image}, ${o.silent}, now())
+      ON CONFLICT (entry_id) DO UPDATE SET announce = EXCLUDED.announce, message = EXCLUDED.message, image = EXCLUDED.image, silent = EXCLUDED.silent, updated_at = now()`;
+  } catch (e) {
+    if (!missingSilent(e)) throw e;
+    await sql()`INSERT INTO entry_telegram (entry_id, announce, message, image, updated_at) VALUES (${entryId}, ${o.announce}, ${o.message}, ${o.image}, now())
+      ON CONFLICT (entry_id) DO UPDATE SET announce = EXCLUDED.announce, message = EXCLUDED.message, image = EXCLUDED.image, updated_at = now()`;
+  }
+}
+
+/** Whether this entry posts without a sound: its own choice, else the default in Settings → Telegram. */
+export async function isSilent(opts: EntryTelegram): Promise<boolean> {
+  return opts.silent ?? (await getSetting('telegram')).silent;
 }
 
 /** The channels that take this kind of entry. */
@@ -245,15 +264,16 @@ function plainError(d: string | undefined): string {
   return t || 'Telegram refused the post';
 }
 
-async function send(token: string, chat: string, post: Post): Promise<TgReply<{ message_id: number }>> {
+async function send(token: string, chat: string, post: Post, silent: boolean): Promise<TgReply<{ message_id: number }>> {
   const reply_markup = { inline_keyboard: [[{ text: post.button.text, url: post.button.url }]] };
+  const disable_notification = silent; // members see it, with no sound or buzz
   if (post.imageId) {
-    const r = await call<{ message_id: number }>(token, 'sendPhoto', { chat_id: chat, photo: `${origin()}/media/${post.imageId}`, caption: post.html, parse_mode: 'HTML', reply_markup }, SEND_TIMEOUT_MS);
+    const r = await call<{ message_id: number }>(token, 'sendPhoto', { chat_id: chat, photo: `${origin()}/media/${post.imageId}`, caption: post.html, parse_mode: 'HTML', reply_markup, disable_notification }, SEND_TIMEOUT_MS);
     // Telegram clearly couldn't fetch the picture (e.g. the NAS is off): post the text alone rather than nothing.
     // Never after an uncertain answer: the photo post may already be in the channel.
     if (r.ok || r.uncertain || !/photo|file|URL|image|webpage/i.test(r.description ?? '')) return r;
   }
-  return call<{ message_id: number }>(token, 'sendMessage', { chat_id: chat, text: post.html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }, SEND_TIMEOUT_MS);
+  return call<{ message_id: number }>(token, 'sendMessage', { chat_id: chat, text: post.html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup, disable_notification }, SEND_TIMEOUT_MS);
 }
 
 /**
@@ -272,9 +292,10 @@ export async function announceEntry(entryId: string, { only, force = false }: { 
   const channels = (await channelsFor(entry.kind)).filter((c) => (!only || c.chat === only) && published >= new Date(c.addedAt).getTime() - 60_000);
   if (!channels.length) return;
   const { post } = await postFor(entry, opts, origin());
+  const silent = await isSilent(opts);
   for (const c of channels) {
     if (!(await claim(entryId, c.chat, force))) continue;
-    const r = await send(b.token, c.chat, post);
+    const r = await send(b.token, c.chat, post, silent);
     if (r.ok) await sql()`UPDATE telegram_posts SET status = 'sent', message_id = ${r.result?.message_id ?? null}, error = NULL, updated_at = now() WHERE entry_id = ${entryId} AND chat = ${c.chat}`;
     else await sql()`UPDATE telegram_posts SET status = 'failed', error = ${r.uncertain ? UNCONFIRMED : plainError(r.description)}, updated_at = now() WHERE entry_id = ${entryId} AND chat = ${c.chat}`;
   }
