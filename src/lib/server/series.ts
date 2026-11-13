@@ -135,6 +135,7 @@ export async function seriesForEntry(entryId: string): Promise<{ series: Series;
 
 // ---------------- admin ----------------
 
+/** Every series (the picker in the story editor). The Series screen uses adminPageSeries. */
 export async function adminListSeries(): Promise<SeriesAdminRow[]> {
   const rows = await sql().query(
     `SELECT s.id, s.slug, s.title, s.description, s.planned_parts, s.is_public, s.created_at, s.updated_at,
@@ -148,6 +149,36 @@ export async function adminListSeries(): Promise<SeriesAdminRow[]> {
     [],
   );
   return rows as SeriesAdminRow[];
+}
+
+export type SeriesShowFilter = 'all' | 'public' | 'hidden';
+const SERIES_SHOW: Record<SeriesShowFilter, string> = { all: 'true', public: 's.is_public', hidden: 'NOT s.is_public' };
+
+/** One page of the admin list, newest edit first. `like` is a ready ILIKE pattern (or null for no search). */
+export async function adminPageSeries(opts: { show: SeriesShowFilter; like: string | null; size: number; offset: number }): Promise<{ series: SeriesAdminRow[]; total: number; counts: Record<SeriesShowFilter, number> }> {
+  const where = `(${SERIES_SHOW[opts.show]}) AND ($1::text IS NULL OR s.title ILIKE $1 OR s.slug ILIKE $1)`;
+  const [rows, matched, counts] = await Promise.all([
+    sql().query(
+      `SELECT s.id, s.slug, s.title, s.description, s.planned_parts, s.is_public, s.created_at, s.updated_at,
+              count(e.id) FILTER (WHERE e.status = 'published' AND e.is_public AND e.published_at <= now())::int AS published,
+              count(e.id) FILTER (WHERE e.status = 'published' AND e.is_public AND e.published_at > now())::int AS scheduled,
+              count(e.id) FILTER (WHERE e.status <> 'published' OR NOT e.is_public)::int AS drafts
+       FROM series s
+       LEFT JOIN series_parts sp ON sp.series_id = s.id
+       LEFT JOIN entries e ON e.id = sp.entry_id
+       WHERE ${where}
+       GROUP BY s.id ORDER BY s.updated_at DESC, s.id LIMIT $2 OFFSET $3`,
+      [opts.like, opts.size, opts.offset],
+    ),
+    sql().query(`SELECT count(*)::int AS n FROM series s WHERE ${where}`, [opts.like]),
+    sql().query(`SELECT count(*)::int AS all, count(*) FILTER (WHERE is_public)::int AS public, count(*) FILTER (WHERE NOT is_public)::int AS hidden FROM series`, []),
+  ]);
+  const c = (counts[0] ?? {}) as Record<string, number>;
+  return {
+    series: rows as SeriesAdminRow[],
+    total: Number((matched[0] as { n?: number })?.n ?? 0),
+    counts: { all: Number(c.all ?? 0), public: Number(c.public ?? 0), hidden: Number(c.hidden ?? 0) },
+  };
 }
 
 export async function createSeries(input: SeriesInput): Promise<Series> {
