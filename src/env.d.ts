@@ -47,5 +47,7 @@ declare namespace App {
     cspNonce?: string;
     user?: import('./lib/server/users').SessionUser;
     sessionHash?: string;
+    /** Set by the page being rendered, read by the layout and ad slots: see src/lib/server/ads.ts. */
+    adFacts?: import('./lib/server/ads').AdPageFacts;
   }
 }

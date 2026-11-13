@@ -8,6 +8,7 @@ import { useToast } from '../components/ui';
 import { Field, Segmented, ToggleRow, TopBar } from '../components/kit';
 import { KIND_SECTION } from '../nav';
 import { slugify } from '../../lib/shared/safe';
+import { imagesWithoutAlt } from '../../lib/shared/doc-checks';
 import { KIND_PATH, TOPIC_LIST, TOPIC_LIST_LABEL, type DocNode, type Entry, type EntryEdits, type EntryKind, type FeaturedSetting, featuredIds, MAX_FEATURED, type MediaItem, type SiteSetting, type TopicsSetting } from '../../lib/shared/types';
 import { entryState, untilLabel, whenLabel, type EntryState } from '../../lib/shared/state';
 import SeriesField from '../components/SeriesField';
@@ -202,6 +203,15 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
   const state: EntryState = entryState(entry, now);
   const at = entry?.published_at ?? null;
   const edited = state === 'published' && hasEdits;
+  // Gentle reminders before something goes live: readers, search engines and ad reviewers all look for these.
+  const noAlt = imagesWithoutAlt(draft.body);
+  const reminders = [
+    ...(draft.dek.trim() ? [] : ['no summary']),
+    ...(noAlt ? [`${noAlt} photo${noAlt === 1 ? '' : 's'} without a description`] : []),
+  ];
+  const remind = reminders.length > 0 && (state === 'draft' || edited) && (
+    <p className="side-bar-note">Worth adding first: {reminders.join(' · ')}.</p>
+  );
   const saveLabel = auto.state === 'saved' && !auto.dirty && edited ? 'Edits not live' : auto.label;
 
   return (
@@ -300,6 +310,7 @@ export default function EntryEditor({ id, kind: newKind, go }: { id: string | nu
           {entryId && <button type="button" className="btn danger side-danger" onClick={remove}>Delete entry</button>}
           {/* The action bar: what will happen, then the buttons. Stays in view at the bottom of the panel. */}
           <div className="side-bar">
+            {remind}
             {state === 'draft' && (
               <>
                 <p className="side-bar-note" role="status">

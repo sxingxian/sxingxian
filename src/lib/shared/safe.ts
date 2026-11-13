@@ -21,6 +21,14 @@ export function isSafeHref(raw: unknown): raw is string {
   }
 }
 
+/**
+ * Remove characters that take no space and carry no meaning in a title: zero-width space, word joiner,
+ * byte-order mark and soft hyphen. Zero-width joiner / non-joiner stay: emoji and some scripts need them.
+ */
+export function stripInvisible(input: string): string {
+  return input.replace(/[\u200B\u2060\uFEFF\u00AD]/g, '');
+}
+
 /** URL-safe slug from any title. */
 export function slugify(input: string): string {
   return (

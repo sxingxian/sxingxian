@@ -246,6 +246,10 @@ td a.title:hover { text-decoration: underline; }
 .list > div { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-2); flex-wrap: wrap; }
 .list > div:first-child { border-top: 0; }
 .muted { color: var(--faint); font-size: 12.5px; }
+/* Checklist lines: a tick or cross plus words, so the meaning never rests on colour alone. */
+.check-ok, .check-no { font-size: 13px; }
+.check-ok { color: var(--accent); }
+.check-no { color: var(--danger); }
 .sidebar .who { display: flex; flex-direction: column; gap: 2px; }
 .sidebar .linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; }
 

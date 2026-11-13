@@ -18,11 +18,11 @@ const KIND_SECTION: Record<EntryKind, keyof SectionsSetting | null> = { post: nu
 const KIND_GROUP: Record<EntryKind, IndexedUrl['group']> = { post: 'Stories', project: 'Work', gallery: 'Photos', film: 'Film' };
 
 export async function siteIndex(): Promise<IndexedUrl[]> {
-  const [{ sections, sponsor }, entries, series, cv, about, privacy] = await Promise.all([
+  const [{ sections, sponsor }, entries, series, cv, about, privacy, contact] = await Promise.all([
     getSettings(['sections', 'sponsor']),
     listPublicIndex(),
     listPublicSeries(100).catch(() => []),
-    getPage('cv'), getPage('about'), getPage('privacy'),
+    getPage('cv'), getPage('about'), getPage('privacy'), getPage('contact'),
   ]);
   const on = (k: EntryKind) => { const s = KIND_SECTION[k]; return !s || sections[s]; };
   const newest = (k: EntryKind) => entries.find((e) => e.kind === k)?.updated_at;
@@ -30,7 +30,8 @@ export async function siteIndex(): Promise<IndexedUrl[]> {
   const lists: [EntryKind, string, string][] = [['post', '/story', 'All stories'], ['project', '/work', 'Work'], ['gallery', '/photos', 'Photos'], ['film', '/film', 'Film']];
   for (const [k, path, title] of lists) if (on(k)) urls.push({ path, title, group: 'Pages', lastmod: newest(k) });
   if (series.length) urls.push({ path: '/series', title: 'Series', group: 'Pages' });
-  for (const [page, enabled] of [[cv, sections.cv], [about, sections.about], [privacy, true]] as const) {
+  const written = (p: typeof cv) => !!p && Array.isArray(p.body?.content) && p.body.content.length > 0;
+  for (const [page, enabled] of [[cv, sections.cv], [about, sections.about], [contact, sections.contact && written(contact)], [privacy, written(privacy)]] as const) {
     if (page && enabled && !page.noindex) urls.push({ path: `/${page.slug}`, title: page.title || page.slug, group: 'Pages', lastmod: page.updated_at });
   }
   if (sponsorLive(sponsor)) urls.push({ path: '/sponsor', title: sponsor.pageTitle, description: sponsor.pageText, group: 'Pages' });

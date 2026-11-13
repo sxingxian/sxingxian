@@ -2,10 +2,11 @@ import type { APIRoute } from 'astro';
 import { getPage, putPage } from '../../../../lib/server/repo';
 import { error, json, readBody } from '../../../../lib/server/http';
 import { pageInputSchema } from '../../../../lib/shared/schemas';
+import { PAGE_SLUGS, type PageSlug } from '../../../../lib/shared/types';
 
-const SLUGS = new Set(['cv', 'about', 'privacy']);
-type Slug = 'cv' | 'about' | 'privacy';
-const TITLES: Record<Slug, string> = { cv: 'CV', about: 'About', privacy: 'Privacy' };
+const SLUGS = new Set<string>(PAGE_SLUGS);
+type Slug = PageSlug;
+const TITLES: Record<Slug, string> = { cv: 'CV', about: 'About', privacy: 'Privacy', contact: 'Contact' };
 
 export const GET: APIRoute = async ({ params }) => {
   const slug = params.slug ?? '';

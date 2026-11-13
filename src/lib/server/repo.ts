@@ -312,14 +312,15 @@ export async function getPage(slug: Page['slug']): Promise<Page | null> {
   return (rows[0] as Page) ?? null;
 }
 
-let privacyCache: { at: number; has: boolean } | null = null;
-/** Whether a Privacy page with content exists (cached a minute per isolate; for the footer link). */
-export async function hasPrivacyPage(): Promise<boolean> {
-  if (privacyCache && Date.now() - privacyCache.at < 60_000) return privacyCache.has;
-  const rows = await sql()`SELECT jsonb_array_length(COALESCE(body->'content', '[]'::jsonb)) > 0 AS has FROM pages WHERE slug = 'privacy'`;
-  privacyCache = { at: Date.now(), has: rows[0]?.has === true };
-  return privacyCache.has;
+let writtenCache: { at: number; slugs: Set<string> } | null = null;
+/** The standalone pages that have content (cached a minute per isolate; for the footer links). */
+export async function writtenPages(): Promise<Set<string>> {
+  if (writtenCache && Date.now() - writtenCache.at < 60_000) return writtenCache.slugs;
+  const rows = await sql()`SELECT slug FROM pages WHERE CASE WHEN jsonb_typeof(body->'content') = 'array' THEN jsonb_array_length(body->'content') > 0 ELSE false END`;
+  writtenCache = { at: Date.now(), slugs: new Set(rows.map((r) => String(r.slug))) };
+  return writtenCache.slugs;
 }
+
 
 export async function putPage(slug: Page['slug'], p: { title: string; body: unknown; noindex: boolean }): Promise<Page> {
   const rows = await sql()`
@@ -327,7 +328,7 @@ export async function putPage(slug: Page['slug'], p: { title: string; body: unkn
     VALUES (${slug}, ${p.title}, ${JSON.stringify(p.body)}::jsonb, ${p.noindex}, now())
     ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, noindex = EXCLUDED.noindex, updated_at = now()
     RETURNING slug, title, body, noindex, updated_at`;
-  if (slug === 'privacy') privacyCache = null;
+  writtenCache = null;
   return rows[0] as Page;
 }
 

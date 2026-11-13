@@ -44,8 +44,13 @@ export function docText(node: DocNode | undefined, depth = 0): string {
   return (node.content ?? []).map((c) => docText(c, depth + 1)).join(' ');
 }
 
+/** Words of the author's own text in a document (captions and alt text are not counted). */
+export function wordCount(doc: DocNode | undefined): number {
+  return docText(doc).split(/\s+/).filter(Boolean).length;
+}
+
 export function readMinutes(doc: DocNode): number {
-  const words = docText(doc).split(/\s+/).filter(Boolean).length;
+  const words = wordCount(doc);
   return Math.max(1, Math.round(words / 220));
 }
 
