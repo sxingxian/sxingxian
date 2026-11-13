@@ -248,7 +248,21 @@ export interface AdReadiness {
   contact: 'ok' | 'off' | 'missing';
   adsTxt: boolean;
   entries: { total: number; noSummary: number; noAlt: number; short: number };
+  /** The entries behind the two counts above, newest first, at most READINESS_LIST_MAX each. */
+  lists: { noSummary: ReadinessEntry[]; noAlt: ReadinessEntry[] };
 }
+
+/** One live entry in a checklist list. `missing` = photos without a description (noAlt list only). */
+export interface ReadinessEntry {
+  id: string;
+  kind: EntryKind;
+  title: string;
+  published_at: string;
+  missing?: number;
+  /** Has saved edits that aren't live yet (they may already fix it: press Update in the editor). */
+  pending: boolean;
+}
+export const READINESS_LIST_MAX = 200;
 
 export type WatermarkPosition = 'br' | 'bl' | 'center' | 'tiled';
 

@@ -14,7 +14,9 @@ import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
 import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../components/kit';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
-import { AD_MIN_WORDS, AD_PLACES, AD_PLACE_LABELS, DEFAULT_AD_PLACES, SECTION_LABELS, type AdReadiness, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
+import { Modal } from '../components/Modal';
+import { useGo } from '../nav';
+import { AD_MIN_WORDS, AD_PLACES, KIND_LABELS, AD_PLACE_LABELS, DEFAULT_AD_PLACES, SECTION_LABELS, type AdReadiness, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
 type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'telegram' | 'sponsor' | 'ads';
 const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['telegram', 'Telegram'], ['sponsor', 'Sponsor'], ['ads', 'Ads']];
@@ -563,9 +565,50 @@ function PhotoSettings() {
 // ------------------------------------------------------------------ Ads
 
 /** One line of the checklist: a tick or a cross, in words as well as colour. */
-function Check({ ok, loading, good, bad }: { ok: boolean; loading: boolean; good: string; bad: string }) {
+function Check({ ok, loading, good, bad, onOpen }: { ok: boolean; loading: boolean; good: string; bad: string; onOpen?: () => void }) {
   if (loading) return <span className="muted">Checking…</span>;
-  return <span className={ok ? 'check-ok' : 'check-no'}><span aria-hidden="true">{ok ? '✓' : '✕'}</span> {ok ? good : bad}</span>;
+  const body = <><span aria-hidden="true">{ok ? '✓' : '✕'}</span> {ok ? good : bad}</>;
+  // A failing line with a list behind it opens that list.
+  if (!ok && onOpen) return <button type="button" className="check-no check-open" aria-haspopup="dialog" onClick={onOpen}>{body}<span className="check-more">Show</span></button>;
+  return <span className={ok ? 'check-ok' : 'check-no'}>{body}</span>;
+}
+
+type FixList = 'noSummary' | 'noAlt';
+const FIX_LIST_KEY = 'sx-ads-fix-list';
+const FIX_LISTS: Record<FixList, { title: string; what: string }> = {
+  noSummary: { title: 'Entries without a summary', what: 'Add a summary under the title.' },
+  noAlt: { title: 'Photos without a description', what: 'Select each photo and fill in its description.' },
+};
+
+/** The entries behind one checklist line. Each opens in the editor; coming back reopens this list, refreshed. */
+function FixListModal({ list, ready, onClose }: { list: FixList; ready: AdReadiness; onClose: () => void }) {
+  const go = useGo();
+  const rows = ready.lists[list];
+  const total = list === 'noSummary' ? ready.entries.noSummary : ready.entries.noAlt;
+  const open = (id: string) => { try { sessionStorage.setItem(FIX_LIST_KEY, list); } catch { /* private mode */ } go(`/admin/edit/${id}`); };
+  return (
+    <Modal title={FIX_LISTS[list].title} onClose={onClose}
+      footer={<span className="muted">{rows.length < total ? `Showing the newest ${rows.length} of ${total}` : `${total} ${total === 1 ? 'entry' : 'entries'}`} · live entries only</span>}>
+      <p className="field-hint">{FIX_LISTS[list].what} On a live entry, press Update so the change counts. Coming back here shows the list again.</p>
+      {rows.length === 0 ? <p className="muted">Nothing left to fix.</p> : (
+        <ul className="list-rows fix-list">
+          {rows.map((r) => (
+            <li key={r.id} className="list-row">
+              <div>
+                <a className="title" href={`/admin/edit/${r.id}`} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); open(r.id); }}>{r.title || 'Untitled'}</a>
+                <div className="meta">
+                  {KIND_LABELS[r.kind]} · {new Date(r.published_at).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Singapore' })}
+                  {r.missing ? ` · ${r.missing} photo${r.missing === 1 ? '' : 's'}` : ''}
+                  {r.pending && <> · <b>Edits waiting for Update</b></>}
+                </div>
+              </div>
+              <button type="button" className="btn small" onClick={() => open(r.id)}>Edit</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
 }
 
 function AdsSettings() {
@@ -575,6 +618,14 @@ function AdsSettings() {
   const [err, setErr] = useState('');
   const toast = useToast();
   const [ready, setReady] = useState<AdReadiness | null>(null);
+  // Reopen the list you left from (Edit → back), once the fresh counts are in.
+  const [fixList, setFixList] = useState<FixList | null>(() => {
+    try {
+      const v = sessionStorage.getItem(FIX_LIST_KEY);
+      sessionStorage.removeItem(FIX_LIST_KEY);
+      return v === 'noSummary' || v === 'noAlt' ? v : null;
+    } catch { return null; }
+  });
   useEffect(() => {
     api.get<{ value: AdsSetting }>('/api/admin/settings/ads').then((r) => { setA(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
     api.get<AdReadiness>('/api/admin/ads/readiness').then(setReady).catch(() => {});
@@ -631,12 +682,13 @@ function AdsSettings() {
         <Row label="Privacy page"><Check ok={ready?.privacy === 'ok'} loading={!ready} good="Published" bad={ready?.privacy === 'hidden' ? 'Hidden from search engines' : 'Not written yet'} /><a href="/admin/pages/privacy">Edit</a></Row>
         <Row label="About page"><Check ok={ready?.about === 'ok'} loading={!ready} good="On the site" bad={ready?.about === 'off' ? 'Written, but switched off' : 'Not written yet'} /><a href="/admin/pages/about">Edit</a></Row>
         <Row label="Contact page"><Check ok={ready?.contact === 'ok'} loading={!ready} good="On the site" bad={ready?.contact === 'off' ? 'Written, but switched off' : 'Not written yet'} /><a href="/admin/pages/contact">Edit</a></Row>
-        <Row label="Summaries"><Check ok={ready?.entries.noSummary === 0} loading={!ready} good="Every entry has one" bad={`${ready?.entries.noSummary ?? 0} of ${ready?.entries.total ?? 0} live entries have none`} /></Row>
-        <Row label="Photo descriptions"><Check ok={ready?.entries.noAlt === 0} loading={!ready} good="Every photo has one" bad={`${ready?.entries.noAlt ?? 0} live entries have photos without one`} /></Row>
+        <Row label="Summaries"><Check ok={ready?.entries.noSummary === 0} loading={!ready} good="Every entry has one" bad={`${ready?.entries.noSummary ?? 0} of ${ready?.entries.total ?? 0} live entries have none`} onOpen={() => setFixList('noSummary')} /></Row>
+        <Row label="Photo descriptions"><Check ok={ready?.entries.noAlt === 0} loading={!ready} good="Every photo has one" bad={`${ready?.entries.noAlt ?? 0} live entries have photos without one`} onOpen={() => setFixList('noAlt')} /></Row>
         <Row label="Short entries" hint={`Under ${AD_MIN_WORDS} words`}><span className="muted">{ready ? `${ready.entries.short} of ${ready.entries.total}${saved.skipShort !== false ? ' · these carry no ads' : ''}` : 'Checking…'}</span></Row>
         <Row label="EU / UK consent"><span className="muted">Publish Google’s message in AdSense → Privacy &amp; messaging</span></Row>
         <Row label="Auto ads"><span className="muted">Optional, set in AdSense. Follows the switches above.</span></Row>
       </Panel>
+      {fixList && ready && <FixListModal list={fixList} ready={ready} onClose={() => setFixList(null)} />}
     </>
   );
 }

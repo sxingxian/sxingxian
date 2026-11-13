@@ -250,6 +250,13 @@ td a.title:hover { text-decoration: underline; }
 .check-ok, .check-no { font-size: 13px; }
 .check-ok { color: var(--accent); }
 .check-no { color: var(--danger); }
+/* A failing checklist line that opens its list: reads as the same line, plus a "Show" cue. */
+.check-open { background: none; border: 0; padding: 4px 6px; margin: -4px -6px; border-radius: 6px; font: inherit; font-size: 13px; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.check-open:hover, .check-open:focus-visible { background: var(--danger-bg); }
+.check-open .check-more { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; margin-left: 6px; }
+.fix-list { margin: 0 -20px; padding: 0; list-style: none; }
+.fix-list .list-row b { font-weight: 500; color: var(--warn-ink); }
+@media (max-width: 640px) { .fix-list { margin: 0 -16px; } }
 .sidebar .who { display: flex; flex-direction: column; gap: 2px; }
 .sidebar .linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; }
 
