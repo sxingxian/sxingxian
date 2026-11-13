@@ -10,7 +10,7 @@ import { CAPTION_MAX, markdownToTelegramHtml, TEXT_MAX, visibleLength } from '..
 import { whenLabel, type EntryState } from '../../lib/shared/state';
 
 interface Options { announce: boolean; message: string | null; image: 'cover' | 'none' | string }
-interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed'; attempts: number; messageId: number | null; error: string | null; at: string }
+interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed' | 'unconfirmed'; attempts: number; messageId: number | null; error: string | null; at: string }
 interface View {
   available: boolean;
   connected: boolean;
@@ -112,6 +112,13 @@ export default function TelegramSection({ entryId, state, refreshKey, pickMedia,
                     <span>Couldn’t post to <b>{title(p.chat)}</b></span>
                     <span className="hint">{p.error}{p.attempts > 1 ? ` · tried ${p.attempts} times` : ''}</span>
                     <button type="button" className="btn small" disabled={busy} onClick={() => void retry(p.chat)}>Try again</button>
+                  </>
+                )}
+                {p.status === 'unconfirmed' && (
+                  <>
+                    <span>Not sure it posted to <b>{title(p.chat)}</b></span>
+                    <span className="hint">Telegram didn’t confirm it, so it isn’t sent again by itself. Check the channel first; post again only if it’s missing.</span>
+                    <button type="button" className="btn small" disabled={busy} onClick={() => void retry(p.chat)}>Post again</button>
                   </>
                 )}
               </li>

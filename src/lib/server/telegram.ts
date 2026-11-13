@@ -11,7 +11,11 @@
 //  - A scheduled entry: when it goes live, the next page visit's background check posts it (the same
 //    visit-driven jobs as the WordPress sync; no timer).
 //  - Each entry is posted once per channel per publication; moving it back to draft clears the record, so
-//    publishing again posts again. A failed post is tried up to 3 times.
+//    publishing again posts again. A post Telegram refused is tried up to 3 times.
+//  - Never posted twice by itself: when we can't tell whether Telegram posted (no answer in time, the
+//    connection dropped, Telegram's own server error, or the request was cut off mid-send) it is marked
+//    "not confirmed" and NOT retried automatically, because Telegram may have posted it anyway (it has no
+//    way to send a message only once). The editor asks you to check the channel; "Post again" is yours.
 import { env } from 'cloudflare:workers';
 import { sql } from './db';
 import { getPublicEntryById, getSetting } from './repo';
@@ -24,8 +28,16 @@ import { KIND_PATH, type Entry, type TelegramChannel } from '../shared/types';
 const API = 'https://api.telegram.org';
 const AAD = 'telegram-bot';
 const TIMEOUT_MS = 10_000;
+/** Posting waits longer: for a photo, Telegram first downloads it from this site. */
+const SEND_TIMEOUT_MS = 20_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_S = 120;
+/** A post still "sending" after this long was cut off mid-send: its outcome is unknown. */
+const STUCK_MIN = 5;
+/** Stored as the error of a post whose outcome is unknown (shown in the editor as "not confirmed"). */
+export const UNCONFIRMED = 'Telegram didn’t confirm this post. It may have gone out anyway: check the channel before posting again.';
+/** Every error meaning "outcome unknown", including the wording saved before UNCONFIRMED existed. */
+const UNSURE = [UNCONFIRMED, 'Telegram didn’t answer in time', 'Couldn’t reach Telegram'];
 /** A scheduled entry is still posted if the first visit after its time comes within this long. */
 const LATE_LIMIT = '3 days';
 
@@ -35,20 +47,27 @@ function missingTable(e: unknown): boolean {
   return (e as { code?: string })?.code === '42P01';
 }
 
-interface TgReply<T> { ok: boolean; result?: T; description?: string; error_code?: number }
+/**
+ * `uncertain`: we can't tell whether Telegram acted (no answer in time, connection lost, a 5xx, or an answer
+ * we couldn't read). A clear refusal from Telegram (ok: false with a 4xx) is certain: nothing was posted.
+ */
+interface TgReply<T> { ok: boolean; result?: T; description?: string; error_code?: number; uncertain?: boolean }
 
-async function call<T>(token: string, method: string, payload: Record<string, unknown>): Promise<TgReply<T>> {
+async function call<T>(token: string, method: string, payload: Record<string, unknown>, timeoutMs = TIMEOUT_MS): Promise<TgReply<T>> {
   try {
     const res = await fetch(`${API}/bot${token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    const data = (await res.json().catch(() => ({}))) as TgReply<T>;
-    return { ok: !!data.ok, result: data.result, description: (data.description ?? `HTTP ${res.status}`).slice(0, 200), error_code: data.error_code ?? res.status };
+    const data = (await res.json().catch(() => null)) as TgReply<T> | null;
+    if (!data || typeof data.ok !== 'boolean' || res.status >= 500) {
+      return { ok: false, description: `Telegram answered with an error (HTTP ${res.status})`, error_code: res.status, uncertain: true };
+    }
+    return { ok: data.ok, result: data.result, description: (data.description ?? `HTTP ${res.status}`).slice(0, 200), error_code: data.error_code ?? res.status };
   } catch (e) {
-    return { ok: false, description: (e as Error)?.name === 'TimeoutError' ? 'Telegram didn’t answer in time' : 'Couldn’t reach Telegram' };
+    return { ok: false, description: (e as Error)?.name === 'TimeoutError' ? 'Telegram didn’t answer in time' : 'Couldn’t reach Telegram', uncertain: true };
   }
 }
 
@@ -161,12 +180,21 @@ export async function postFor(entry: Entry, opts: EntryTelegram, origin: string)
   return { post: buildPost(input), defaultMessage: fillTemplate(t.template, input) };
 }
 
-export interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed'; attempts: number; messageId: number | null; error: string | null; at: string }
+/** `unconfirmed`: Telegram may or may not have posted it (see UNCONFIRMED); it is not retried by itself. */
+export interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed' | 'unconfirmed'; attempts: number; messageId: number | null; error: string | null; at: string }
 
 export async function postsFor(entryId: string): Promise<PostRecord[]> {
   try {
-    const rows = await sql()`SELECT chat, status, attempts, message_id, error, updated_at FROM telegram_posts WHERE entry_id = ${entryId} ORDER BY chat`;
-    return rows.map((r) => ({ chat: r.chat as string, status: r.status as PostRecord['status'], attempts: Number(r.attempts), messageId: r.message_id ? Number(r.message_id) : null, error: (r.error as string) ?? null, at: new Date(r.updated_at as string).toISOString() }));
+    const rows = await sql()`SELECT chat, status, attempts, message_id, error, updated_at,
+        (status = 'sending' AND updated_at < now() - make_interval(mins => ${STUCK_MIN})) AS stuck
+      FROM telegram_posts WHERE entry_id = ${entryId} ORDER BY chat`;
+    return rows.map((r) => {
+      const unconfirmed = !!r.stuck || (r.status === 'failed' && UNSURE.includes(r.error as string));
+      return {
+        chat: r.chat as string, status: unconfirmed ? 'unconfirmed' : r.status as PostRecord['status'], attempts: Number(r.attempts),
+        messageId: r.message_id ? Number(r.message_id) : null, error: unconfirmed ? UNCONFIRMED : (r.error as string) ?? null, at: new Date(r.updated_at as string).toISOString(),
+      };
+    });
   } catch (e) {
     if (missingTable(e)) return [];
     throw e;
@@ -182,16 +210,25 @@ export async function clearPosts(entryId: string): Promise<void> {
   }
 }
 
-/** Claims (entry, chat) for this request: a new row, or a failed/stuck one that may be tried again. */
+/**
+ * Claims (entry, chat) for this request: a new row, or a refused one that may be tried again.
+ * An unconfirmed post (or one stuck in "sending") is only claimed by `force`: you pressing "Post again".
+ */
 async function claim(entryId: string, chat: string, force: boolean): Promise<boolean> {
   const fresh = await sql()`INSERT INTO telegram_posts (entry_id, chat, status) VALUES (${entryId}, ${chat}, 'sending') ON CONFLICT DO NOTHING RETURNING chat`;
   if (fresh.length) return true;
   const retry = await sql()`UPDATE telegram_posts SET status = 'sending', attempts = attempts + 1, updated_at = now()
     WHERE entry_id = ${entryId} AND chat = ${chat}
-      AND ((status = 'failed' AND (${force} OR (attempts < ${MAX_ATTEMPTS} AND updated_at < now() - make_interval(secs => ${RETRY_AFTER_S}))))
-        OR (status = 'sending' AND updated_at < now() - interval '5 minutes'))
+      AND ((status = 'failed' AND (${force} OR (NOT (coalesce(error, '') = ANY(${UNSURE}::text[])) AND attempts < ${MAX_ATTEMPTS} AND updated_at < now() - make_interval(secs => ${RETRY_AFTER_S}))))
+        OR (${force} AND status = 'sending' AND updated_at < now() - make_interval(mins => ${STUCK_MIN})))
     RETURNING chat`;
   return retry.length > 0;
+}
+
+/** Posts cut off mid-send (the request ended before Telegram answered): their outcome is unknown. */
+async function markStuckUnconfirmed(): Promise<void> {
+  await sql()`UPDATE telegram_posts SET status = 'failed', error = ${UNCONFIRMED}, updated_at = now()
+    WHERE status = 'sending' AND updated_at < now() - make_interval(mins => ${STUCK_MIN})`;
 }
 
 function origin(): string {
@@ -211,11 +248,12 @@ function plainError(d: string | undefined): string {
 async function send(token: string, chat: string, post: Post): Promise<TgReply<{ message_id: number }>> {
   const reply_markup = { inline_keyboard: [[{ text: post.button.text, url: post.button.url }]] };
   if (post.imageId) {
-    const r = await call<{ message_id: number }>(token, 'sendPhoto', { chat_id: chat, photo: `${origin()}/media/${post.imageId}`, caption: post.html, parse_mode: 'HTML', reply_markup });
-    // Telegram couldn't fetch the picture (e.g. the NAS is off): post the text alone rather than nothing.
-    if (r.ok || !/photo|file|URL|image|webpage/i.test(r.description ?? '')) return r;
+    const r = await call<{ message_id: number }>(token, 'sendPhoto', { chat_id: chat, photo: `${origin()}/media/${post.imageId}`, caption: post.html, parse_mode: 'HTML', reply_markup }, SEND_TIMEOUT_MS);
+    // Telegram clearly couldn't fetch the picture (e.g. the NAS is off): post the text alone rather than nothing.
+    // Never after an uncertain answer: the photo post may already be in the channel.
+    if (r.ok || r.uncertain || !/photo|file|URL|image|webpage/i.test(r.description ?? '')) return r;
   }
-  return call<{ message_id: number }>(token, 'sendMessage', { chat_id: chat, text: post.html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup });
+  return call<{ message_id: number }>(token, 'sendMessage', { chat_id: chat, text: post.html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }, SEND_TIMEOUT_MS);
 }
 
 /**
@@ -238,7 +276,7 @@ export async function announceEntry(entryId: string, { only, force = false }: { 
     if (!(await claim(entryId, c.chat, force))) continue;
     const r = await send(b.token, c.chat, post);
     if (r.ok) await sql()`UPDATE telegram_posts SET status = 'sent', message_id = ${r.result?.message_id ?? null}, error = NULL, updated_at = now() WHERE entry_id = ${entryId} AND chat = ${c.chat}`;
-    else await sql()`UPDATE telegram_posts SET status = 'failed', error = ${plainError(r.description)}, updated_at = now() WHERE entry_id = ${entryId} AND chat = ${c.chat}`;
+    else await sql()`UPDATE telegram_posts SET status = 'failed', error = ${r.uncertain ? UNCONFIRMED : plainError(r.description)}, updated_at = now() WHERE entry_id = ${entryId} AND chat = ${c.chat}`;
   }
 }
 
@@ -249,6 +287,7 @@ export async function announceEntry(entryId: string, { only, force = false }: { 
 export async function announceDue(): Promise<void> {
   const b = await bot();
   if (!b) return;
+  await markStuckUnconfirmed();
   const t = await getSetting('telegram');
   if (!t.channels.length) return;
   const n = (k: Entry['kind']) => t.channels.filter((c) => c.kinds.includes(k)).length;
@@ -258,7 +297,8 @@ export async function announceDue(): Promise<void> {
     WHERE e.status = 'published' AND e.is_public = true AND e.published_at <= now()
       AND e.published_at > now() - ${LATE_LIMIT}::interval AND e.published_at >= ${b.connectedAt}::timestamptz
       AND coalesce(o.announce, true)
-      AND (SELECT count(*) FROM telegram_posts p WHERE p.entry_id = e.id AND (p.status = 'sent' OR p.attempts >= ${MAX_ATTEMPTS}::int))
+      AND (SELECT count(*) FROM telegram_posts p WHERE p.entry_id = e.id
+             AND (p.status IN ('sent', 'sending') OR p.error = ANY(${UNSURE}::text[]) OR p.attempts >= ${MAX_ATTEMPTS}::int))
         < (CASE e.kind WHEN 'post' THEN ${n('post')}::int WHEN 'project' THEN ${n('project')}::int WHEN 'gallery' THEN ${n('gallery')}::int ELSE ${n('film')}::int END)
     ORDER BY e.published_at LIMIT 10`;
   for (const r of rows) await announceEntry(r.id as string);
