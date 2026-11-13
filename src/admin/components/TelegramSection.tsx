@@ -9,12 +9,14 @@ import { useToast } from './ui';
 import { CAPTION_MAX, markdownToTelegramHtml, TEXT_MAX, visibleLength } from '../../lib/shared/telegram-format';
 import { whenLabel, type EntryState } from '../../lib/shared/state';
 
-interface Options { announce: boolean; message: string | null; image: 'cover' | 'none' | string }
-interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed'; attempts: number; messageId: number | null; error: string | null; at: string }
+interface Options { announce: boolean; message: string | null; image: 'cover' | 'none' | string; silent?: boolean | null }
+interface PostRecord { chat: string; status: 'sending' | 'sent' | 'failed' | 'unconfirmed'; attempts: number; messageId: number | null; error: string | null; at: string }
 interface View {
   available: boolean;
   connected: boolean;
   options: Options;
+  /** Settings → Telegram → Send silently; an entry with silent null follows it. */
+  silentDefault: boolean;
   channels: { chat: string; title: string }[];
   posts: PostRecord[];
   preview: { html: string; imageId: string | null; button: string };
@@ -62,8 +64,9 @@ export default function TelegramSection({ entryId, state, refreshKey, pickMedia,
     return () => clearTimeout(t);
   }, [state, v, load]);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const silent = v ? v.options.silent ?? v.silentDefault : false;
   const targets = v && v.available && v.connected && v.channels.length && v.options.announce
-    ? v.channels.map((c) => c.title || c.chat).join(', ') : null;
+    ? `${silent ? 'silently ' : ''}to ${v.channels.map((c) => c.title || c.chat).join(', ')}` : null;
   useEffect(() => { onTargets?.(targets); }, [onTargets, targets]);
 
   if (!entryId || !v || !v.available || !v.connected || !v.channels.length) return null;
@@ -114,6 +117,13 @@ export default function TelegramSection({ entryId, state, refreshKey, pickMedia,
                     <button type="button" className="btn small" disabled={busy} onClick={() => void retry(p.chat)}>Try again</button>
                   </>
                 )}
+                {p.status === 'unconfirmed' && (
+                  <>
+                    <span>Not sure it posted to <b>{title(p.chat)}</b></span>
+                    <span className="hint">Telegram didn’t confirm it, so it isn’t sent again by itself. Check the channel first; post again only if it’s missing.</span>
+                    <button type="button" className="btn small" disabled={busy} onClick={() => void retry(p.chat)}>Post again</button>
+                  </>
+                )}
               </li>
             );
           })}
@@ -144,6 +154,10 @@ export default function TelegramSection({ entryId, state, refreshKey, pickMedia,
               }} />
           </div>
           {o.image === 'cover' && !v.coverId && <span className="hint">No cover yet: it’s posted as text.</span>}
+          {/* Matching the default again goes back to following it (null), so changing Settings later still applies. */}
+          <ToggleRow label="Send silently" checked={silent}
+            hint={`No sound or buzz for members · ${o.silent === null || o.silent === undefined ? 'your default' : 'this post only'}`}
+            onChange={(on) => save({ ...o, silent: on === v.silentDefault ? null : on })} />
           <button type="button" className="linklike tg-preview-toggle" aria-expanded={preview} onClick={() => setPreview(!preview)}>{preview ? 'Hide preview' : 'Preview the post'}</button>
           {preview && (
             <div className="tg-preview">

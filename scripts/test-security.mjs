@@ -40,7 +40,8 @@ await build({
                export { verifyStripeSignature } from './src/lib/server/stripe-sig.ts';
                export { DEFAULT_SETTINGS, sponsorLive, paypalVia, sponsorCardTitle } from './src/lib/shared/types.ts';
                export { sponsorMarkSchema, PAYPAL_ME_RE } from './src/lib/shared/schemas.ts';
-               export { readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } from './src/lib/shared/paging.ts';`,
+               export { readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } from './src/lib/shared/paging.ts';
+               export { entryTelegramSchema } from './src/lib/shared/schemas.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -56,7 +57,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern, entryTelegramSchema } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -750,6 +751,15 @@ t('paging: page and size from the address are clamped to safe values', () => {
   assert.equal(pageAfterResize(3, 10, 25), 1);
   assert.equal(pageAfterResize(1, 100, 10), 1);
   assert.equal(pageAfterResize(2, 25, 10), 3);
+});
+
+t('telegram: send silently is a plain yes / no / follow-the-default', () => {
+  const base = { announce: true, message: null, image: 'cover' };
+  assert.equal(entryTelegramSchema.parse(base).silent, null, 'missing = follow the default');
+  for (const v of [true, false, null]) assert.equal(entryTelegramSchema.parse({ ...base, silent: v }).silent, v);
+  for (const bad of ['yes', 1, 0, 'true', {}]) assert.equal(entryTelegramSchema.safeParse({ ...base, silent: bad }).success, false, String(bad));
+  assert.equal(SETTINGS_SCHEMAS.telegram.parse({ ...DEFAULT_SETTINGS.telegram, silent: undefined }).silent, false);
+  assert.equal(SETTINGS_SCHEMAS.telegram.safeParse({ ...DEFAULT_SETTINGS.telegram, silent: 'on' }).success, false);
 });
 
 console.log(`\n${passed} security tests passed.`);

@@ -176,6 +176,7 @@ export default function TelegramSettings() {
           <textarea id="tg-template" className="input tg-text" rows={4} maxLength={2000} value={t.template} onChange={(e) => setT({ ...t, template: e.target.value })} />
         </Field>
         <ToggleRow label="Attach the cover image" hint="Text only when there’s no cover" checked={t.attachImage} onChange={(attachImage) => setT({ ...t, attachImage })} />
+        <ToggleRow label="Send silently" hint="Posts appear without a sound or buzz on members’ phones. Each post can change this." checked={t.silent} onChange={(silent) => setT({ ...t, silent })} />
         <span className="field-l">Button</span>
         <div className="tg-buttons">
           {KINDS.map((kind) => (

@@ -1,6 +1,6 @@
 // One entry's Telegram section in the publishing panel.
 //   GET: options, the channels that take this kind, what was posted where, and the post as it would go out.
-//   PUT {announce, message, image}: save the options.
+//   PUT {announce, message, image, silent}: save the options (silent null = follow Settings → Telegram).
 //   POST {retry: chat}: try a failed channel again now (live entries only).
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
@@ -18,8 +18,8 @@ async function view(id: string, origin: string) {
   const options = await getEntryTelegram(id);
   const channels = (await channelsFor(entry.kind)).map((c) => ({ chat: c.chat, title: c.title }));
   const { post, defaultMessage } = await postFor(entry, options, origin);
-  const { attachImage } = await getSetting('telegram');
-  return { ...status, options, channels, posts: await postsFor(id), preview: { html: post.html, imageId: post.imageId, button: post.button.text }, defaultMessage, coverId: attachImage ? entry.cover_media_id : null };
+  const { attachImage, silent: silentDefault } = await getSetting('telegram');
+  return { ...status, options, silentDefault, channels, posts: await postsFor(id), preview: { html: post.html, imageId: post.imageId, button: post.button.text }, defaultMessage, coverId: attachImage ? entry.cover_media_id : null };
 }
 
 export const GET: APIRoute = async ({ params, site, url }) => {
