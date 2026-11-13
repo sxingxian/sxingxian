@@ -1,29 +1,45 @@
 // Site → Sponsors: what came in. Totals, then each payment with the sponsor's note and a link to it in
 // Stripe or PayPal (refunds and receipts are handled there).
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import { Empty, Loading, Page, Panel } from '../components/kit';
 import { useGo } from '../nav';
 import { formatMoney, parseMoney } from '../../lib/shared/sponsor';
 import { useToast } from '../components/ui';
 import { whenLabel } from '../../lib/shared/state';
+import { Pager, usePaging } from '../components/Pager';
+import { pageCount } from '../../lib/shared/paging';
 
 interface Item { id: string; at: string; amount: number; status: 'paid' | 'refunded'; name: string; email: string; message: string; source: string; via: 'stripe' | 'paypal' | 'paypalme'; link: string | null; live: boolean }
 interface Check { id: string; at: string; amount: number; message: string; source: string }
-interface List { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; toCheck: Check[]; items: Item[]; more: boolean }
+interface List { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; toCheck: Check[]; items: Item[]; total: number }
 const VIA: Record<Item['via'], string> = { stripe: 'Stripe', paypal: 'PayPal', paypalme: 'PayPal.Me' };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 export default function Sponsors() {
   const [data, setData] = useState<List | null>(null);
-  const [page, setPage] = useState(0);
+  const paging = usePaging('sponsors');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const go = useGo();
   const toast = useToast();
   const [confirming, setConfirming] = useState<{ id: string; text: string } | null>(null);
-  const reload = () => api.get<List>('/api/admin/sponsors?page=0').then((r) => { setData(r); setPage(0); }).catch((e) => setErr(errorText(e)));
+  const seq = useRef(0);
+  const reload = useCallback(async () => {
+    const mine = ++seq.current;
+    setLoading(true);
+    try {
+      const r = await api.get<List>(`/api/admin/sponsors?page=${paging.page}&size=${paging.size}`);
+      if (mine !== seq.current) return;
+      if (r.items.length === 0 && r.total > 0 && paging.page > 1) { paging.setPage(pageCount(r.total, paging.size)); return; }
+      setData(r);
+      setErr('');
+    } catch (e) {
+      if (mine === seq.current) setErr(errorText(e));
+    }
+    if (mine === seq.current) setLoading(false);
+  }, [paging]);
   const mark = async (id: string, body: { action: 'received'; amount: number } | { action: 'not-received' }) => {
     try {
       await api.post(`/api/admin/sponsors/${id}`, body);
@@ -39,18 +55,7 @@ export default function Sponsors() {
     void mark(c.id, { action: 'received', amount: cents });
   };
 
-  useEffect(() => {
-    api.get<List>('/api/admin/sponsors?page=0').then(setData).catch((e) => setErr(errorText(e)));
-  }, []);
-  const more = async () => {
-    setLoading(true);
-    try {
-      const r = await api.get<List>(`/api/admin/sponsors?page=${page + 1}`);
-      setData((d) => (d ? { ...r, items: [...d.items, ...r.items] } : r));
-      setPage(page + 1);
-    } catch (e) { setErr(errorText(e)); }
-    setLoading(false);
-  };
+  useEffect(() => { void reload(); }, [reload]);
   const settings = <a href="/admin/settings#sponsor" className="btn" onClick={(e) => { e.preventDefault(); go('/admin/settings#sponsor'); }}>Sponsor settings</a>;
 
   return (
@@ -88,7 +93,7 @@ export default function Sponsors() {
           {data.items.length === 0 ? (
             <Empty>No sponsors yet. Payments appear here as soon as they come through.</Empty>
           ) : (
-            <div className="table-box sp-table">
+            <div className={`table-box sp-table${loading ? ' is-loading' : ''}`} aria-busy={loading}>
               <table>
                 <thead><tr><th scope="col">When</th><th scope="col">Amount</th><th scope="col">From</th><th scope="col">Message</th><th scope="col">Came from</th><th scope="col">Paid with</th></tr></thead>
                 <tbody>
@@ -104,9 +109,9 @@ export default function Sponsors() {
                   ))}
                 </tbody>
               </table>
+              <Pager paging={paging} total={data.total} label="Sponsor pages" />
             </div>
           )}
-          {data.more && <button type="button" className="btn" disabled={loading} onClick={() => void more()}>{loading ? 'Loading…' : 'Show older'}</button>}
           <p className="hint">Refunds and receipts are handled in your Stripe or PayPal dashboard. A Stripe refund shows here by itself; for PayPal, check PayPal.</p>
         </>
       )}

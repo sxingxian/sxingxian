@@ -39,7 +39,8 @@ await build({
                export { parseMoney, formatMoney, amountProblem, cleanMessage, paypalMeUrl } from './src/lib/shared/sponsor.ts';
                export { verifyStripeSignature } from './src/lib/server/stripe-sig.ts';
                export { DEFAULT_SETTINGS, sponsorLive, paypalVia, sponsorCardTitle } from './src/lib/shared/types.ts';
-               export { sponsorMarkSchema, PAYPAL_ME_RE } from './src/lib/shared/schemas.ts';`,
+               export { sponsorMarkSchema, PAYPAL_ME_RE } from './src/lib/shared/schemas.ts';
+               export { readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } from './src/lib/shared/paging.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -55,7 +56,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -728,6 +729,27 @@ t('sponsor: PayPal.Me links are built only from a checked name and amount', () =
   assert.equal(sponsorCardTitle(DEFAULT_SETTINGS.sponsor, 'gallery'), 'Enjoyed these photos?');
   assert.equal(sponsorCardTitle({ ...DEFAULT_SETTINGS.sponsor, cardTitle: 'Enjoyed this story?' }, 'film'), 'Enjoyed this film?');
   assert.equal(sponsorCardTitle({ ...DEFAULT_SETTINGS.sponsor, cardTitle: 'Like it?' }, 'project'), 'Like it?');
+});
+
+t('paging: page and size from the address are clamped to safe values', () => {
+  for (const s of ['10', '25', '50', '100']) assert.equal(parseSize(s), Number(s));
+  for (const bad of [null, '', '0', '-10', '11', '1000', '10.5', '1e2', ' 25', '25abc', 'NaN']) assert.equal(parseSize(bad), 10, String(bad));
+  assert.equal(parsePage('3'), 3);
+  for (const bad of [null, '', '0', '-1', '1.5', 'x', '1e3', '999999', '9'.repeat(40), "1' OR 1=1"]) assert.ok(parsePage(bad) >= 1 && parsePage(bad) <= 10000, String(bad));
+  assert.equal(parsePage('99999'), 10000);
+  const p = readPaging(new URLSearchParams('page=4&size=25&logpage=2&logsize=999'));
+  assert.deepEqual(p, { page: 4, size: 25, offset: 75 });
+  assert.deepEqual(readPaging(new URLSearchParams('page=4&size=25&logpage=2&logsize=999'), 'log'), { page: 2, size: 10, offset: 10 });
+  // Search text: % and _ are literal, backslash escaped.
+  assert.equal(likePattern('50%_off\\'), '%50\\%\\_off\\\\%');
+  // Page buttons and keeping the first row in view.
+  assert.deepEqual(pageList(1, 5), [1, 2, 3, 4, 5]);
+  assert.deepEqual(pageList(2, 15), [1, 2, 3, 4, 5, 'gap', 15]);
+  assert.deepEqual(pageList(7, 15), [1, 'gap', 6, 7, 8, 'gap', 15]);
+  assert.deepEqual(pageList(15, 15), [1, 'gap', 11, 12, 13, 14, 15]);
+  assert.equal(pageAfterResize(3, 10, 25), 1);
+  assert.equal(pageAfterResize(1, 100, 10), 1);
+  assert.equal(pageAfterResize(2, 25, 10), 3);
 });
 
 console.log(`\n${passed} security tests passed.`);

@@ -1,19 +1,26 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { sql } from '../../../../lib/server/db';
-import { adminListExternalPosts, setExternalVisibility } from '../../../../lib/server/repo';
+import { pageExternalPosts, setExternalVisibility } from '../../../../lib/server/repo';
+import { readPaging } from '../../../../lib/shared/paging';
 import { healthCheck, probeWordPress, reconcile, refreshSyncedPosts, resyncAfterAddressChange, syncIncremental, wpBase } from '../../../../lib/server/wordpress';
 import { getSetting, putSetting } from '../../../../lib/server/repo';
 import { normalizeWpBase } from '../../../../lib/shared/safe';
 import { error, json, readBody } from '../../../../lib/server/http';
 
-export const GET: APIRoute = async () => {
-  const [source] = await sql()`SELECT status, status_since, consecutive_fail, consecutive_ok, last_check_at, last_check_ms, last_sync_at FROM sources WHERE id = 'wordpress'`;
-  const log = await sql()`SELECT at, event, result, ok FROM sync_log ORDER BY at DESC LIMIT 40`;
-  const posts = await adminListExternalPosts();
+// ?page=&size= pages the synced posts; ?logpage=&logsize= pages the activity log (kept 30 days).
+export const GET: APIRoute = async ({ url }) => {
+  const posts = readPaging(url.searchParams);
+  const log = readPaging(url.searchParams, 'log');
+  const [[source], logRows, logCount, synced] = await Promise.all([
+    sql()`SELECT status, status_since, consecutive_fail, consecutive_ok, last_check_at, last_check_ms, last_sync_at FROM sources WHERE id = 'wordpress'`,
+    sql()`SELECT at, event, result, ok FROM sync_log ORDER BY at DESC, id DESC LIMIT ${log.size} OFFSET ${log.offset}`,
+    sql()`SELECT count(*)::int AS n FROM sync_log`,
+    pageExternalPosts(posts.size, posts.offset),
+  ]);
   let address = '';
   try { address = await wpBase(); } catch { address = ''; }
-  return json({ source, log, posts, address });
+  return json({ source, log: logRows, logTotal: Number(logCount[0]?.n ?? 0), posts: synced.posts, postsTotal: synced.total, address });
 };
 
 const actionSchema = z.discriminatedUnion('action', [

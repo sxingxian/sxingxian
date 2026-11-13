@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
+import { Pager, setUrlParams, usePaging } from '../components/Pager';
+import { pageCount } from '../../lib/shared/paging';
 import { relTime } from '../components/ui';
 import { Page, Panel, Segmented, Empty } from '../components/kit';
 import { KIND_SECTION, SECTIONS } from '../nav';
@@ -8,16 +10,22 @@ import { entryState, STATE_LABEL, whenLabel, type EntryState } from '../../lib/s
 
 type Row = Omit<Entry, 'body'>;
 type Filter = 'all' | EntryState;
+interface PageData { entries: Row[]; total: number; counts: Record<Filter, number> }
+const FILTERS = new Set<Filter>(['all', 'draft', 'scheduled', 'published']);
 
 const PILL: Record<EntryState, string> = { draft: 'pill', scheduled: 'pill sched', published: 'pill ok' };
 const dateOnly = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 
 export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: string) => void }) {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const params = new URL(window.location.href).searchParams;
+  const [data, setData] = useState<PageData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
   const [err, setErr] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
-  const [q, setQ] = useState('');
+  const [filter, setFilterState] = useState<Filter>(() => (FILTERS.has(params.get('show') as Filter) ? (params.get('show') as Filter) : 'all'));
+  const [q, setQ] = useState(() => (params.get('q') ?? '').slice(0, 100));
+  const [query, setQuery] = useState(q.trim()); // the search actually sent, a moment after typing stops
+  const paging = usePaging(`entries-${kind}`);
   const [now, setNow] = useState(() => Date.now());
   // Phones: the filter drops its counts to fit one line (the counts are in the line under the title).
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 760px)').matches);
@@ -28,21 +36,46 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
     return () => mq.removeEventListener('change', on);
   }, []);
 
+  // A new search or filter starts again at page 1; both live in the address with the page.
+  const setFilter = (f: Filter) => { setFilterState(f); setUrlParams({ show: f === 'all' ? null : f }); paging.reset(); };
   useEffect(() => {
-    setRows(null);
-    api.get<{ entries: Row[] }>(`/api/admin/entries?kind=${kind}`).then((r) => setRows(r.entries)).catch((e) => setErr(errorText(e)));
+    const t = setTimeout(() => {
+      const next = q.trim();
+      if (next === query) return;
+      setQuery(next);
+      setUrlParams({ q: next || null });
+      paging.reset();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, query, paging]);
+
+  const seq = useRef(0);
+  useEffect(() => {
+    const mine = ++seq.current; // only the latest request may fill the list
+    setLoading(true);
+    const qs = new URLSearchParams({ kind, page: String(paging.page), size: String(paging.size), state: filter });
+    if (query) qs.set('q', query);
+    api.get<PageData>(`/api/admin/entries?${qs}`).then((r) => {
+      if (mine !== seq.current) return;
+      // Past the last page (entries deleted, or an old link): show the last page instead.
+      if (r.entries.length === 0 && r.total > 0 && paging.page > 1) { paging.setPage(pageCount(r.total, paging.size)); return; }
+      setData(r);
+      setErr('');
+      setLoading(false);
+    }).catch((e) => { if (mine === seq.current) { setErr(errorText(e)); setLoading(false); } });
+  }, [kind, paging, filter, query]);
+  useEffect(() => {
     if (kind === 'post') api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
   }, [kind]);
-  // Scheduled entries turn Published on their own; keep the list honest while it's open.
+  // Scheduled entries turn Published on their own; keep the labels honest while it's open.
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
 
   const title = SECTIONS[KIND_SECTION[kind]].label;
   const noun = KIND_LABELS[kind].toLowerCase();
-  const needle = q.trim().toLowerCase();
-  const withState = (rows ?? []).map((r) => ({ r, state: entryState(r, now) }));
-  const count = (s: EntryState) => withState.filter((x) => x.state === s).length;
-  const shown = withState.filter(({ r, state }) => (filter === 'all' || state === filter) && (!needle || r.title.toLowerCase().includes(needle) || (r.topics ?? []).some((t) => t.toLowerCase().includes(needle))));
-  const sub = rows ? [`${rows.length} total`, count('scheduled') ? `${count('scheduled')} scheduled` : '', `${count('draft')} ${count('draft') === 1 ? 'draft' : 'drafts'}`].filter(Boolean).join(' · ') : undefined;
+  const counts = data?.counts;
+  const count = (s: EntryState) => counts?.[s] ?? 0;
+  const shown = (data?.entries ?? []).map((r) => ({ r, state: entryState(r, now) }));
+  const sub = counts ? [`${counts.all} total`, count('scheduled') ? `${count('scheduled')} scheduled` : '', `${count('draft')} ${count('draft') === 1 ? 'draft' : 'drafts'}`].filter(Boolean).join(' · ') : undefined;
 
   return (
     <Page title={title} section={KIND_SECTION[kind]} width="wide" sub={sub}
@@ -53,15 +86,15 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
           <>
             <input className="input search-input" type="search" placeholder="Search" aria-label={`Search ${title.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="entry-filter"><Segmented label="Show" value={filter} onChange={setFilter}
-              options={[['all', 'All'], ['published', `Published${rows && !narrow ? ` ${count('published')}` : ''}`], ['scheduled', `Scheduled${rows && !narrow ? ` ${count('scheduled')}` : ''}`], ['draft', `Drafts${rows && !narrow ? ` ${count('draft')}` : ''}`]] as const} /></div>
+              options={[['all', 'All'], ['published', `Published${counts && !narrow ? ` ${count('published')}` : ''}`], ['scheduled', `Scheduled${counts && !narrow ? ` ${count('scheduled')}` : ''}`], ['draft', `Drafts${counts && !narrow ? ` ${count('draft')}` : ''}`]] as const} /></div>
           </>
         )}>
-        {rows === null ? (
-          <Empty>Loading…</Empty>
+        {data === null ? (
+          <Empty>{err ? '' : 'Loading…'}</Empty>
         ) : shown.length === 0 ? (
-          <Empty>{rows.length === 0 ? 'Nothing yet.' : filter !== 'all' && !needle ? `No ${STATE_LABEL[filter as EntryState].toLowerCase()} ${noun === 'story' ? 'stories' : `${noun}s`}.` : 'No matches.'}</Empty>
+          <Empty>{data.counts.all === 0 ? 'Nothing yet.' : filter !== 'all' && !query ? `No ${STATE_LABEL[filter as EntryState].toLowerCase()} ${noun === 'story' ? 'stories' : `${noun}s`}.` : 'No matches.'}</Empty>
         ) : (
-          <div className="table-box flat">
+          <div className={`table-box flat${loading ? ' is-loading' : ''}`} aria-busy={loading}>
             <table>
               <thead><tr><th>Title</th><th>Topics</th><th>Status</th><th>Updated</th><th aria-hidden="true" /></tr></thead>
               <tbody>
@@ -91,6 +124,7 @@ export default function EntryList({ kind, go }: { kind: EntryKind; go: (p: strin
             </table>
           </div>
         )}
+        {data && <Pager paging={paging} total={data.total} label={`${title} pages`} />}
       </Panel>
     </Page>
   );

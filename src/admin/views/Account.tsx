@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { encode } from 'uqr';
 import { api, errorText } from '../api';
 import { relTime, useToast } from '../components/ui';
 import { Page, Panel, Row, SaveBar } from '../components/kit';
+import { Pager, usePaging } from '../components/Pager';
+import { pageCount } from '../../lib/shared/paging';
 import { PasswordField, StrengthMeter } from '../auth/fields';
 
 interface Overview {
   profile: { email: string; name: string; role: string; totp_enabled: boolean; last_login_at: string | null; password_changed_at: string; created_at: string };
   totp: { enabled: boolean; available: boolean; unavailableReason: string; recoveryCodesLeft: number };
   sessions: { id: string; current: boolean; created_at: string; last_seen_at: string; ip: string; user_agent: string }[];
-  events: { event: string; ok: boolean; ip: string; user_agent: string; at: string }[];
 }
+interface ActivityEvent { event: string; ok: boolean; ip: string; user_agent: string; at: string }
 
 function device(ua: string): string {
   if (!ua) return 'Unknown device';
@@ -41,7 +43,7 @@ export default function Account({ mustChangePassword, onPasswordChanged }: { mus
         <>
           <TwoStepPanel data={data} reload={load} />
           <DevicesPanel data={data} reload={load} />
-          <ActivityPanel data={data} />
+          <ActivityPanel stamp={data} />
         </>
       )}
     </Page>
@@ -257,20 +259,37 @@ function DevicesPanel({ data, reload }: { data: Overview; reload: () => void }) 
   );
 }
 
-function ActivityPanel({ data }: { data: Overview }) {
+/** Sign-ins and security changes, 10 a page. `stamp` changes whenever the account reloads (a new event may exist). */
+function ActivityPanel({ stamp }: { stamp: Overview }) {
+  const paging = usePaging('account-activity');
+  const [rows, setRows] = useState<{ events: ActivityEvent[]; total: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const seq = useRef(0);
+  useEffect(() => {
+    const mine = ++seq.current;
+    setLoading(true);
+    api.get<{ events: ActivityEvent[]; total: number }>(`/api/admin/account/activity?page=${paging.page}&size=${paging.size}`).then((r) => {
+      if (mine !== seq.current) return;
+      if (r.events.length === 0 && r.total > 0 && paging.page > 1) { paging.setPage(pageCount(r.total, paging.size)); return; }
+      setRows(r); setErr(''); setLoading(false);
+    }).catch((e) => { if (mine === seq.current) { setErr(errorText(e)); setLoading(false); } });
+  }, [paging, stamp]);
   return (
-    <Panel title="Activity" desc="Last 30 events" flush>
-      {data.events.length === 0 ? <div className="empty">Nothing yet.</div> : (
-        <div className="list-rows">
-          {data.events.map((e, i) => (
-            <div key={i} className="list-row">
-              <span><span className={`dot ${e.ok ? 'good' : 'bad'}`} aria-hidden="true" style={{ marginRight: 8 }} />{e.event.charAt(0).toUpperCase() + e.event.slice(1)}
+    <Panel title="Activity" desc="Sign-ins and security changes, kept for 180 days" flush>
+      {err && <div className="empty">{err}</div>}
+      {!rows ? (!err && <div className="empty">Loading…</div>) : rows.events.length === 0 ? <div className="empty">Nothing yet.</div> : (
+        <div className={`list-rows${loading ? ' is-loading' : ''}`} aria-busy={loading}>
+          {rows.events.map((e, i) => (
+            <div key={`${e.at}-${i}`} className="list-row">
+              <span><span className={`dot ${e.ok ? 'good' : 'bad'}`} aria-hidden="true" style={{ marginRight: 8 }} />{e.event.charAt(0).toUpperCase() + e.event.slice(1)}{!e.ok && <span className="sr-only"> (failed)</span>}
                 <span className="meta" style={{ display: 'block', paddingLeft: 18 }}>{device(e.user_agent)} · {e.ip || '—'}</span></span>
               <span className="meta">{relTime(e.at)}</span>
             </div>
           ))}
         </div>
       )}
+      {rows && <Pager paging={paging} total={rows.total} label="Activity pages" />}
     </Panel>
   );
 }

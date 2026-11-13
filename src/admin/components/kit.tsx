@@ -5,6 +5,7 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { Switch } from './ui';
 import { SECTIONS, useGo, type SectionKey } from '../nav';
+import { lastListUrl } from './Pager';
 
 /**
  * The bar at the top of every admin screen: breadcrumb on the left, actions on the right.
@@ -22,7 +23,7 @@ export function TopBar({ section, here, onSection, actions }: {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // let the browser open a new tab
     e.preventDefault();
     if (onSection) onSection();
-    else go(s.path);
+    else go(lastListUrl(s.path)); // back to the page (and filter) the list was left on
   };
   return (
     <div className="topbar">

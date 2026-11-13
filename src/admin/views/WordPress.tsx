@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import { Switch, relTime, useToast } from '../components/ui';
 import { Empty, Page, Panel, Row, SaveBar, ToggleRow } from '../components/kit';
 import type { ExternalPost, SiteSetting, WordPressSetting } from '../../lib/shared/types';
 import { useDialog } from '../components/dialog';
 import { normalizeWpBase } from '../../lib/shared/safe';
+import { Pager, usePaging } from '../components/Pager';
+import { pageCount } from '../../lib/shared/paging';
 
 interface Source { status: 'up' | 'down'; status_since: string; consecutive_fail: number; last_check_at: string | null; last_check_ms: number | null; last_sync_at: string | null }
 interface LogRow { at: string; event: string; result: string; ok: boolean }
@@ -12,7 +14,13 @@ interface LogRow { at: string; event: string; result: string; ok: boolean }
 export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: { wpBaseUrl: string; wpAdminUrl: string; onAddressChanged?: () => void }) {
   const [source, setSource] = useState<Source | null>(null);
   const [log, setLog] = useState<LogRow[]>([]);
+  const [logTotal, setLogTotal] = useState(0);
   const [posts, setPosts] = useState<ExternalPost[]>([]);
+  const [postsTotal, setPostsTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  // Two lists on one screen: synced posts use ?page=, the activity log ?logpage=.
+  const postPaging = usePaging('wp-posts');
+  const logPaging = usePaging('wp-log', 'log');
   const [rules, setRules] = useState<WordPressSetting | null>(null);
   const [map, setMap] = useState<[string, string][]>([]);
   const [savedMap, setSavedMap] = useState('[]');
@@ -25,14 +33,25 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
   const toast = useToast();
   const dialog = useDialog();
 
+  const seq = useRef(0);
   const load = useCallback(() => {
-    api.get<{ source: Source; log: LogRow[]; posts: ExternalPost[]; address: string }>('/api/admin/wordpress')
-      .then((r) => { setSource(r.source); setLog(r.log); setPosts(r.posts); setAddress(r.address); setDraft((d) => d || r.address); })
-      .catch((e) => setErr(errorText(e)));
-  }, []);
+    const mine = ++seq.current;
+    setLoading(true);
+    const qs = `page=${postPaging.page}&size=${postPaging.size}&logpage=${logPaging.page}&logsize=${logPaging.size}`;
+    api.get<{ source: Source; log: LogRow[]; logTotal: number; posts: ExternalPost[]; postsTotal: number; address: string }>(`/api/admin/wordpress?${qs}`)
+      .then((r) => {
+        if (mine !== seq.current) return;
+        // Past the last page (an old link, or rows that aged out): go to the last page instead.
+        if (r.posts.length === 0 && r.postsTotal > 0 && postPaging.page > 1) { postPaging.setPage(pageCount(r.postsTotal, postPaging.size)); return; }
+        if (r.log.length === 0 && r.logTotal > 0 && logPaging.page > 1) { logPaging.setPage(pageCount(r.logTotal, logPaging.size)); return; }
+        setSource(r.source); setLog(r.log); setLogTotal(r.logTotal); setPosts(r.posts); setPostsTotal(r.postsTotal);
+        setAddress(r.address); setDraft((d) => d || r.address); setLoading(false);
+      })
+      .catch((e) => { if (mine === seq.current) { setErr(errorText(e)); setLoading(false); } });
+  }, [postPaging, logPaging]);
 
+  useEffect(load, [load]);
   useEffect(() => {
-    load();
     api.get<{ value: WordPressSetting }>('/api/admin/settings/wordpress').then((r) => {
       setRules(r.value);
       const entries = Object.entries(r.value.categoryMap);
@@ -40,7 +59,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
       setSavedMap(JSON.stringify(entries));
     }).catch(() => {});
     api.get<{ value: SiteSetting }>('/api/admin/settings/site').then((r) => setTopics(r.value.topics)).catch(() => {});
-  }, [load]);
+  }, []);
 
   const run = async (action: 'sync' | 'check' | 'reconcile') => {
     setBusy(action);
@@ -198,9 +217,9 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
         </Panel>
       )}
 
-      <Panel title="Posts" desc={`${posts.length} synced`} flush>
+      <Panel title="Posts" desc={`${postsTotal} synced`} flush>
         {posts.length === 0 ? <Empty>Nothing synced yet.</Empty> : (
-          <div className="list-rows">
+          <div className={`list-rows${loading ? ' is-loading' : ''}`}>
             {posts.map((p) => (
               <div key={p.wp_id} className="list-row">
                 <span style={{ minWidth: 0, flex: 1 }}>
@@ -213,11 +232,12 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
             ))}
           </div>
         )}
+        <Pager paging={postPaging} total={postsTotal} label="Synced post pages" />
       </Panel>
 
-      <Panel title="Activity" flush>
+      <Panel title="Activity" desc="Kept for 30 days" flush>
         {log.length === 0 ? <Empty>No activity yet.</Empty> : (
-          <div className="list-rows">
+          <div className={`list-rows${loading ? ' is-loading' : ''}`}>
             {log.map((l, i) => (
               <div key={i} className="list-row">
                 <span><span className={`dot ${l.ok ? 'good' : 'bad'}`} aria-hidden="true" style={{ marginRight: 8 }} />{l.event}</span>
@@ -226,6 +246,7 @@ export default function WordPress({ wpBaseUrl, wpAdminUrl, onAddressChanged }: {
             ))}
           </div>
         )}
+        <Pager paging={logPaging} total={logTotal} label="Activity pages" />
       </Panel>
     </Page>
   );

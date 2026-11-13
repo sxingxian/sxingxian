@@ -1,13 +1,14 @@
 // Upload media to the host chosen in the admin (R2, NAS, B2) or register a
 // YouTube/Vimeo embed. Files are checked by declared type AND magic bytes.
 import type { APIRoute } from 'astro';
-import { insertMedia, listMedia } from '../../../../lib/server/repo';
+import { insertMedia, listMedia, pageMedia, type MediaKindFilter } from '../../../../lib/server/repo';
+import { readPaging } from '../../../../lib/shared/paging';
 import { putObject, availableProviders, StorageError } from '../../../../lib/server/storage';
 import { error, json } from '../../../../lib/server/http';
 import { embedInputSchema, mediaMetaSchema } from '../../../../lib/shared/schemas';
 import { parseVideoUrl } from '../../../../lib/shared/safe';
 import { sniffDocument } from '../../../../lib/server/filetypes';
-import { MAX_DOC_BYTES, cleanFileName } from '../../../../lib/shared/files';
+import { DOC_MIMES, MAX_DOC_BYTES, cleanFileName } from '../../../../lib/shared/files';
 
 const MAX_IMAGE = 25 * 1024 * 1024;
 const MAX_VIDEO = 95 * 1024 * 1024; // Workers request bodies are capped at 100 MB
@@ -33,7 +34,17 @@ function sniff(b: Uint8Array): string | null {
   return null;
 }
 
-export const GET: APIRoute = async () => json({ media: await listMedia(), providers: availableProviders() });
+const MEDIA_KINDS = new Set<MediaKindFilter>(['all', 'image', 'video', 'file']);
+
+// No ?page → the newest 200 (the picker). ?page=&size=&kind= → one page of the library.
+export const GET: APIRoute = async ({ url }) => {
+  const p = url.searchParams;
+  if (!p.has('page')) return json({ media: await listMedia(), providers: availableProviders() });
+  const kind = (p.get('kind') ?? 'all') as MediaKindFilter;
+  if (!MEDIA_KINDS.has(kind)) return error(400, 'Unknown kind');
+  const { page, size, offset } = readPaging(p);
+  return json({ ...(await pageMedia({ kind, docMimes: [...DOC_MIMES], size, offset })), page, size });
+};
 
 export const POST: APIRoute = async ({ request }) => {
   const type = request.headers.get('content-type') ?? '';
