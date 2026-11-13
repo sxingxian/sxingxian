@@ -441,7 +441,7 @@ export async function handleStripeWebhook(body: string, signature: string | null
 export type Via = Provider | 'paypalme';
 export interface SponsorItem { id: string; at: string; amount: number; status: 'paid' | 'refunded'; name: string; email: string; message: string; source: string; via: Via; link: string | null; live: boolean }
 export interface ToCheck { id: string; at: string; amount: number; message: string; source: string }
-export interface SponsorList { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; toCheck: ToCheck[]; items: SponsorItem[]; more: boolean }
+export interface SponsorList { available: boolean; month: { total: number; count: number }; all: { total: number; count: number }; top: { title: string; count: number } | null; toCheck: ToCheck[]; items: SponsorItem[]; total: number }
 
 function paymentLink(via: Via, ref: string, live: boolean): string | null {
   if (via === 'paypalme' || !ref || !/^[A-Za-z0-9_-]{1,255}$/.test(ref)) return null;
@@ -449,21 +449,22 @@ function paymentLink(via: Via, ref: string, live: boolean): string | null {
   return `https://www.${live ? '' : 'sandbox.'}paypal.com/activity/payment/${ref}`;
 }
 
-export async function listSponsors(page = 0): Promise<SponsorList> {
-  const size = 50;
+/** Totals, the PayPal.Me ones to check, and one page (`offset`, `size`) of paid or refunded sponsors, newest first. */
+export async function listSponsors(size = 10, offset = 0): Promise<SponsorList> {
   try {
     const [totals, top, rows, check] = await Promise.all([
       sql()`SELECT
           coalesce(sum(amount_cents) FILTER (WHERE status = 'paid' AND paid_at >= (date_trunc('month', now() AT TIME ZONE 'Asia/Singapore') AT TIME ZONE 'Asia/Singapore')), 0)::int AS m_total,
           count(*) FILTER (WHERE status = 'paid' AND paid_at >= (date_trunc('month', now() AT TIME ZONE 'Asia/Singapore') AT TIME ZONE 'Asia/Singapore'))::int AS m_count,
           coalesce(sum(amount_cents) FILTER (WHERE status = 'paid'), 0)::int AS a_total,
-          count(*) FILTER (WHERE status = 'paid')::int AS a_count
+          count(*) FILTER (WHERE status = 'paid')::int AS a_count,
+          count(*)::int AS n_rows
         FROM sponsors WHERE status IN ('paid', 'refunded')`,
       sql()`SELECT source_title AS title, count(*)::int AS n FROM sponsors WHERE status = 'paid' AND source_id IS NOT NULL AND source_title <> ''
         GROUP BY source_id, source_title ORDER BY n DESC, max(paid_at) DESC LIMIT 1`,
       sql()`SELECT id, provider, status, amount_cents, name, email, message, source_title, payment_ref, live, paid_at FROM sponsors
-        WHERE status IN ('paid', 'refunded') ORDER BY paid_at DESC NULLS LAST, id LIMIT ${size + 1} OFFSET ${page * size}`,
-      page === 0 ? sql()`SELECT id, amount_cents, message, source_title, created_at FROM sponsors WHERE status = 'unconfirmed' ORDER BY created_at DESC LIMIT 100` : Promise.resolve([]),
+        WHERE status IN ('paid', 'refunded') ORDER BY paid_at DESC NULLS LAST, id LIMIT ${size} OFFSET ${offset}`,
+      sql()`SELECT id, amount_cents, message, source_title, created_at FROM sponsors WHERE status = 'unconfirmed' ORDER BY created_at DESC LIMIT 100`,
     ]);
     const t = totals[0] ?? {};
     return {
@@ -472,15 +473,15 @@ export async function listSponsors(page = 0): Promise<SponsorList> {
       all: { total: Number(t.a_total ?? 0), count: Number(t.a_count ?? 0) },
       top: top[0] ? { title: top[0].title as string, count: Number(top[0].n) } : null,
       toCheck: check.map((r) => ({ id: r.id as string, at: new Date(r.created_at as string).toISOString(), amount: Number(r.amount_cents), message: r.message as string, source: (r.source_title as string) || '/sponsor' })),
-      items: rows.slice(0, size).map((r) => ({
+      items: rows.map((r) => ({
         id: r.id as string, at: new Date(r.paid_at as string).toISOString(), amount: Number(r.amount_cents), status: r.status as 'paid' | 'refunded',
         name: r.name as string, email: r.email as string, message: r.message as string, source: (r.source_title as string) || '/sponsor',
         via: r.provider as Via, link: paymentLink(r.provider as Via, r.payment_ref as string, !!r.live), live: !!r.live,
       })),
-      more: rows.length > size,
+      total: Number(t.n_rows ?? 0),
     };
   } catch (e) {
-    if (missingTable(e)) return { available: false, month: { total: 0, count: 0 }, all: { total: 0, count: 0 }, top: null, toCheck: [], items: [], more: false };
+    if (missingTable(e)) return { available: false, month: { total: 0, count: 0 }, all: { total: 0, count: 0 }, top: null, toCheck: [], items: [], total: 0 };
     throw e;
   }
 }

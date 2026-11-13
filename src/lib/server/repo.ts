@@ -145,6 +145,53 @@ export async function adminListEntries(kind?: EntryKind): Promise<Omit<Entry, 'b
   }
 }
 
+export type EntryStateFilter = 'all' | 'draft' | 'scheduled' | 'published';
+export interface EntryPage {
+  entries: Omit<Entry, 'body'>[];
+  /** Rows matching the search and state filter (what the pager counts). */
+  total: number;
+  /** Every entry of this kind by state, ignoring the search (the numbers on the filter). */
+  counts: Record<EntryStateFilter, number>;
+}
+
+// The same three states as lib/shared/state.ts entryState(), in SQL.
+const LIVE = `(status = 'published' AND is_public)`;
+const STATE_SQL: Record<EntryStateFilter, string> = {
+  all: 'true',
+  draft: `NOT ${LIVE}`,
+  scheduled: `${LIVE} AND published_at > now()`,
+  published: `${LIVE} AND (published_at IS NULL OR published_at <= now())`,
+};
+
+/** One page of the admin list, newest edit first. `like` is a ready ILIKE pattern (or null for no search). */
+export async function adminPageEntries(opts: { kind: EntryKind; state: EntryStateFilter; like: string | null; size: number; offset: number }): Promise<EntryPage> {
+  const where = `kind = $1 AND (${STATE_SQL[opts.state]})
+    AND ($2::text IS NULL OR title ILIKE $2 OR topic ILIKE $2 OR EXISTS (SELECT 1 FROM unnest(topics) t WHERE t ILIKE $2))`;
+  const cols = (edits: boolean) => `id, kind, title, slug, dek, topic, ${TOPICS_COL}, cover_media_id, video_url, meta, read_minutes, status, is_public,
+            published_at, created_at, updated_at,
+            ${edits ? 'EXISTS (SELECT 1 FROM entry_edits x WHERE x.entry_id = entries.id)' : 'false'} AS has_edits`;
+  const list = (edits: boolean) => sql().query(
+    `SELECT ${cols(edits)} FROM entries WHERE ${where} ORDER BY updated_at DESC, id LIMIT $3 OFFSET $4`,
+    [opts.kind, opts.like, opts.size, opts.offset],
+  );
+  const [rows, matched, counts] = await Promise.all([
+    list(true).catch((e) => { if (isMissingEdits(e)) return list(false); throw e; }),
+    sql().query(`SELECT count(*)::int AS n FROM entries WHERE ${where}`, [opts.kind, opts.like]),
+    sql().query(
+      `SELECT count(*)::int AS all, count(*) FILTER (WHERE ${STATE_SQL.draft})::int AS draft,
+              count(*) FILTER (WHERE ${STATE_SQL.scheduled})::int AS scheduled, count(*) FILTER (WHERE ${STATE_SQL.published})::int AS published
+         FROM entries WHERE kind = $1`,
+      [opts.kind],
+    ),
+  ]);
+  const c = (counts[0] ?? {}) as Record<string, number>;
+  return {
+    entries: rows as Omit<Entry, 'body'>[],
+    total: Number((matched[0] as { n?: number })?.n ?? 0),
+    counts: { all: Number(c.all ?? 0), draft: Number(c.draft ?? 0), scheduled: Number(c.scheduled ?? 0), published: Number(c.published ?? 0) },
+  };
+}
+
 export async function adminGetEntry(id: string): Promise<Entry | null> {
   const rows = await readEntries(`SELECT ${ENTRY_COLS} FROM entries WHERE id = $1`, [id]);
   return (rows[0] as Entry) ?? null;
@@ -296,6 +343,29 @@ export async function listMedia(limit = 200): Promise<MediaItem[]> {
   return rows as MediaItem[];
 }
 
+export type MediaKindFilter = 'all' | 'image' | 'video' | 'file';
+/** One page of the media library, newest first. Photos are image/*, files are the allowed documents, video is the rest. */
+export async function pageMedia(opts: { kind: MediaKindFilter; docMimes: string[]; size: number; offset: number }): Promise<{ media: MediaItem[]; total: number; counts: Record<MediaKindFilter, number> }> {
+  const KIND: Record<MediaKindFilter, string> = {
+    all: 'true',
+    image: `mime LIKE 'image/%'`,
+    file: `mime = ANY($1::text[])`,
+    video: `mime NOT LIKE 'image/%' AND NOT (mime = ANY($1::text[]))`,
+  };
+  const [rows, counts] = await Promise.all([
+    // $1 is typed here even when this filter doesn't use it (Postgres must know every parameter's type).
+    sql().query(`SELECT * FROM media WHERE $1::text[] IS NOT NULL AND (${KIND[opts.kind]}) ORDER BY created_at DESC, id LIMIT $2 OFFSET $3`, [opts.docMimes, opts.size, opts.offset]),
+    sql().query(
+      `SELECT count(*)::int AS all, count(*) FILTER (WHERE ${KIND.image})::int AS image,
+              count(*) FILTER (WHERE ${KIND.file})::int AS file, count(*) FILTER (WHERE ${KIND.video})::int AS video FROM media`,
+      [opts.docMimes],
+    ),
+  ]);
+  const c = (counts[0] ?? {}) as Record<string, number>;
+  const all = { all: Number(c.all ?? 0), image: Number(c.image ?? 0), file: Number(c.file ?? 0), video: Number(c.video ?? 0) };
+  return { media: rows as MediaItem[], total: all[opts.kind], counts: all };
+}
+
 export async function insertMedia(m: Omit<MediaItem, 'id' | 'created_at'>): Promise<MediaItem> {
   const rows = await sql()`
     INSERT INTO media (provider, object_key, embed_id, mime, bytes, width, height, alt, filename)
@@ -335,9 +405,13 @@ export async function listVisibleExternalPosts(opts: { limit?: number; topic?: s
   return rows as ExternalPost[];
 }
 
-export async function adminListExternalPosts(): Promise<ExternalPost[]> {
-  const rows = await sql()`SELECT * FROM external_posts ORDER BY published_at DESC LIMIT 500`;
-  return rows as ExternalPost[];
+/** One page of the synced WordPress posts, newest first. */
+export async function pageExternalPosts(size: number, offset: number): Promise<{ posts: ExternalPost[]; total: number }> {
+  const [rows, n] = await Promise.all([
+    sql()`SELECT * FROM external_posts ORDER BY published_at DESC, wp_id DESC LIMIT ${size} OFFSET ${offset}`,
+    sql()`SELECT count(*)::int AS n FROM external_posts`,
+  ]);
+  return { posts: rows as ExternalPost[], total: Number(n[0]?.n ?? 0) };
 }
 
 export async function setExternalVisibility(wpId: number, show: boolean): Promise<void> {
