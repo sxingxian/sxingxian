@@ -14,7 +14,7 @@ import { api, errorText } from '../api';
 import { useToast } from '../components/ui';
 import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../components/kit';
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
-import { SECTION_LABELS, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
+import { AD_MIN_WORDS, AD_PLACES, AD_PLACE_LABELS, DEFAULT_AD_PLACES, SECTION_LABELS, type AdReadiness, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
 type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'telegram' | 'sponsor' | 'ads';
 const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['telegram', 'Telegram'], ['sponsor', 'Sponsor'], ['ads', 'Ads']];
@@ -562,28 +562,37 @@ function PhotoSettings() {
 
 // ------------------------------------------------------------------ Ads
 
+/** One line of the checklist: a tick or a cross, in words as well as colour. */
+function Check({ ok, loading, good, bad }: { ok: boolean; loading: boolean; good: string; bad: string }) {
+  if (loading) return <span className="muted">Checking…</span>;
+  return <span className={ok ? 'check-ok' : 'check-no'}><span aria-hidden="true">{ok ? '✓' : '✕'}</span> {ok ? good : bad}</span>;
+}
+
 function AdsSettings() {
   const [a, setA] = useState<AdsSetting | null>(null);
   const [saved, setSaved] = useState<AdsSetting | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const toast = useToast();
+  const [ready, setReady] = useState<AdReadiness | null>(null);
   useEffect(() => {
     api.get<{ value: AdsSetting }>('/api/admin/settings/ads').then((r) => { setA(r.value); setSaved(r.value); }).catch((e) => setErr(errorText(e)));
+    api.get<AdReadiness>('/api/admin/ads/readiness').then(setReady).catch(() => {});
   }, []);
   if (!a || !saved) return <Loading error={err} />;
 
+  const places = { ...DEFAULT_AD_PLACES, ...saved.places };
   const clientOk = a.client === '' || ADSENSE_CLIENT_RE.test(a.client);
   const slotOk = (v: string) => v === '' || ADSENSE_SLOT_RE.test(v);
   const ids = (x: AdsSetting) => JSON.stringify([x.client, x.homeSlot, x.articleSlot]);
   const dirty = ids(a) !== ids(saved);
-  const save = async (next: AdsSetting) => {
+  const save = async (next: AdsSetting, note?: string) => {
     setBusy(true);
     try {
       const r = await api.put<{ value: AdsSetting }>('/api/admin/settings/ads', next);
       setA(r.value);
       setSaved(r.value);
-      toast(r.value.enabled ? 'Ads are on' : 'Saved');
+      toast(note ?? (r.value.enabled ? 'Ads are on' : 'Saved'));
     } catch (e) {
       toast(errorText(e));
     }
@@ -592,7 +601,7 @@ function AdsSettings() {
 
   return (
     <>
-      <Panel title="Google AdSense" desc="Never shown in the admin, CV, About, Privacy or the sponsor pages.">
+      <Panel title="Google AdSense" desc="Ads show only in the places switched on below.">
         <ToggleRow label="Show ads" hint={ADSENSE_CLIENT_RE.test(saved.client) ? undefined : 'Save a publisher ID first'}
           checked={saved.enabled} disabled={!ADSENSE_CLIENT_RE.test(saved.client)} onChange={(v) => save({ ...saved, enabled: v })} />
         <Row label="Publisher ID" hint="ca-pub-…" htmlFor="ads-client">
@@ -608,11 +617,25 @@ function AdsSettings() {
         <SaveBar dirty={dirty} busy={busy} onSave={() => save({ ...a, enabled: saved.enabled && ADSENSE_CLIENT_RE.test(a.client) })}
           disabled={!clientOk || !slotOk(a.homeSlot) || !slotOk(a.articleSlot)} />
       </Panel>
-      <Panel title="Checklist">
+      <Panel title="Where ads show" desc="Google asks for ads only on pages with enough of your own writing. Lists and thin pages are the usual reason an application is refused.">
+        {AD_PLACES.map((k) => (
+          <ToggleRow key={k} label={AD_PLACE_LABELS[k].label} hint={AD_PLACE_LABELS[k].hint} checked={places[k]} disabled={busy}
+            onChange={(v) => save({ ...saved, places: { ...places, [k]: v } }, `${AD_PLACE_LABELS[k].label}: ads ${v ? 'on' : 'off'}`)} />
+        ))}
+        <ToggleRow label="Skip short pages" hint={`No ads on an entry with fewer than ${AD_MIN_WORDS} words of text`} checked={saved.skipShort !== false} disabled={busy}
+          onChange={(v) => save({ ...saved, skipShort: v }, v ? 'Short pages carry no ads' : 'Short pages can carry ads')} />
+        <Row label="Never, whatever is set"><span className="muted">Admin, CV, About, Contact, Privacy, the sponsor pages, error pages and pages hidden from search engines</span></Row>
+      </Panel>
+      <Panel title="Before you apply" desc="What an AdSense reviewer looks for that this site can check.">
         <Row label="ads.txt">{ADSENSE_CLIENT_RE.test(saved.client) ? <a href="/ads.txt" target="_blank" rel="noopener">Live ↗</a> : <span className="muted">After you save a publisher ID</span>}</Row>
-        <Row label="Privacy page"><a href="/admin/pages/privacy">Write it</a><span className="muted">Required by AdSense</span></Row>
+        <Row label="Privacy page"><Check ok={ready?.privacy === 'ok'} loading={!ready} good="Published" bad={ready?.privacy === 'hidden' ? 'Hidden from search engines' : 'Not written yet'} /><a href="/admin/pages/privacy">Edit</a></Row>
+        <Row label="About page"><Check ok={ready?.about === 'ok'} loading={!ready} good="On the site" bad={ready?.about === 'off' ? 'Written, but switched off' : 'Not written yet'} /><a href="/admin/pages/about">Edit</a></Row>
+        <Row label="Contact page"><Check ok={ready?.contact === 'ok'} loading={!ready} good="On the site" bad={ready?.contact === 'off' ? 'Written, but switched off' : 'Not written yet'} /><a href="/admin/pages/contact">Edit</a></Row>
+        <Row label="Summaries"><Check ok={ready?.entries.noSummary === 0} loading={!ready} good="Every entry has one" bad={`${ready?.entries.noSummary ?? 0} of ${ready?.entries.total ?? 0} live entries have none`} /></Row>
+        <Row label="Photo descriptions"><Check ok={ready?.entries.noAlt === 0} loading={!ready} good="Every photo has one" bad={`${ready?.entries.noAlt ?? 0} live entries have photos without one`} /></Row>
+        <Row label="Short entries" hint={`Under ${AD_MIN_WORDS} words`}><span className="muted">{ready ? `${ready.entries.short} of ${ready.entries.total}${saved.skipShort !== false ? ' · these carry no ads' : ''}` : 'Checking…'}</span></Row>
         <Row label="EU / UK consent"><span className="muted">Publish Google’s message in AdSense → Privacy &amp; messaging</span></Row>
-        <Row label="Auto ads"><span className="muted">Optional, set in AdSense</span></Row>
+        <Row label="Auto ads"><span className="muted">Optional, set in AdSense. Follows the switches above.</span></Row>
       </Panel>
     </>
   );

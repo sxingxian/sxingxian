@@ -5,7 +5,7 @@ import { ToggleRow, TopBar } from '../components/kit';
 import Editor from '../editor/Editor';
 import { useMediaPicker } from '../components/useMediaPicker';
 import { useToast } from '../components/ui';
-import type { DocNode, MediaItem, Page, SectionsSetting } from '../../lib/shared/types';
+import type { DocNode, Page, PageSlug, SectionsSetting } from '../../lib/shared/types';
 import { useAutosave } from '../autosave';
 
 const CV_TEMPLATE: DocNode = {
@@ -33,41 +33,63 @@ const CV_TEMPLATE: DocNode = {
   ],
 };
 
+const para = (text: string): DocNode => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+const h2 = (text: string): DocNode => ({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text }] });
+const linkPara = (text: string, href: string): DocNode => ({ type: 'paragraph', content: [{ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] }] });
+
+// Suggested wording that matches how this site works. The "Last updated" date is shown by the page itself.
 const PRIVACY_TEMPLATE: DocNode = {
   type: 'doc',
   content: [
-    { type: 'callout', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Draft. Check it against how you actually run the site (and local law), then delete this note.' }] }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'Last updated: [DATE]' }] },
-    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'What this site collects' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'There are no reader accounts and no forms. The site itself sets no tracking cookies; it remembers your light or dark theme choice in your browser only.' }] },
-    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Advertising' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'This site shows ads from Google AdSense. Google and its partners use cookies to serve ads based on your visits to this and other websites, and to measure them.' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'How Google uses information from sites that use its services', marks: [{ type: 'link', attrs: { href: 'https://policies.google.com/technologies/partner-sites' } }] }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'Turn off personalised ads in Google’s Ad Settings', marks: [{ type: 'link', attrs: { href: 'https://adssettings.google.com' } }] }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'Visitors in the EEA, the UK and Switzerland are asked for consent by Google’s consent message before personalised ads are shown.' }] },
-    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Server logs' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'The hosting provider (Cloudflare) processes IP addresses and request details to deliver the site and protect it from abuse.' }] },
-    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Contact' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: 'Questions about this page: [YOUR EMAIL].' }] },
+    { type: 'callout', content: [para('Draft. Check it against how you actually run the site (and local law), then delete this note.')] },
+    h2('What this site collects'),
+    para('There are no reader accounts. The site sets no tracking cookies of its own; it remembers your light or dark theme choice in your browser only.'),
+    para('To show which stories are read most, the site keeps a daily count of views for each story. The count holds no cookies, IP addresses or other details about you.'),
+    h2('Advertising'),
+    para('This site shows ads from Google AdSense. Google and its partners use cookies, web beacons and similar technologies, together with your IP address, to serve and measure ads based on your visits to this and other websites.'),
+    linkPara('How Google uses information from sites that use its services', 'https://policies.google.com/technologies/partner-sites'),
+    linkPara('Turn off personalised ads in Google’s Ad Settings', 'https://adssettings.google.com'),
+    para('Visitors in the EEA, the UK and Switzerland are asked for consent by Google’s consent message before personalised ads are shown.'),
+    h2('Sponsoring'),
+    para('If you sponsor the site, you pay on Stripe’s or PayPal’s own pages; your card details never reach this site. The site keeps the amount, the date, the name and email the payment provider passes on, and any message you choose to leave. Stripe and PayPal handle your details under their own privacy policies.'),
+    h2('Videos and maps from other sites'),
+    para('Some pages include videos from YouTube, Vimeo or TikTok, or a map from OpenStreetMap. These load from the provider when you open the page, and the provider may set its own cookies and see your IP address.'),
+    h2('Server logs'),
+    para('The hosting provider (Cloudflare) processes IP addresses and request details to deliver the site and protect it from abuse.'),
+    h2('Contact'),
+    linkPara('Questions about this page: see the Contact page.', '/contact'),
   ],
 };
 
-const LABELS = { cv: 'CV', about: 'About', privacy: 'Privacy' } as const;
+const CONTACT_TEMPLATE: DocNode = {
+  type: 'doc',
+  content: [
+    para('For questions about this site, its stories or photographs, or to ask for something to be corrected or taken down, write to:'),
+    para('[YOUR EMAIL]'),
+    para('I read everything and reply when I can.'),
+  ],
+};
 
-export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' }) {
+const LABELS: Record<PageSlug, string> = { cv: 'CV', about: 'About', privacy: 'Privacy', contact: 'Contact' };
+const STARTERS: Partial<Record<PageSlug, DocNode>> = { cv: CV_TEMPLATE, privacy: PRIVACY_TEMPLATE, contact: CONTACT_TEMPLATE };
+
+export default function PageEditor({ slug }: { slug: PageSlug }) {
   const [page, setPage] = useState<Page | null>(null);
   const [sections, setSections] = useState<SectionsSetting | null>(null);
   const [err, setErr] = useState('');
   const { pickMedia, pickFile, pickImages, picker } = useMediaPicker();
   const [sheet, setSheet] = useState(false);
   const toast = useToast();
+  // Bumped to rebuild the editor when the page's content is replaced from outside it (suggested wording).
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     setPage(null);
     api.get<{ page: Page }>(`/api/admin/pages/${slug}`)
       .then(({ page: p }) => {
         const empty = !p.body.content || p.body.content.length === 0;
-        setPage(empty && slug === 'cv' ? { ...p, body: CV_TEMPLATE } : empty && slug === 'privacy' ? { ...p, body: PRIVACY_TEMPLATE } : p);
+        const starter = STARTERS[slug];
+        setPage(empty && starter ? { ...p, body: starter } : p);
       })
       .catch((e) => setErr(errorText(e)));
     api.get<{ value: SectionsSetting }>('/api/admin/settings/sections').then((r) => setSections(r.value)).catch(() => {});
@@ -99,6 +121,13 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
     }
   };
 
+  // Privacy: add the suggested wording after whatever is already written, so nothing is lost.
+  const addSuggested = () => {
+    setPage((p) => (p ? { ...p, body: { type: 'doc', content: [...(p.body.content ?? []), ...(PRIVACY_TEMPLATE.content ?? [])] } } : p));
+    setRev((n) => n + 1);
+    toast('Suggested wording added at the end');
+  };
+
   if (!page) return <div className="page"><p className={err ? 'err-text' : 'hint'}>{err || 'Loading…'}</p></div>;
   const label = LABELS[slug];
 
@@ -114,10 +143,10 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
       <div className="editor-layout">
         <div className="editor-main">
           <div className={`doc${slug === 'cv' ? ' sheet' : ''}`}>
-            {(slug === 'about' || slug === 'privacy') && (
+            {slug !== 'cv' && (
               <input className="title-input" value={page.title} placeholder={label} aria-label="Page title" onChange={(e) => setPage({ ...page, title: e.target.value })} />
             )}
-            <Editor key={slug} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} pickFile={pickFile} pickImages={pickImages} onChange={(body) => setPage((p) => (p ? { ...p, body } : p))} />
+            <Editor key={`${slug}-${rev}`} content={page.body} allowH1={slug === 'cv'} pickMedia={pickMedia} pickFile={pickFile} pickImages={pickImages} onChange={(body) => setPage((p) => (p ? { ...p, body } : p))} />
           </div>
         </div>
         {sheet && <button type="button" className="sheet-back phone-only" aria-label="Close page settings" onClick={() => setSheet(false)} />}
@@ -128,9 +157,16 @@ export default function PageEditor({ slug }: { slug: 'cv' | 'about' | 'privacy' 
             <button type="button" className="btn small sheet-close" onClick={() => setSheet(false)}>Done</button>
           </div>
           <div className="side-toggles">
-            {sections && slug !== 'privacy' && <ToggleRow label="Show on the site" hint="Adds it to the menu" checked={sections[slug]} onChange={(v) => void toggleSection(v)} />}
+            {sections && slug !== 'privacy' && <ToggleRow label="Show on the site" hint={slug === 'contact' ? 'Adds it to the bottom of every page' : 'Adds it to the menu'} checked={sections[slug]} onChange={(v) => void toggleSection(v)} />}
             <ToggleRow label="Hide from search engines" hint={slug === 'cv' ? 'Public page: leave out phone and address.' : undefined} checked={page.noindex} onChange={(v) => { setPage({ ...page, noindex: v }); saveNow(); }} />
           </div>
+          {slug === 'privacy' && (
+            <>
+              <button type="button" className="btn" onClick={addSuggested}>Add suggested wording</button>
+              <p className="field-hint">Adds a draft covering ads, cookies, sponsoring and embedded videos at the end of the page. The “Last updated” date is shown automatically.</p>
+            </>
+          )}
+          {slug === 'contact' && <p className="field-hint">Shown once it has content and is switched on. Give an email address readers can write to.</p>}
           {slug === 'cv' && <p className="field-hint">Type “/2 columns” or “/3 columns” in the page for layouts.</p>}
         </aside>
       </div>

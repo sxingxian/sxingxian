@@ -3,7 +3,7 @@ import AdSlot from './AdSlot.astro';
 // Shared article layout for posts, work, galleries and films.
 import Site from '../layouts/Site.astro';
 import { renderDoc } from '../lib/server/render';
-import { formatDate } from '../lib/server/text';
+import { formatDate, wordCount } from '../lib/server/text';
 import { embedSrc, parseVideoUrl } from '../lib/shared/safe';
 import { topicLabel, type Entry } from '../lib/shared/types';
 
@@ -13,6 +13,8 @@ interface Props {
 }
 const { entry, kicker } = Astro.props;
 const html = renderDoc(entry.body); // allow-listed and escaped by the renderer
+// Ads look at how much of the page is the author's own text (thin pages carry none).
+Astro.locals.adFacts = { words: wordCount(entry.body) };
 const video = entry.kind === 'film' && entry.video_url ? parseVideoUrl(entry.video_url) : null;
 const videoSrc = video ? embedSrc(video.provider, video.id) : null;
 const site = Astro.site ?? Astro.url;

@@ -2,8 +2,12 @@
 // The admin uses the same schemas for instant feedback, but the server is the
 // authority — client-side checks are a convenience, not a control.
 import { z } from 'zod';
-import { MAX_ENTRY_TOPICS, MAX_FEATURED, MAX_LIST_TOPICS, MAX_SERIES_PART, MAX_TOPIC_LEN } from './types';
-import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref, SLUG_RE, UUID_RE } from './safe';
+import { DEFAULT_AD_PLACES, MAX_ENTRY_TOPICS, MAX_FEATURED, MAX_LIST_TOPICS, MAX_SERIES_PART, MAX_TOPIC_LEN } from './types';
+import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref, SLUG_RE, stripInvisible, UUID_RE } from './safe';
+
+/** A title with invisible characters removed (they arrive with pasted text and break search and sorting). */
+const cleanTitle = (min: number, max: number, message?: string) =>
+  z.string().max(max * 2).transform((v) => stripInvisible(v).trim()).pipe(z.string().min(min, message).max(max));
 
 const MAX_DOC_BYTES = 1_000_000;
 
@@ -15,7 +19,7 @@ export const docSchema = z
 
 export const entryInputSchema = z.object({
   kind: z.enum(['post', 'project', 'gallery', 'film']),
-  title: z.string().trim().min(1).max(200),
+  title: cleanTitle(1, 200),
   slug: z.string().max(80, { abort: true }).regex(SLUG_RE, 'Use lowercase letters, numbers and dashes'),
   dek: z.string().max(400).default(''),
   /** Ignored when topics is sent; the server derives it from topics[0]. Accepted for older clients. */
@@ -46,7 +50,7 @@ export const entryStateSchema = z.object({
 });
 
 export const pageInputSchema = z.object({
-  title: z.string().max(200).default(''),
+  title: cleanTitle(0, 200).default(''),
   body: docSchema,
   noindex: z.boolean().default(false),
 });
@@ -152,6 +156,16 @@ export const settingsSchemas = {
     client: z.string().trim().refine((v) => v === '' || ADSENSE_CLIENT_RE.test(v), 'Publisher ID looks like ca-pub-1234567890123456'),
     homeSlot: z.string().trim().refine((v) => v === '' || ADSENSE_SLOT_RE.test(v), 'Ad slot IDs are numbers only'),
     articleSlot: z.string().trim().refine((v) => v === '' || ADSENSE_SLOT_RE.test(v), 'Ad slot IDs are numbers only'),
+    // Switches only: unknown places are dropped, missing ones take the defaults.
+    places: z.object({
+      story: z.boolean().default(DEFAULT_AD_PLACES.story),
+      home: z.boolean().default(DEFAULT_AD_PLACES.home),
+      lists: z.boolean().default(DEFAULT_AD_PLACES.lists),
+      photos: z.boolean().default(DEFAULT_AD_PLACES.photos),
+      film: z.boolean().default(DEFAULT_AD_PLACES.film),
+      work: z.boolean().default(DEFAULT_AD_PLACES.work),
+    }).default({ ...DEFAULT_AD_PLACES }),
+    skipShort: z.boolean().default(true),
   }).refine((v) => !v.enabled || v.client !== '', { message: 'Add your publisher ID before turning ads on', path: ['client'] }),
   site: z.object({
     title: z.string().trim().min(1).max(60),
@@ -166,6 +180,7 @@ export const settingsSchemas = {
     film: z.boolean(),
     cv: z.boolean(),
     about: z.boolean(),
+    contact: z.boolean().default(false),
   }),
   featured: z.object({
     entryIds: z.array(z.string().regex(UUID_RE)).max(MAX_FEATURED, `Up to ${MAX_FEATURED} featured stories`).transform((ids) => [...new Set(ids)]),
@@ -203,7 +218,7 @@ export const mediaMetaSchema = z.object({
 // ------------------------------------------------------------- series
 
 export const seriesInputSchema = z.object({
-  title: z.string().trim().min(1, 'Add a title').max(120),
+  title: cleanTitle(1, 120, 'Add a title'),
   slug: z.string().max(80, { abort: true }).regex(SLUG_RE, 'Use lowercase letters, numbers and dashes'),
   description: z.string().trim().max(300).default(''),
   planned_parts: z.number().int().min(1).max(MAX_SERIES_PART).nullable().default(null),

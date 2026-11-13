@@ -18,7 +18,11 @@ await build({
                export { sessionCookie, clearSessionCookie, SESSION_COOKIE } from './src/lib/server/users.ts';
                export { safeNext } from './src/admin/auth/fields.tsx';
                export { loginSchema, userPatchSchema, settingsSchemas } from './src/lib/shared/schemas.ts';
-               export { adsAllowedOn, adsLive } from './src/lib/server/ads.ts';
+               export { adsAllowedOn, adsLive, adsLocked, adPlace, adPlaces } from './src/lib/server/ads.ts';
+               export { imagesWithoutAlt } from './src/lib/shared/doc-checks.ts';
+               export { stripInvisible } from './src/lib/shared/safe.ts';
+               export { pageInputSchema } from './src/lib/shared/schemas.ts';
+               export { AD_MIN_WORDS, DEFAULT_AD_PLACES } from './src/lib/shared/types.ts';
                export { watermarkSig, watermarkable, watermarkHasContent } from './src/lib/shared/watermark.ts';
                export { checkPng } from './src/lib/server/png.ts';
                export { sniffDocument, contentDisposition } from './src/lib/server/filetypes.ts';
@@ -57,7 +61,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern, entryTelegramSchema } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, adsLocked, adPlace, adPlaces, imagesWithoutAlt, stripInvisible, pageInputSchema, AD_MIN_WORDS, DEFAULT_AD_PLACES, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern, entryTelegramSchema } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -187,9 +191,76 @@ t('map input parsing: coordinates and map links', () => {
 });
 
 console.log('AdSense');
-t('ads never run in the admin, API, CV, About, Privacy or feeds', () => {
-  for (const p of ['/admin', '/admin/stories', '/api/admin/me', '/cv', '/about', '/privacy', '/media/x', '/rss.xml', '/ads.txt', '/sponsor', '/sponsor/thanks', '/sponsor/cancelled']) assert.equal(adsAllowedOn(p), false, p);
-  for (const p of ['/', '/story', '/story/a-post', '/photos', '/aboutme']) assert.equal(adsAllowedOn(p), true, p);
+const ALL_ON = { places: { story: true, home: true, lists: true, photos: true, film: true, work: true }, skipShort: false };
+const LONG = { words: 5000 };
+t('ads never run in the admin, API, CV, About, Contact, Privacy, sponsor pages or feeds, whatever the switches say', () => {
+  for (const p of ['/admin', '/admin/stories', '/api/admin/me', '/cv', '/about', '/contact', '/privacy', '/privacy/', '/media/x', '/partials/home-feed', '/rss.xml', '/ads.txt', '/sitemap.xml', '/sponsor', '/sponsor/thanks', '/sponsor/cancelled']) {
+    assert.equal(adsLocked(p), true, p);
+    assert.equal(adPlace(p), null, p);
+    assert.equal(adsAllowedOn(p, ALL_ON, LONG), false, p);
+  }
+});
+t('a path that belongs to no place gets no ads (fails closed)', () => {
+  for (const p of ['/aboutme', '/unknown', '/story/a/b', '/series/a/b/c', '/login']) assert.equal(adsAllowedOn(p, ALL_ON, LONG), false, p);
+});
+t('each path is governed by the right switch', () => {
+  const cases = { '/': 'home', '/story': 'lists', '/story/': 'lists', '/series': 'lists', '/series/a-series': 'lists', '/story/a-post': 'story', '/photos': 'photos', '/photos/a-gallery': 'photos', '/film': 'film', '/film/a-film': 'film', '/work': 'work', '/work/a-project': 'work' };
+  for (const [path, place] of Object.entries(cases)) {
+    assert.equal(adPlace(path)?.place, place, path);
+    const only = { places: { story: false, home: false, lists: false, photos: false, film: false, work: false, [place]: true }, skipShort: false };
+    assert.equal(adsAllowedOn(path, only, LONG), true, `${path} on`);
+    assert.equal(adsAllowedOn(path, { ...only, places: { ...ALL_ON.places, [place]: false } }, LONG), false, `${path} off`);
+  }
+});
+t('by default only story pages carry ads', () => {
+  assert.deepEqual(adPlaces({}), DEFAULT_AD_PLACES);
+  assert.equal(adsAllowedOn('/story/a-post', {}, LONG), true);
+  for (const p of ['/', '/story', '/series', '/photos', '/photos/x', '/film/x', '/work/x']) assert.equal(adsAllowedOn(p, {}, LONG), false, p);
+  // Only real booleans count: junk in a saved value falls back to the default.
+  assert.deepEqual(adPlaces({ places: { home: 'yes', story: 0, extra: true } }), DEFAULT_AD_PLACES);
+});
+t('short entries, error pages and hidden pages carry no ads', () => {
+  const on = { ...ALL_ON, skipShort: true };
+  assert.equal(adsAllowedOn('/story/a-post', on, { words: AD_MIN_WORDS }), true);
+  assert.equal(adsAllowedOn('/story/a-post', on, { words: AD_MIN_WORDS - 1 }), false);
+  assert.equal(adsAllowedOn('/photos/a-gallery', on, { words: 0 }), false);
+  assert.equal(adsAllowedOn('/story/a-post', on, {}), false, 'an entry of unknown length counts as short');
+  assert.equal(adsAllowedOn('/story/a-post', {}, { words: 10 }), false, 'skip short pages is on unless switched off');
+  assert.equal(adsAllowedOn('/story/a-post', ALL_ON, { words: 10 }), true, 'switched off: short entries may carry ads');
+  assert.equal(adsAllowedOn('/story', on, {}), true, 'lists have no length');
+  assert.equal(adsAllowedOn('/story/a-post', ALL_ON, { ...LONG, blocked: true }), false);
+  assert.equal(adsAllowedOn('/', ALL_ON, { blocked: true }), false);
+});
+t('ad place switches accept booleans only and fill in defaults', () => {
+  const base = { enabled: false, client: '', homeSlot: '', articleSlot: '' };
+  const d = settingsSchemas.ads.parse(base);
+  assert.deepEqual(d.places, DEFAULT_AD_PLACES);
+  assert.equal(d.skipShort, true);
+  assert.equal(settingsSchemas.ads.parse({ ...base, places: { home: true } }).places.story, true);
+  assert.equal(settingsSchemas.ads.safeParse({ ...base, places: { home: 'true' } }).success, false);
+  assert.equal(settingsSchemas.ads.safeParse({ ...base, skipShort: 'no' }).success, false);
+  assert.equal('admin' in settingsSchemas.ads.parse({ ...base, places: { admin: true } }).places, false, 'unknown places are dropped');
+});
+t('the contact switch defaults to off', () => {
+  const s = settingsSchemas.sections.parse({ work: true, photos: true, film: true, cv: true, about: true });
+  assert.equal(s.contact, false);
+  assert.equal(settingsSchemas.sections.safeParse({ work: true, photos: true, film: true, cv: true, about: true, contact: 'yes' }).success, false);
+});
+t('invisible characters are removed from titles', () => {
+  assert.equal(stripInvisible('The \u200BSanctum \u2060of \uFEFFthe \u00ADEye'), 'The Sanctum of the Eye');
+  const entry = { kind: 'post', title: '\u200B Steel Meets \u200BShadow ', slug: 'steel', body: { type: 'doc', content: [] }, status: 'draft', is_public: false };
+  assert.equal(entryInputSchema.parse(entry).title, 'Steel Meets Shadow');
+  assert.equal(entryInputSchema.safeParse({ ...entry, title: '\u200B\uFEFF ' }).success, false, 'a title of only invisible characters is empty');
+  assert.equal(pageInputSchema.parse({ title: 'Con\u200Btact', body: { type: 'doc', content: [] } }).title, 'Contact');
+  // Joiners that emoji and some scripts need are kept.
+  assert.equal(stripInvisible('a\u200Db\u200Cc'), 'a\u200Db\u200Cc');
+});
+t('photos without a description are counted', () => {
+  const fig = (alt) => ({ type: 'figure', attrs: { mediaId: 'x', alt } });
+  const d = doc(fig(''), fig('  '), fig('A harbour at dusk'), { type: 'gallery', attrs: { items: [{ alt: '' }, { alt: 'ok' }, null] } }, { type: 'columns', content: [{ type: 'column', content: [fig(undefined)] }] });
+  assert.equal(imagesWithoutAlt(d), 5);
+  assert.equal(imagesWithoutAlt(doc(p({ type: 'text', text: 'no photos' }))), 0);
+  assert.equal(imagesWithoutAlt(undefined), 0);
 });
 t('ads need a valid publisher ID and the switch on', () => {
   assert.equal(adsLive({ enabled: true, client: 'ca-pub-1234567890123456', homeSlot: '', articleSlot: '' }), true);

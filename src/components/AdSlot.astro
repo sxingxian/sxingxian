@@ -1,10 +1,10 @@
 ---
-// One Google AdSense display unit. Renders nothing unless ads are on, allowed on this page,
-// and the slot ID is set. The push() script gets the page's CSP nonce like every script.
+// One Google AdSense display unit. Renders nothing unless ads are on, allowed on this page
+// (place switched on, not an error or hidden page, enough text) and the slot ID is set. The push() script gets the page's CSP nonce like every script.
 import { adsFor, validSlot } from '../lib/server/ads';
 
 interface Props { slot: 'home' | 'article' }
-const ads = await adsFor(Astro.url.pathname);
+const ads = await adsFor(Astro.url.pathname, Astro.locals.adFacts);
 const id = ads ? (Astro.props.slot === 'home' ? ads.homeSlot : ads.articleSlot) : '';
 const show = !!ads && validSlot(id);
 ---

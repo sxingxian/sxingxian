@@ -51,8 +51,12 @@ export interface EntryEdits {
   read_minutes: number;
 }
 
+/** The editable standalone pages. */
+export const PAGE_SLUGS = ['cv', 'about', 'privacy', 'contact'] as const;
+export type PageSlug = (typeof PAGE_SLUGS)[number];
+
 export interface Page {
-  slug: 'cv' | 'about' | 'privacy';
+  slug: PageSlug;
   title: string;
   body: DocNode;
   noindex: boolean;
@@ -99,6 +103,8 @@ export interface SectionsSetting {
   film: boolean;
   cv: boolean;
   about: boolean;
+  /** The Contact page, linked from the footer (not the menu). */
+  contact: boolean;
 }
 
 /**
@@ -207,12 +213,41 @@ export function cleanTopics(raw: unknown, max: number = MAX_ENTRY_TOPICS): strin
   return out;
 }
 
-/** Google AdSense. Ads only run when enabled with a valid publisher ID, never in the admin or on CV, About and Privacy. */
+/** The areas of the public site where ads can be switched on or off. Everything else never has ads. */
+export const AD_PLACES = ['story', 'home', 'lists', 'photos', 'film', 'work'] as const;
+export type AdPlace = (typeof AD_PLACES)[number];
+export const AD_PLACE_LABELS: Record<AdPlace, { label: string; hint: string }> = {
+  story: { label: 'Story pages', hint: 'One story, read top to bottom' },
+  home: { label: 'Home page', hint: 'Mostly links to stories' },
+  lists: { label: 'Story lists', hint: 'All stories and series pages' },
+  photos: { label: 'Photos', hint: 'The photo list and each gallery' },
+  film: { label: 'Film', hint: 'The film list and each film' },
+  work: { label: 'Work', hint: 'The work list and each project' },
+};
+export const DEFAULT_AD_PLACES: Record<AdPlace, boolean> = { story: true, home: false, lists: false, photos: false, film: false, work: false };
+/** With "skip short pages" on, an entry needs at least this many words of its own text to carry ads. */
+export const AD_MIN_WORDS = 300;
+
+/** Google AdSense. Ads only run when enabled with a valid publisher ID, only in the places switched on,
+ *  and never in the admin, on CV, About, Privacy, Contact, the sponsor pages or error pages. */
 export interface AdsSetting {
   enabled: boolean;
   client: string; // ca-pub-…
   homeSlot: string; // display ad unit on the home page ('' = none)
   articleSlot: string; // display ad unit at the end of posts and entries ('' = none)
+  /** Where ads may show. A place missing from a saved value uses DEFAULT_AD_PLACES. */
+  places?: Partial<Record<AdPlace, boolean>>;
+  /** No ads on entries with fewer than AD_MIN_WORDS words (thin pages). Missing = on. */
+  skipShort?: boolean;
+}
+
+/** The Ads tab's checklist (GET /api/admin/ads/readiness). Counts cover live entries only. */
+export interface AdReadiness {
+  privacy: 'ok' | 'hidden' | 'missing';
+  about: 'ok' | 'off' | 'missing';
+  contact: 'ok' | 'off' | 'missing';
+  adsTxt: boolean;
+  entries: { total: number; noSummary: number; noAlt: number; short: number };
 }
 
 export type WatermarkPosition = 'br' | 'bl' | 'center' | 'tiled';
@@ -295,7 +330,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     defaultCoverId: null,
   },
   topics: { work: [], photos: [], film: [] },
-  sections: { work: true, photos: true, film: true, cv: true, about: true },
+  sections: { work: true, photos: true, film: true, cv: true, about: true, contact: false },
   featured: { entryIds: [], order: 'date' },
   footer: {
     about: 'Engineer and photographer in Singapore, writing about building things and noticing things.',
@@ -315,7 +350,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
     showBuiltOn: true,
   },
   wordpress: { autoShow: false, includeInRss: true, hideWhenDown: true, categoryMap: {} },
-  ads: { enabled: false, client: '', homeSlot: '', articleSlot: '' },
+  ads: { enabled: false, client: '', homeSlot: '', articleSlot: '', places: { ...DEFAULT_AD_PLACES }, skipShort: true },
   protection: { watermark: false, text: '© sxingxian', position: 'br', size: 'm', opacity: 0.4, blockSave: true, logo: true, logoTint: 'original', logoHash: null },
   telegram: {
     channels: [],
@@ -372,6 +407,7 @@ export const SECTION_LABELS: Record<keyof SectionsSetting, string> = {
   film: 'Film',
   cv: 'CV',
   about: 'About',
+  contact: 'Contact',
 };
 
 export const KIND_LABELS: Record<EntryKind, string> = {
