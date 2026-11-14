@@ -45,7 +45,8 @@ await build({
                export { DEFAULT_SETTINGS, sponsorLive, paypalVia, sponsorCardTitle } from './src/lib/shared/types.ts';
                export { sponsorMarkSchema, PAYPAL_ME_RE } from './src/lib/shared/schemas.ts';
                export { readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern } from './src/lib/shared/paging.ts';
-               export { entryTelegramSchema } from './src/lib/shared/schemas.ts';`,
+               export { entryTelegramSchema } from './src/lib/shared/schemas.ts';
+               export { shortCount, readsLabel } from './src/lib/shared/reads.ts';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -61,7 +62,7 @@ await build({
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const env = {};', loader: 'js' }));
   } }],
 });
-const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, adsLocked, adPlace, adPlaces, imagesWithoutAlt, stripInvisible, pageInputSchema, AD_MIN_WORDS, DEFAULT_AD_PLACES, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern, entryTelegramSchema } = await import(out);
+const { renderDoc, isSafeHref, parseVideoUrl, parseMapInput, isTikTokShortLink, htmlToText, esc, ac, sessionCookie, clearSessionCookie, SESSION_COOKIE, safeNext, loginSchema, userPatchSchema, settingsSchemas, adsAllowedOn, adsLive, adsLocked, adPlace, adPlaces, imagesWithoutAlt, stripInvisible, pageInputSchema, AD_MIN_WORDS, DEFAULT_AD_PLACES, watermarkSig, watermarkable, watermarkHasContent, checkPng, sniffDocument, contentDisposition, cleanFileName, normalizeWpBase, cleanTopics, topicLabel, entryInputSchema, canonicalPath, isAdminPath, topicFor, pickImage, safeImageUrl, seriesInputSchema, entrySeriesSchema, viewInputSchema, featuredIds, entryContentSchema, entryStateSchema, entryState, untilLabel, whenLabel, partsLabel, laterParts, outWhen, markdownToTelegramHtml, buildPost, excerptOf, visibleLength, CAPTION_MAX, TELEGRAM_CHAT_RE, TELEGRAM_TOKEN_RE, SETTINGS_SCHEMAS, sponsorCheckoutSchema, stripeConnectSchema, paypalConnectSchema, parseMoney, formatMoney, amountProblem, cleanMessage, verifyStripeSignature, DEFAULT_SETTINGS, sponsorLive, paypalMeUrl, paypalVia, sponsorCardTitle, sponsorMarkSchema, PAYPAL_ME_RE, readPaging, parsePage, parseSize, pageList, pageAfterResize, likePattern, entryTelegramSchema, shortCount, readsLabel } = await import(out);
 await rm(dir, { recursive: true, force: true });
 
 let passed = 0;
@@ -831,6 +832,25 @@ t('telegram: send silently is a plain yes / no / follow-the-default', () => {
   for (const bad of ['yes', 1, 0, 'true', {}]) assert.equal(entryTelegramSchema.safeParse({ ...base, silent: bad }).success, false, String(bad));
   assert.equal(SETTINGS_SCHEMAS.telegram.parse({ ...DEFAULT_SETTINGS.telegram, silent: undefined }).silent, false);
   assert.equal(SETTINGS_SCHEMAS.telegram.safeParse({ ...DEFAULT_SETTINGS.telegram, silent: 'on' }).success, false);
+});
+
+t('reads: story read counts round down, respect the minimum and only accept known settings', () => {
+  for (const [n, out] of [[0, '0'], [7, '7'], [999, '999'], [1000, '1k'], [1250, '1.2k'], [1999, '1.9k'], [9999, '9.9k'], [12800, '12k'], [999999, '999k'], [1_250_000, '1.2M'], [-5, '0'], [NaN, '0'], [Infinity, '0'], [3.9, '3']]) {
+    assert.equal(shortCount(n), out, String(n));
+  }
+  const on = { show: true, minimum: 50 };
+  assert.equal(readsLabel(49, on), null, 'under the minimum');
+  assert.deepEqual(readsLabel(50, on), { short: '50 reads', full: '50 reads' });
+  assert.deepEqual(readsLabel(1240, on), { short: '1.2k reads', full: '1,240 reads' });
+  assert.deepEqual(readsLabel(1, { show: true, minimum: 1 }), { short: '1 read', full: '1 read' });
+  assert.equal(readsLabel(0, { show: true, minimum: 1 }), null, 'never "0 reads"');
+  assert.equal(readsLabel(5000, { show: false, minimum: 1 }), null, 'switched off');
+  assert.equal(SETTINGS_SCHEMAS.reads.safeParse(DEFAULT_SETTINGS.reads).success, true);
+  for (const m of [1, 25, 50, 100]) assert.equal(SETTINGS_SCHEMAS.reads.safeParse({ show: true, minimum: m }).success, true, String(m));
+  for (const bad of [0, -1, 10, 1000, '50', null, 50.5]) assert.equal(SETTINGS_SCHEMAS.reads.safeParse({ show: true, minimum: bad }).success, false, String(bad));
+  assert.equal(SETTINGS_SCHEMAS.reads.safeParse({ show: 'yes', minimum: 50 }).success, false);
+  // Unknown keys are dropped, not stored.
+  assert.deepEqual(SETTINGS_SCHEMAS.reads.parse({ show: true, minimum: 25, count: 99999 }), { show: true, minimum: 25 });
 });
 
 console.log(`\n${passed} security tests passed.`);

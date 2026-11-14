@@ -174,6 +174,10 @@ export const settingsSchemas = {
     defaultCoverId: z.string().regex(UUID_RE).nullable().optional(),
   }),
   topics: z.object({ work: topicList, photos: topicList, film: topicList }),
+  reads: z.object({
+    show: z.boolean(),
+    minimum: z.union([z.literal(1), z.literal(25), z.literal(50), z.literal(100)]),
+  }),
   sections: z.object({
     work: z.boolean(),
     photos: z.boolean(),
