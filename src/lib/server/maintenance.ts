@@ -62,11 +62,17 @@ export async function runMaintenance(): Promise<void> {
   });
   await attempt('auth-purge', async () => {
     await purgeAuthData();
-    // "Most read" only looks at 30 days; keep about a year of daily totals and no more.
+    // "Most read" only looks at 30 days; keep about a year of daily totals and no more. Days pruned
+    // are added to each item's running total first (one statement), so story read counts keep them.
     try {
-      await sql()`DELETE FROM item_views WHERE day < current_date - 400`;
+      await sql()`
+        WITH gone AS (DELETE FROM item_views WHERE day < current_date - 400 RETURNING item, n)
+        INSERT INTO item_reads_total (item, n)
+        SELECT item, sum(n)::bigint FROM gone GROUP BY item
+        ON CONFLICT (item) DO UPDATE SET n = item_reads_total.n + EXCLUDED.n`;
     } catch {
-      // the table arrives with migration 0009
+      // item_views arrives with migration 0009 and item_reads_total with 0016. Until then nothing is
+      // pruned, so no reads are lost (there are no days that old yet anyway).
     }
   });
 }

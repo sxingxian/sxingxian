@@ -1,4 +1,4 @@
-// Settings, in six tabs. Every tab uses the same pattern: titled panels of labelled rows,
+// Settings, in eight tabs. Every tab uses the same pattern: titled panels of labelled rows,
 // switches that save at once, and a save bar for edits that need confirming.
 import { useEffect, useRef, useState } from 'react';
 import { clearLogoCache, drawWatermark, loadLogo, watermarkStored, type LogoImage } from '../watermark';
@@ -16,7 +16,7 @@ import { Loading, Page, Panel, Row, SaveBar, Segmented, ToggleRow } from '../com
 import { ADSENSE_CLIENT_RE, ADSENSE_SLOT_RE, isSafeHref } from '../../lib/shared/safe';
 import { Modal } from '../components/Modal';
 import { useGo } from '../nav';
-import { AD_MIN_WORDS, AD_PLACES, KIND_LABELS, AD_PLACE_LABELS, DEFAULT_AD_PLACES, SECTION_LABELS, type AdReadiness, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
+import { AD_MIN_WORDS, AD_PLACES, KIND_LABELS, AD_PLACE_LABELS, DEFAULT_AD_PLACES, SECTION_LABELS, type AdReadiness, type ReadsSetting, READS_MINIMUMS, type TopicsSetting, type AdsSetting, type Entry, type FeaturedSetting, type FooterSetting, type ProtectionSetting, type SectionsSetting, type SiteSetting } from '../../lib/shared/types';
 
 type Tab = 'home' | 'site' | 'topics' | 'footer' | 'photos' | 'telegram' | 'sponsor' | 'ads';
 const TABS: [Tab, string][] = [['home', 'Home'], ['site', 'Site'], ['topics', 'Topics'], ['footer', 'Footer'], ['photos', 'Photos'], ['telegram', 'Telegram'], ['sponsor', 'Sponsor'], ['ads', 'Ads']];
@@ -49,6 +49,7 @@ export default function Settings() {
 function HomeSettings() {
   const [sections, setSections] = useState<SectionsSetting | null>(null);
   const [featured, setFeatured] = useState<FeaturedSetting | null>(null);
+  const [reads, setReads] = useState<ReadsSetting | null>(null);
   const [posts, setPosts] = useState<Omit<Entry, 'body'>[]>([]);
   const [err, setErr] = useState('');
   const toast = useToast();
@@ -56,6 +57,7 @@ function HomeSettings() {
   useEffect(() => {
     api.get<{ value: SectionsSetting }>('/api/admin/settings/sections').then((r) => setSections(r.value)).catch((e) => setErr(errorText(e)));
     api.get<{ value: FeaturedSetting }>('/api/admin/settings/featured').then((r) => setFeatured(r.value)).catch(() => {});
+    api.get<{ value: ReadsSetting }>('/api/admin/settings/reads').then((r) => setReads(r.value)).catch(() => {});
     api.get<{ entries: Omit<Entry, 'body'>[] }>('/api/admin/entries?kind=post').then((r) => setPosts(r.entries)).catch(() => {});
   }, []);
   if (!sections || !featured) return <Loading error={err} />;
@@ -72,6 +74,19 @@ function HomeSettings() {
     }
   };
 
+  const saveReads = async (next: ReadsSetting) => {
+    if (!reads) return;
+    const prev = reads;
+    setReads(next);
+    try {
+      await api.put('/api/admin/settings/reads', next);
+      toast('Saved');
+    } catch (e) {
+      setReads(prev);
+      toast(errorText(e));
+    }
+  };
+
   return (
     <>
       <FeaturedEditor value={featured} posts={posts} onSaved={setFeatured} />
@@ -80,6 +95,21 @@ function HomeSettings() {
           <ToggleRow key={k} label={SECTION_LABELS[k]} hint={`/${k}`} checked={sections[k]} onChange={(v) => saveSections({ ...sections, [k]: v })} />
         ))}
       </Panel>
+      {reads && (
+        <Panel title="Read counts" desc="Shown under each story’s title, e.g. “1.2k reads”. Same counts as Most read: no cookies or IP addresses.">
+          <ToggleRow label="Show read count" hint="Stories only" checked={reads.show} onChange={(v) => saveReads({ ...reads, show: v })} />
+          {reads.show && (
+            <Row label="Show from" hint="Hidden until a story has this many reads">
+              <Segmented
+                label="Show from"
+                value={String(reads.minimum) as `${ReadsSetting['minimum']}`}
+                options={READS_MINIMUMS.map((m) => [String(m) as `${ReadsSetting['minimum']}`, m === 1 ? 'First read' : `${m} reads`] as const)}
+                onChange={(v) => saveReads({ ...reads, minimum: Number(v) as ReadsSetting['minimum'] })}
+              />
+            </Row>
+          )}
+        </Panel>
+      )}
     </>
   );
 }

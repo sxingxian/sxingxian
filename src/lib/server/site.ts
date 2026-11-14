@@ -198,6 +198,39 @@ export async function mostRead(limit = 5): Promise<FeedItem[]> {
   }
 }
 
+// Read counts on story pages: cached briefly per isolate so a busy story isn't one query per view.
+const READS_TTL_MS = 60_000;
+const readsCache = new Map<string, { at: number; n: number }>();
+
+/**
+ * All-time reads of one story here: the daily totals still kept plus the older days rolled up by the
+ * daily job. Before migration 0016 runs, only the daily totals; before 0009, zero.
+ */
+export async function storyReads(entryId: string): Promise<number> {
+  if (!/^[0-9a-f-]{36}$/.test(entryId)) return 0;
+  const item = `n:${entryId}`;
+  const hit = readsCache.get(item);
+  if (hit && Date.now() - hit.at < READS_TTL_MS) return hit.n;
+  const daily = `SELECT coalesce(sum(n), 0)::bigint FROM item_views WHERE item = $1`;
+  let n = 0;
+  try {
+    const rows = await sql().query(`SELECT ((${daily}) + coalesce((SELECT n FROM item_reads_total WHERE item = $1), 0))::text AS n`, [item]);
+    n = Number((rows as { n: string }[])[0]?.n ?? 0);
+  } catch (e) {
+    if ((e as { code?: string })?.code !== '42P01') throw e;
+    try {
+      const rows = await sql().query(`SELECT (${daily})::text AS n`, [item]);
+      n = Number((rows as { n: string }[])[0]?.n ?? 0);
+    } catch (e2) {
+      if ((e2 as { code?: string })?.code !== '42P01') throw e2;
+    }
+  }
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  if (readsCache.size > 500) readsCache.clear();
+  readsCache.set(item, { at: Date.now(), n });
+  return n;
+}
+
 /** Count one read. Only public stories and visible WordPress posts are counted; anything else is ignored. */
 export async function recordView(item: string): Promise<void> {
   const [kind, ref] = [item.slice(0, 1), item.slice(2)];

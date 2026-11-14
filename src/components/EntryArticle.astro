@@ -38,6 +38,11 @@ const laterLabel = inSeries ? laterParts(Math.max(lastPart, seriesNext?.part ?? 
 // The scheduled part comes straight after this one: the "next" link says when it's out instead.
 const nextSoon = !nextPart && seriesNext && seriesNext.part > (inSeries?.part ?? 0) ? seriesNext : null;
 const outAt = (iso: string) => `Out ${outWhen(iso, Date.now(), 'Asia/Singapore')}`;
+import { storyReads } from '../lib/server/site';
+import { readsLabel } from '../lib/shared/reads';
+// Read count, stories only (the same reads Most read counts). Never breaks the page if the count fails.
+const readsSetting = entry.kind === 'post' ? await getSetting('reads') : null;
+const reads = readsSetting?.show ? readsLabel(await storyReads(entry.id).catch(() => 0), readsSetting) : null;
 ---
 <Site title={entry.title} description={entry.dek} image={ogImage}>
   <article class="article" data-read={entry.kind === 'post' ? `n:${entry.id}` : undefined}>
@@ -47,6 +52,7 @@ const outAt = (iso: string) => `Out ${outWhen(iso, Date.now(), 'Asia/Singapore')
       {entry.topics.length > 0 ? <span class="topic-name">{topicLabel(entry.topics)}</span> : <span class="topic-name">{kicker}</span>}
       <span>{formatDate(entry.published_at)}</span>
       <span>{entry.read_minutes} min read</span>
+      {reads && <span class="reads" title={reads.full}>{reads.short}</span>}
       {inSeries && <a class="part-kicker" href="#series">Part {inSeries.part} of {seriesTotal} in {inSeries.series.title}</a>}
     </p>
     {videoSrc ? (

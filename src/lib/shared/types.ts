@@ -322,6 +322,14 @@ export interface SponsorSetting {
   methods: { stripe: boolean; paypal: boolean };
 }
 
+/** Read count on each story page ("1.2k reads"), from the same daily totals as Most read. */
+export const READS_MINIMUMS = [1, 25, 50, 100] as const;
+export interface ReadsSetting {
+  show: boolean;
+  /** Hidden until a story has at least this many reads, so new stories don't show "3 reads". */
+  minimum: (typeof READS_MINIMUMS)[number];
+}
+
 export interface SettingsMap {
   site: SiteSetting;
   topics: TopicsSetting;
@@ -333,6 +341,7 @@ export interface SettingsMap {
   protection: ProtectionSetting;
   telegram: TelegramSetting;
   sponsor: SponsorSetting;
+  reads: ReadsSetting;
 }
 export type SettingKey = keyof SettingsMap;
 
@@ -345,6 +354,7 @@ export const DEFAULT_SETTINGS: SettingsMap = {
   },
   topics: { work: [], photos: [], film: [] },
   sections: { work: true, photos: true, film: true, cv: true, about: true, contact: false },
+  reads: { show: true, minimum: 50 },
   featured: { entryIds: [], order: 'date' },
   footer: {
     about: 'Engineer and photographer in Singapore, writing about building things and noticing things.',
